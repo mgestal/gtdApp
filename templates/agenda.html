@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="page-title">
+    <h1>Agenda 📅</h1>
+    <p class="subtitle">Tareas ordenadas por fecha de finalización.</p>
+  </div>
+
+<div class="pager" style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:10px;">
+  <div class="muted">
+    Mostrando {{ (page-1)*per_page + 1 if total>0 else 0 }}–{{ [page*per_page, total]|min }} de {{ total }}
+    · página {{ page }} de {{ pages }}
+  </div>
+
+  <div style="display:flex; gap:8px; flex-wrap:wrap;">
+    {% if page > 1 %}
+      <a class="btn btn-soft" href="{{ url_for('agenda', page=1) }}">« Primera</a>
+      <a class="btn btn-soft" href="{{ url_for('agenda', page=page-1) }}">‹ Anterior</a>
+    {% else %}
+      <span class="btn btn-soft disabled">« Primera</span>
+      <span class="btn btn-soft disabled">‹ Anterior</span>
+    {% endif %}
+
+    {% if page < pages %}
+      <a class="btn btn-soft" href="{{ url_for('agenda', page=page+1) }}">Siguiente ›</a>
+      <a class="btn btn-soft" href="{{ url_for('agenda', page=pages) }}">Última »</a>
+    {% else %}
+      <span class="btn btn-soft disabled">Siguiente ›</span>
+      <span class="btn btn-soft disabled">Última »</span>
+    {% endif %}
+  </div>
+</div>
+
+  <div class="card">
+    {% if rows and rows|length > 0 %}
+      <table class="table">
+        <thead>
+          <tr>
+            <th style="width:42px;"></th>
+            <th>Tarea</th>
+            <th style="width:90px;">Fecha</th>
+            <th style="width:160px;">Ubicación</th>
+            <th style="width:95px;"></th> {# Espacio de acciones reducido #}
+          </tr>
+        </thead>
+        <tbody>
+        {% for t in rows %}
+          <tr class="{% if t.completed_at %}row-done{% endif %}">
+            <td>
+              <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}">
+                <button class="radio" aria-label="toggle" title="Marcar / desmarcar"></button>
+              </form>
+            </td>
+
+            <td>
+				<div style="font-weight:600; display:flex; align-items:center; gap:6px;">
+				  {{ t.title }}
+
+				  {% if t.notes %}
+					<a href="{{ url_for('task_edit', task_id=t.id, next=url_for('next_actions')) }}"
+					   title="{{ t.notes }}"
+					   style="text-decoration:none; font-size:0.9rem; opacity:.75;">
+					   📝
+					</a>
+				  {% endif %}
+				</div>
+              
+              <div class="task-tags" style="font-size: 0.8rem; opacity: 0.8;">
+                {% if t.recurrence_rule %}
+                  <span class="pill" style="font-size: 0.75rem;">⟲ periódica</span>
+                {% endif %}
+                {% for tag in tags_map.get(t.id, []) %}
+                  <a class="taglink" href="{{ url_for('tag_detail', tag_id=tag.id) }}" style="margin-right: 5px;">@{{ tag.name }}</a>
+                {% endfor %}
+              </div>
+            </td>
+
+            <td style="font-size: 0.85rem;">
+              {% if t.due_date %}{{ t.due_date.strftime('%d-%m-%Y') }}{% else %}<span class="muted">—</span>{% endif %}
+            </td>
+
+            <td style="font-size: 0.8rem;">
+              {# Lógica de Ubicación corregida #}
+              {% if t.folder_name %}
+                <a href="{{ url_for('folder_detail', folder_id=t.folder_id) }}">📂 {{ t.folder_name }}</a>
+              {% endif %}
+
+              {% if t.folder_name and t.project_name %}
+                <span class="muted"> · </span>
+              {% endif %}
+
+              {% if t.project_name %}
+                <a href="{{ url_for('project_detail', project_id=t.project_id) }}">💼 {{ t.project_name }}</a>
+              {% endif %}
+
+              {% if not t.folder_name and not t.project_name %}
+                <span class="muted">Inbox</span>
+              {% endif %}
+            </td>
+
+            <td class="actions" style="text-align: right;">
+              <a class="btn btn-soft" href="{{ url_for('task_edit', task_id=t.id) }}"> ✎ </a>
+              <form method="post" action="{{ url_for('task_delete', task_id=t.id) }}" style="display:inline;">
+                <button class="btn btn-soft" onclick="return confirm('¿Borrar esta tarea?');"> 🗑 </button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="empty">No hay tareas con fecha.</div>
+    {% endif %}
+  </div>
+
+  {% if total > 0 %}
+  <div class="pager" style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-top:20px;">
+    <div class="muted">
+      Página {{ page }} de {{ pages }}
+    </div>
+    <div style="display:flex; gap:8px;">
+      {% if page > 1 %}
+        <a class="btn btn-soft" href="{{ url_for('agenda', page=page-1) }}">‹ Anterior</a>
+      {% endif %}
+      {% if page < pages %}
+        <a class="btn btn-soft" href="{{ url_for('agenda', page=page+1) }}">Siguiente ›</a>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+{% endblock %}

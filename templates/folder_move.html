@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="page-title">
+    <h1>📂 Mover carpeta</h1> 
+    <p class="subtitle">Cambiar el padre de la carpeta: <b>{{ folder.name }}</b></p>
+  </div>
+
+  <div class="card">
+    <form method="post" class="form">
+      <label class="label">Nuevo padre</label>
+      <select class="input" name="parent_id">
+        <option value="">(raíz)</option>
+        {% for f in candidates %}
+          <option value="{{ f.id }}" {% if folder.parent_id == f.id %}selected{% endif %}>
+            {{ f.name }}
+          </option>
+        {% endfor %}
+      </select>
+
+      <div class="row">
+        <button class="btn btn-primary">Mover</button>
+        <a class="btn btn-soft" href="{{ url_for('folders') }}">Cancelar</a>
+      </div>
+    </form>
+  </div>
+{% endblock %}

@@ -1,0 +1,1531 @@
+/* static/style.css
+   Look tranquilo y positivo, pastel rojizo.
+   Sin Bootstrap. Layout: topbar + sidebar + contenido centrado con márgenes.
+*/
+
+:root{
+  --bg: #fff7f7;
+  --panel: #ffffff;
+  --panel2: #fff1f1;
+
+  --text: #2a2a2a;
+  --muted: #7a6f73;
+
+  --border: #f0d7d9;
+
+  --accent: #e7a7ad;     /* rojo pastel */
+  --accent2: #f3c4c8;    /* más claro */
+  --accent3: #d88991;    /* un poco más intenso pero suave */
+
+  --shadow: 0 10px 30px rgba(0,0,0,0.06);
+  --radius: 16px;
+}
+
+*{ box-sizing: border-box; }
+html, body { height: 100%; }
+body{
+  margin:0;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", "Helvetica Neue", sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+
+a{ color: inherit; text-decoration: none; }
+code{
+  background: #fff;
+  border: 1px solid var(--border);
+  padding: 2px 6px;
+  border-radius: 10px;
+}
+
+.topbar{
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: rgba(255,255,255,0.75);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+}
+.topbar-inner{
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 12px 14px;
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.brand{
+  display:flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.brand a{
+  font-weight: 760;
+  letter-spacing: .2px;
+}
+.brand-sub{
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.topbar-actions{
+  display:flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.layout{
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 14px;
+  display:flex;
+  gap: 14px;
+  align-items: stretch;
+}
+
+.sidebar{
+  width: 300px;
+  flex: 0 0 300px;
+  background: rgba(255,255,255,0.8);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 12px;
+  overflow:auto;
+  height: auto;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+}
+
+.main{
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+
+.container{
+  background: rgba(255,255,255,0.7);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px;
+  min-height: calc(100vh - 86px);
+  flex: 1;
+}
+
+.sidebar-block{ margin-bottom: 8px; }
+.sidebar-title{
+  font-size: 12px;
+  color: var(--muted);
+  margin: 6px 0 8px 0;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+
+.nav{
+  display:flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.nav-item{
+  padding:3px 10px;
+  border-radius:8px;
+  line-height:1.1;
+}
+.nav-item:hover{
+  background: var(--panel2);
+  border-color: var(--border);
+}
+
+.tree{
+  font-size: 14px;
+  line-height: 1.35;
+}
+.tree-node{ margin: 8px 0; }
+.tree-node-title{
+  padding: 6px 8px;
+  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid var(--border);
+}
+.tree-folder{ color: #5a4f54; }
+.tree-projects{ padding: 6px 8px; display:flex; flex-direction: column; gap: 6px; }
+.tree-project{
+  padding: 6px 8px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+}
+.tree-project:hover{
+  background: var(--panel2);
+  border-color: var(--border);
+}
+.tree-children{
+  margin-left: 10px;
+  padding-left: 10px;
+  border-left: 2px dashed var(--border);
+}
+
+/* Tipografía de página */
+.page-title h1{
+  margin: 0 0 4px 0;
+  font-size: 28px;
+  letter-spacing: .2px;
+}
+.subtitle{
+  margin: 0px 0px 14px 10px;
+  color: var(--muted);
+}
+
+/* Cards */
+.card{
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 14px;
+  margin-bottom: 14px;
+}
+.card-header{
+  display:flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.card-title{ font-weight: 700; }
+.card-sub{ color: var(--muted); font-size: 13px; }
+
+/* Tablas */
+.table{
+  width: 100%;
+  border-collapse: collapse;
+}
+.table th{
+  text-align: left;
+  font-size: 12px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.table td{
+  padding: 4px 2px;
+  vertical-align: top;
+}
+
+.row-done{
+  color: #b8b0b4;
+  font-style: italic;
+  font-size: 0.92em;   /* un poco más pequeño */
+}
+
+
+/* Botones */
+.btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: #ffffff;
+  cursor: pointer;
+  font-weight: 650;
+}
+.btn:hover{ transform: translateY(-1px); }
+.btn:active{ transform: translateY(0px); }
+
+.btn-primary{
+  background: linear-gradient(180deg, var(--accent2), var(--accent));
+  border-color: #e8b2b7;
+}
+.btn-soft{
+  background: #ffffff;
+}
+.w100{ width: 100%; }
+
+/* Radio botón (estilo minimal) */
+.radio{
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 2px solid #e2b2b7;
+  background: #fff;
+  cursor:pointer;
+}
+.radio:hover{
+  background: var(--panel2);
+}
+
+
+
+.form{ display:flex; flex-direction:column; gap: 10px; }
+.label{ font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.input{
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  outline: none;
+  background: #fff;
+}
+.input:focus{
+  border-color: #e7a7ad;
+  box-shadow: 0 0 0 3px rgba(231,167,173,0.25);
+}
+
+.grid2{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.grid3{
+  display:grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+@media (max-width: 980px){
+  .layout{ flex-direction: column; }
+  .sidebar{ width: 100%; flex: 0 0 auto; height: auto; }
+  .grid3{ grid-template-columns: 1fr; }
+  .grid2{ grid-template-columns: 1fr; }
+  .main{ display:block; }
+}
+
+.hint{ color: var(--muted); font-size: 13px; }
+
+.pill{
+  display:inline-flex;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel2);
+  font-size: 12px;
+  color: #6a5b60;
+  margin-left: 6px;
+}
+
+.tagchip{
+  display:inline-flex;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: #fff;
+  font-size: 9px;
+  color: #6a5b60;
+  margin-right: 6px;
+  margin-bottom: 6px;
+}
+
+.tagchiptags{
+  display:inline-flex;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: #fff;
+  font-size: 14px;
+  color: #6a5b60;
+  margin-right: 6px;
+  margin-bottom: 6px;
+}
+
+.muted{ color: var(--muted); }
+
+.list{ display:flex; flex-direction:column; gap: 10px; }
+.list-row{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #fff;
+}
+.link{
+  font-weight: 650;
+  text-decoration: underline;
+  text-decoration-color: rgba(216,137,145,0.55);
+  text-underline-offset: 3px;
+}
+
+/* Flash */
+.flash-area{ display:flex; flex-direction:column; gap: 10px; margin-bottom: 14px; }
+.flash{
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: #fff;
+}
+.flash-ok{
+  border-color: #cfe7d6;
+  background: #f4fff7;
+}
+.flash-error{
+  border-color: #f1c3c3;
+  background: #fff2f2;
+}
+
+.empty{
+  padding: 18px 14px;
+  color: var(--muted);
+}
+
+/* Modal (dialog) */
+.modal::backdrop{
+  background: rgba(0,0,0,0.25);
+}
+.modal{
+  border: none;
+  padding: 0;
+  width: min(720px, 92vw);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+}
+.modal-card{
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  overflow: hidden;
+}
+.modal-header{
+  padding: 12px 14px;
+  display:flex;
+  align-items:flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  background: linear-gradient(180deg, #fff, var(--panel2));
+  border-bottom: 1px solid var(--border);
+}
+.modal-title{ font-weight: 800; font-size: 18px; }
+.modal-sub{ color: var(--muted); font-size: 13px; margin-top: 4px; }
+.modal-body{ padding: 14px; }
+.modal-footer{
+  padding: 12px 14px;
+  display:flex;
+  justify-content:flex-end;
+  gap: 10px;
+  border-top: 1px solid var(--border);
+  background: #fff;
+}
+
+.taglink:hover{
+  background: var(--panel2);
+  border-color: var(--accent);
+}
+
+.actions{
+  display:flex;
+  gap:10px;
+  justify-content:flex-end;
+  flex-wrap: wrap;
+}
+
+
+.actions form{ margin:0; }
+
+.btn.disabled{
+  pointer-events:none;
+  opacity:.5;
+}
+
+.modal { position: fixed; inset: 0; z-index: 2000; }
+.modal-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.35); }
+.modal-panel {
+  position: relative;
+  width: min(560px, calc(100% - 24px));
+  margin: 10vh auto;
+  background: #fff;
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 10px 25px rgba(0,0,0,.18);
+}
+
+
+/* Dropdown actions */
+.dropdown { position: relative; }
+.dropdown-menu{
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  background: #fff;
+  border: 1px solid rgba(0,0,0,.08);
+  border-radius: 12px;
+  min-width: 200px;
+  box-shadow: 0 10px 25px rgba(0,0,0,.12);
+  padding: 6px;
+  z-index: 1500;
+}
+.dropdown-item{
+  display:block;
+  width:100%;
+  text-align:left;
+  background: transparent;
+  border: 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  color:#333;
+  font-size: 14px;
+}
+.dropdown-item:hover{ background: rgba(0,0,0,.04); }
+.dropdown-item.danger{ color:#b03a3a; }
+.dropdown-item.disabled{ opacity:.5; pointer-events:none; }
+.dropdown-sep{ height:1px; background: rgba(0,0,0,.08); margin:6px 4px; }
+
+/* Modal */
+.modal { position: fixed; inset: 0; z-index: 2000; }
+.modal-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.35); }
+.modal-panel{
+  position: relative;
+  width: min(560px, calc(100% - 24px));
+  margin: 10vh auto;
+  background: #fff;
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 10px 25px rgba(0,0,0,.18);
+}
+.modal-title { font-weight: 700; font-size: 18px; margin-bottom: 6px; }
+.modal-text { color: #555; font-size: 14px; line-height: 1.35; }
+.btn-danger { background: #d05a5a; color: #fff; border: 0; }
+.btn-danger:hover { filter: brightness(0.95); }
+
+/* ============================
+   Subtareas: vista compacta
+   ============================ */
+
+.subtask-list{
+  display:flex;
+  flex-direction:column;
+  gap:10px;              /* separación suave entre subtareas */
+}
+
+.subtask-row{
+  padding: 8px 0;        /* sin “recuadro”: solo aire vertical */
+  border-top: 1px solid rgba(0,0,0,.06);
+}
+
+.subtask-row:first-child{
+  border-top: 0;
+  padding-top: 0;
+}
+
+/* compactar inputs/labels dentro del editor de subtareas */
+.subtask-row .label{
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+
+.subtask-row .input{
+  padding: 8px 10px;
+}
+
+/* textarea más compacta */
+.subtask-row textarea.input{
+  padding: 8px 10px;
+}
+
+/* acciones más “discretas” */
+.subtask-row .actions{
+  display:flex;
+  gap:8px;
+  justify-content:flex-end;
+  flex-wrap:wrap;
+  margin-top: 6px;
+}
+
+/* si la tarea madre está hecha, o la subtarea completada: difuminado */
+.subtask-row.row-done{
+  opacity: .65;
+}
+
+.subtask-row.row-done input,
+.subtask-row.row-done textarea{
+  opacity: .85;
+}
+
+/* Subtareas (vista en project_detail): compactas, sin “tarjetas” */
+.subtask-view{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  margin-top:8px;
+}
+
+.subtask-item{
+  display:flex;
+  gap:10px;
+  align-items:flex-start;
+  padding:6px 0;
+  border-top:1px solid rgba(0,0,0,.06);
+  background: transparent;
+  border-radius: 0;
+}
+
+.subtask-item:first-child{
+  border-top:0;
+  padding-top:0;
+}
+
+.subtask-body{ flex:1; }
+
+.subtask-title{
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.subtask-meta{
+  font-size: 12px;
+  color: #777;
+  margin-top: 2px;
+}
+
+/* Si la subtarea está completada, o la madre fuerza difuminado vía row-done */
+.subtask-item.row-done{
+  opacity:.65;
+}
+
+.subtask-toggle{
+  border: 1px solid rgba(0,0,0,.12);
+  background: transparent;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.subtask-toggle:hover{ background: rgba(0,0,0,.03); }
+
+/* ============================
+   Subtareas en edición: compacto
+   (descripción + botones a la derecha)
+   ============================ */
+
+.subtask-edit-row{
+  display:flex;
+  gap:10px;
+  align-items:stretch;
+  margin-top:6px;
+}
+
+.subtask-update-form{
+  display:flex;
+  gap:10px;
+  align-items:stretch;
+  flex:1;
+}
+
+.subtask-topline{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  flex-wrap:wrap;
+  width:100%;
+}
+
+.subtask-topline .input{
+  flex:1;
+  min-width:200px;
+}
+
+.subtask-date{
+  flex:0 0 160px;
+  min-width:160px;
+}
+
+.subtask-desc{
+  flex:1;
+  min-height:38px;
+  resize:none;
+}
+
+/* botones al lado de la descripción */
+.subtask-btn{
+  padding: 8px 10px;
+  height: 38px;        /* igual que inputs */
+  align-self: stretch;
+}
+
+.subtask-delete-form{
+  display:flex;
+  align-items:stretch;
+}
+
+.subtask-meta-line{
+  font-size:12px;
+  margin-top:6px;
+}
+
+
+/* Subtareas en edición: forzar descripción + botones en la misma fila */
+
+.subtask-edit-block{
+  margin-top: 6px;
+}
+
+/* topline: título + fecha */
+.subtask-topline{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+
+.subtask-topline .input{
+  flex:1;
+  min-width:200px;
+}
+
+.subtask-date{
+  flex:0 0 160px;
+  min-width:160px;
+}
+
+/* El textarea sigue siendo normal, pero lo compactamos */
+.subtask-desc{
+  margin-top:6px;
+  min-height:38px;
+  resize:none;
+}
+
+/* ✅ fila donde van a la derecha los botones (grid: 1fr auto auto) */
+.subtask-desc-row{
+  display:grid;
+  grid-template-columns: 1fr auto auto;
+  gap:10px;
+  align-items:stretch;
+  margin-top:-38px; /* “sube” la fila para alinearla con el textarea */
+}
+
+/* Este slot ocupa la columna del textarea */
+.subtask-desc-slot{
+  height:38px;
+}
+
+/* botones igual altura que textarea */
+.subtask-btn{
+  height:38px;
+  padding: 8px 10px;
+}
+
+.subtask-delete-form{
+  margin:0;
+  display:flex;
+  align-items:stretch;
+}
+
+/* ===== Subtareas: edición compacta ===== */
+
+.st-edit { margin-top: 6px; }
+
+.st-top{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  align-items:center;
+}
+
+.st-top .input{
+  flex:1;
+  min-width:220px;
+}
+
+.st-date{
+  flex:0 0 160px;
+  min-width:160px;
+}
+
+.st-desc-row{
+  display:grid;
+  grid-template-columns: 1fr auto auto; /* descripción + botones */
+  gap:10px;
+  align-items:stretch;
+  margin-top:6px;
+}
+
+.st-desc{
+  min-height:38px;
+  resize:none;
+}
+
+.st-btn{
+  height:38px;          /* igual altura que inputs */
+  padding: 8px 10px;
+  align-self: stretch;
+}
+
+.st-meta{
+  font-size:12px;
+  margin-top:6px;
+}
+
+/* Árbol del menú lateral */
+.tree{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+
+.tree-node{
+  display:block;
+}
+
+.tree-toggle{
+  width:100%;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  border:0;
+  background:transparent;
+  padding:6px 8px;
+  border-radius:10px;
+  cursor:pointer;
+  text-align:left;
+}
+
+.tree-toggle:hover{
+  background: rgba(0,0,0,.05);
+}
+
+.tree-icon{
+  width:16px;
+  display:inline-block;
+  text-align:center;
+  opacity:.85;
+}
+
+.tree-label{
+  flex:1;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.tree-children{
+  padding-left:14px;
+  margin-top:2px;
+}
+
+.tree-leaf{
+  padding:4px 0 4px 10px;
+}
+
+.tree-link{
+  display:inline-block;
+  padding:4px 6px;
+  border-radius:8px;
+  text-decoration:none;
+}
+
+.tree-link:hover{
+  background: rgba(0,0,0,.05);
+}
+
+/* Layout base: 2 columnas fijas */
+.app-shell{
+  display: flex;
+  align-items: stretch;
+  min-height: 100vh;
+}
+
+/* Sidebar fijo de ancho */
+.sidebar{
+  flex: 0 0 320px;         /* ancho del menú */
+  width: 320px;
+  overflow-y: auto;
+  padding: 12px;
+  box-sizing: border-box;
+}
+
+/* Contenido principal ocupa el resto */
+.main{
+  flex: 1 1 auto;
+  min-width: 0;            /* evita que tablas largas rompan el layout */
+  padding: 18px 18px;
+  box-sizing: border-box;
+}
+
+/* Layout base: 2 columnas fijas */
+.app-shell{
+  display: flex;
+  align-items: stretch;
+  min-height: 100vh;
+}
+
+/* Sidebar fijo de ancho */
+.sidebar{
+  flex: 0 0 320px;         /* ancho del menú */
+  width: 320px;
+  overflow-y: auto;
+  padding: 12px;
+  box-sizing: border-box;
+}
+
+/* Contenido principal ocupa el resto */
+.main{
+  flex: 1 1 auto;
+  min-width: 0;            /* evita que tablas largas rompan el layout */
+  padding: 18px 18px;
+  box-sizing: border-box;
+}
+
+.tree-head{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.tree-toggle{
+  flex:1;
+  display:flex;
+  align-items:center;
+  gap:6px;
+  text-align:left;
+}
+
+.tree-eye{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:2px 6px;
+  border-radius:8px;
+  text-decoration:none;
+  line-height:1;
+}
+
+.tree-eye:hover{
+  background: rgba(0,0,0,.06);
+}
+
+.tree-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+}
+
+.tree-eye{
+  text-decoration:none;
+  padding:2px 6px;
+  border-radius:8px;
+  opacity:.85;
+}
+.tree-eye:hover{ opacity:1; }
+
+
+.table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.table tbody tr {
+  border-bottom: 1px solid var(--border);
+}
+
+.table tbody tr:last-child {
+  border-bottom: 0;
+}
+
+.table td form { margin: 0; }
+.table td { vertical-align: middle; }
+
+
+footer {
+    /* Mantenemos tu fuente */
+    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", "Helvetica Neue", sans-serif;
+    font-size: 0.85rem;
+    text-align: center;
+    
+    /* FONDO DE LADO A LADO */
+    background-color: #fff7f7; 
+    width: 100%;           /* Ocupa todo el ancho de la ventana */
+    padding: 40px 0;       /* Espacio arriba y abajo */
+    margin-top: 50px;      /* Separación del contenido anterior */
+    color: #555;
+}
+
+.footer-content {
+    /* CONTENIDO ESTRECHO Y CENTRADO */
+    max-width: 100%;      /* Aquí controlas qué tan estrecho es el texto */
+    margin: 10px auto;        /* Centra el bloque de texto dentro del rosa */
+    padding: 10px 20px;       /* Margen de seguridad para móviles */
+}
+
+footer ul {
+    list-style: none;
+    padding: 0;
+    margin: 15px 0 0 0;
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+footer a {
+    color: #d63384; 
+    text-decoration: none;
+}
+
+footer a:hover {
+    text-decoration: underline;
+}
+
+.tree-head-active{
+  background: rgba(235,120,95,0.25);
+  border-radius:10px;
+}
+
+.tree-head-active .tree-label{
+  font-weight:600;
+}
+
+/* hover suave tipo Notion */
+.tree-head:hover{
+  background: rgba(235,0,0,0.05);
+  border-radius:10px;
+}
+
+
+
+
+/* Reduce el espacio entre el icono/nombre de la carpeta */
+.tree-head {
+    padding: 2px 0; /* Reduce el relleno superior e inferior */
+}
+
+.tree-toggle {
+    padding: 0;
+    margin: 0;
+    line-height: 1.2; /* Reduce la altura de la línea de texto */
+}
+
+/* Reduce el espacio de los proyectos (hojas) dentro de las carpetas */
+.tree-leaf {
+    padding: 1px 0 1px 24px; /* Ajusta el relleno vertical a 1px */
+    margin: 0;
+}
+
+.tree-link {
+    line-height: 1.2;
+}
+
+.tree-link-active{
+  background: rgba(216,137,145,0.14);
+  border: 1px solid rgba(216,137,145,0.28);
+  border-radius: 8px;
+  font-weight: 700;
+  color: #5c4549;
+}
+
+.tree-link-active:hover{
+  background: rgba(216,137,145,0.18);
+}
+
+
+/* 2. Ajusta los botones y textos para que no ocupen más de lo debido */
+.tree-link {
+    line-height: 1.1 !important; /* Altura de texto muy apretada */
+    padding: 2px 0 !important;   /* Solo 2px arriba/abajo para separar ligeramente las letras */
+    font-size: 0.9rem;           /* Un pelín más pequeño ayuda a la vista compacta */
+}
+
+/* 3. Reduce el espacio de los proyectos (maletines) */
+.tree-leaf {
+    padding: 0 0 0 24px !important; /* 0 arriba y abajo */
+    margin: 0 !important;
+    display: flex;
+    align-items: center;
+    min-height: 20px;
+}
+
+/* 4. Ajusta los iconos (flechas y carpetas) */
+.tree-icon, .tree-icon-spacer {
+    font-size: 0.8rem;
+    width: 1.2em;
+    margin-right: 4px;
+}
+
+
+/* 1. Elimina el margen inferior de cada nodo para que no se separen en la raíz */
+.tree-node {
+    margin-bottom: 0 !important;
+    padding-bottom: 0 !important;
+}
+
+/* 2. Asegura que el contenedor de la cabecera sea plano */
+.tree-head {
+    margin: 0 !important;
+    padding: 2px 0 !important; /* Ajusta este valor (1px o 2px) para controlar la densidad global */
+    display: flex;
+    align-items: center;
+    min-height: unset !important; /* Evita que los botones fuercen una altura mínima */
+}
+
+/* 3. Si usas botones para el toggle, quita sus márgenes internos */
+.tree-toggle, .tree-toggle-static {
+    margin: 0 !important;
+    padding: 0 !important;
+    line-height: 1.2 !important;
+}
+
+/* 4. Opcional: Si quieres que las carpetas "hijo" estén más pegadas al padre */
+.tree-children {
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+}
+
+
+
+
+
+.layout {
+    display: flex;
+    align-items: stretch; /* Esto obliga a que sidebar y main tengan la misma altura */
+    min-height: calc(100vh - 60px); /* 100% de la pantalla menos la altura de tu topbar */
+}
+
+.sidebar {
+    width: 260px; /* O el ancho que tengas definido */
+    background-color: #f8f9fa; /* Asegúrate de que tenga un fondo para ver el efecto */
+    border-right: 1px solid #eee;
+    display: flex;
+    flex-direction: column; /* Para organizar los bloques internos verticalmente */
+}
+
+.main {
+    flex: 1; /* Ocupa el resto del ancho */
+    padding: 20px;
+    background-color: #fff;
+}
+
+.side-section {
+    flex-grow: 1; /* Esto hace que la sección de carpetas ocupe todo el espacio vertical disponible */
+    overflow-y: auto; /* Si tienes muchísimas carpetas, permitirá hacer scroll solo en esa zona */
+}
+
+
+/* Reduce el margen alrededor del botón "Añadir tarea" */
+.sidebar-block {
+    padding: 10px 15px !important; /* Estaba en 20px probablemente */
+    margin-bottom: 5px !important;
+}
+
+/* Reduce el tamaño del botón para que no sea tan alto */
+.btn-primary.w100 {
+    padding: 8px 12px !important;
+    font-size: 0.9rem;
+}
+
+/* Compactar el menú (Inbox, Hoy, Agenda...) */
+.nav-item {
+    padding: 6px 15px !important; /* Reduce el relleno vertical de cada enlace */
+    line-height: 1.2 !important;
+    margin: 0 !important;
+}
+
+/* El separador horizontal */
+hr {
+    margin: 10px 0 !important;
+    opacity: 0.3;
+}
+
+
+.btn-tree-action {
+    background: none;
+    border: none;
+    padding: 2px 4px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    opacity: 0.5;
+    transition: opacity 0.2s;
+    color: inherit;
+}
+
+.btn-tree-action:hover {
+    opacity: 1;
+    background: rgba(0,0,0,0.05);
+    border-radius: 3px;
+}
+
+.tree-link-active{
+  background: rgba(235,120,95,0.1);
+  border: 1px solid rgba(216,137,145,0.28);
+  border-radius: 8px;
+  font-weight: 400;
+  color: #5c4549;
+}
+
+.tree-link-active:hover{
+  background: rgba(216,137,145,0.18);
+}
+
+.side-title-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  margin-bottom:6px;
+}
+
+.tree-global-actions{
+  display:flex;
+  gap:6px;
+}
+
+.tree-global-btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:28px;
+  height:28px;
+  border:1px solid var(--border);
+  border-radius:8px;
+  background:#fff;
+  cursor:pointer;
+  font-size:14px;
+  line-height:1;
+}
+
+.tree-global-btn:hover{
+  background: var(--panel2);
+}
+
+/* ============================
+   AJUSTES FINALES DE LAYOUT
+   ============================ */
+
+/* Igualar visualmente la altura del menú lateral con la columna principal */
+.layout{
+  align-items: stretch !important;
+}
+
+.sidebar{
+  align-self: stretch !important;
+  height: auto !important;
+  min-height: calc(100vh - 86px) !important;
+  background: rgba(255,255,255,0.8) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius) !important;
+  box-shadow: var(--shadow) !important;
+}
+
+.main{
+  display: flex !important;
+  flex-direction: column;
+  padding: 0 !important;
+  background: transparent !important;
+}
+
+.container{
+  flex: 1 1 auto;
+}
+
+/* Compactar más la parte superior del menú lateral */
+.sidebar-block{
+  padding: 6px 10px !important;
+  margin-bottom: 4px !important;
+}
+
+.nav{
+  gap: 2px !important;
+}
+
+.nav-item{
+  padding: 5px 12px !important;
+  line-height: 1.15 !important;
+  border-radius: 10px;
+}
+
+hr{
+  margin: 8px 0 !important;
+}
+
+.side-section{
+  margin-top: 2px;
+}
+
+
+.radio.subradio{
+  width:14px !important;
+  height:14px !important;
+  min-width:14px !important;
+  min-height:14px !important;
+}
+
+.subtask-item{
+  border-bottom:none !important;
+}
+
+/* quitar líneas dentro del bloque de subtareas */
+[id^="subtasks-"] .subtask-item{
+  border-top: none !important;
+}
+
+/* radio pequeño para subtareas */
+.subtask-item .radio{
+  width:14px !important;
+  height:14px !important;
+  min-width:14px !important;
+  min-height:14px !important;
+  border-width:2px;
+}
+
+.subtask-item form{
+  margin-top:2px;
+}
+
+.nav-item{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+}
+
+.nav-count{
+  font-size:11px;
+  padding:2px 7px;
+  border-radius:999px;
+  background: var(--accent2);
+  border:1px solid var(--border);
+  color:#5c4549;
+}
+
+/* ============================
+   MODAL CENTRADO + ANIMADO
+   ============================ */
+
+.modal-shell[hidden]{
+  display: none !important;
+}
+
+.modal-shell{
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;   /* antes center */
+  justify-content: center;
+  padding-top: 10vh;         /* controla la altura */
+  padding-left: 20px;
+  padding-right: 20px;
+  z-index: 3000;
+}
+
+.modal-shell .modal-backdrop{
+  position: absolute;
+  inset: 0;
+  background: rgba(32, 24, 28, 0.36);
+  backdrop-filter: blur(2px);
+}
+
+.modal-panel-animated{
+  position: relative;
+  z-index: 1;
+  width: min(460px, calc(100vw - 32px));
+  margin: 0;
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  background: #fff;
+  box-shadow: 0 22px 60px rgba(0,0,0,.18);
+  animation: modal-pop-in .18s ease-out;
+}
+
+@keyframes modal-pop-in{
+  from{
+    transform: translateY(14px) scale(.98);
+    opacity: 0;
+  }
+  to{
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+
+
+/* tarjetas de cada día de la semana */
+.week-day-card{
+  margin-bottom: 10px;
+}
+
+/* eliminar espacio extra debajo de la tabla */
+.week-day-card .table{
+  margin-bottom: 0;
+}
+
+/* reducir padding inferior de la card */
+.week-day-card{
+  padding-bottom: 6px;
+}
+
+/* encabezado del día más compacto */
+.week-day-card .card-header{
+  padding-bottom: 6px;
+}
+
+/* ============================
+   TREE COMPACTO SUAVE
+   ============================ */
+
+.tree{
+  display:flex !important;
+  flex-direction:column !important;
+  gap:2px !important;
+  font-size:14px;
+  line-height:1.15 !important;
+}
+
+.tree-node{
+  margin:0 !important;
+  padding:0 !important;
+}
+
+.tree-head{
+  display:flex !important;
+  align-items:center !important;
+  justify-content:space-between !important;
+  gap:6px !important;
+  margin:0 !important;
+  padding:2px 0 !important;
+  min-height:22px !important;
+}
+
+.tree-head-main{
+  display:flex !important;
+  align-items:center !important;
+  gap:6px !important;
+  min-width:0 !important;
+  flex:1 !important;
+  margin:0 !important;
+  padding:0 !important;
+}
+
+.tree-toggle-icon{
+  padding:0 !important;
+  margin:0 !important;
+  width:16px !important;
+  height:16px !important;
+  min-width:16px !important;
+  min-height:16px !important;
+  line-height:1 !important;
+}
+
+.tree-icon,
+.tree-icon-spacer{
+  width:16px !important;
+  min-width:16px !important;
+  display:inline-flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  margin:0 !important;
+  padding:0 !important;
+  font-size:.82rem !important;
+  line-height:1 !important;
+}
+
+.tree-folder-link{
+  display:inline-flex !important;
+  align-items:center !important;
+  gap:6px !important;
+  flex:1 !important;
+  min-width:0 !important;
+  padding:1px 0 !important;
+  margin:0 !important;
+  line-height:1.15 !important;
+}
+
+.tree-label{
+  line-height:1.15 !important;
+  margin:0 !important;
+  padding:0 !important;
+}
+
+.tree-children{
+  margin-top:1px !important;
+  padding-top:0 !important;
+  margin-left:10px !important;
+  padding-left:10px !important;
+  border-left:1px dashed var(--border) !important;
+}
+
+.tree-leaf{
+  margin:0 !important;
+  padding:2px 0 2px 20px !important;
+  min-height:auto !important;
+}
+
+.tree-link{
+  display:flex !important;
+  align-items:center !important;
+  justify-content:space-between !important;
+  gap:8px !important;
+  padding:2px 0 !important;
+  margin:0 !important;
+  line-height:1.15 !important;
+  min-height:auto !important;
+  font-size:.92rem !important;
+}
+
+.tree-link > span:first-child{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.pill{
+  padding:2px 7px !important;
+  margin-left:4px !important;
+  font-size:11px !important;
+  line-height:1 !important;
+}
+
+.completed-meta{
+  font-size:0.75rem;
+  color:#9a9094;
+}
+
+.quick-input-wrap{
+  position: relative;
+}
+
+.tag-autocomplete{
+  position: absolute;
+  left: 0;
+  top: calc(100% + 4px);
+  z-index: 5000;
+  min-width: 220px;
+  max-width: 100%;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0,0,0,.12);
+  padding: 6px;
+}
+
+.tag-autocomplete-item{
+  display:block;
+  width:100%;
+  text-align:left;
+  background:transparent;
+  border:0;
+  padding:8px 10px;
+  border-radius:8px;
+  cursor:pointer;
+}
+
+.tag-autocomplete-item:hover,
+.tag-autocomplete-item.active{
+  background: var(--panel2);
+}
+
+.tag-autocomplete-empty{
+  padding:8px 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+

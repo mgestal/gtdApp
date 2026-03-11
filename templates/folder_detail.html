@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="page-title">
+    <h1>📂 Carpeta {{ folder.name }}</h1>
+    <p class="subtitle">Tareas asignadas a la carpeta y proyectos contenidos.</p>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <div class="card-header"><div class="card-title">Proyectos en esta carpeta 📜</div></div>
+      <div class="list">
+        {% for p in projects %}
+          <div class="list-row" style="padding: 10px;">
+            <a class="link" style="font-weight: 500;" href="{{ url_for('project_detail', project_id=p.id) }}">💼 {{ p.name }}</a>
+          </div>
+        {% else %}
+          <div class="empty">No hay proyectos activos.</div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:14px;">
+      <div class="card" style="padding:12px;">
+        <div class="card-header" style="margin-bottom:8px;">
+          <div class="card-title">Crear subcarpeta</div>
+        </div>
+
+        <form method="post" action="{{ url_for('folder_create') }}" class="form" style="gap:8px;">
+          <input type="hidden" name="parent_id" value="{{ folder.id }}">
+          <div style="display:flex; gap:10px; align-items:center;">
+            <input class="input" name="name" placeholder="Nombre de la subcarpeta" required>
+            <button class="btn btn-primary" type="submit">Crear</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="card" style="padding:12px;">
+        <div class="card-header" style="margin-bottom:8px;">
+          <div class="card-title">Añadir tarea rápida</div>
+        </div>
+
+        <form method="post" action="{{ url_for('task_quick_add') }}" class="form" style="gap:8px;">
+          <input type="hidden" name="folder_id" value="{{ folder.id }}">
+          <input type="hidden" name="next" value="{{ url_for('folder_detail', folder_id=folder.id) }}">
+          <div style="display:flex; gap:10px; align-items:center;">
+            <div class="quick-input-wrap" style="flex:1;">
+			   <input class="input" name="quick" placeholder="Ej: Tarea @tag #proy *hoy" required>
+			</div>
+            <button class="btn btn-primary" type="submit">Añadir</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:14px;">
+    <div class="card-header"><div class="card-title">Tareas de la carpeta</div></div>
+
+    {% if tasks and tasks|length > 0 %}
+      <table class="table">
+        <thead>
+          <tr>
+            <th style="width:40px;"></th>
+            <th>Tarea y Etiquetas</th>
+            <th style="width:100px;">Fecha</th>
+            <th style="width:100px; text-align:right;">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for t in tasks %}
+          <tr class="{% if t.completed_at %}row-done{% endif %}">
+            <td style="vertical-align:top; padding-top:6px;">
+              <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}" style="margin:0;">
+                <input type="hidden" name="next" value="{{ url_for('folder_detail', folder_id=folder.id) }}">
+                <button class="radio"></button>
+              </form>
+            </td>
+
+            <td>
+              <div style="font-weight:600; margin-bottom:4px;">
+                            		<div style="font-weight:600; display:flex; align-items:center; gap:6px;">
+							{{ t.title }} {% if t.notes %}
+							<a href="{{ url_for('task_edit', task_id=t.id, next=url_for('next_actions')) }}"
+							title="{{ t.notes }}"
+							style="text-decoration:none; font-size:0.9rem; opacity:.75;">
+							📝
+							</a>
+							             {% endif %}
+						</div>
+              </div>
+              
+              <div style="display:flex; flex-wrap:wrap; gap:4px;">
+                {% if t.recurrence_rule %}<span class="pill" style="font-size:10px;">⟲ periódica</span>{% endif %}
+                {% for tag in tags_map.get(t.id, []) %}
+                  <a class="tagchip taglink" style="margin:0; font-size:9px;" href="{{ url_for('tag_detail', tag_id=tag.id) }}">@{{ tag.name }}</a>
+                {% endfor %}
+              </div>
+
+              {% set sc = sub_counts.get(t.id) if sub_counts is defined else None %}
+              {% set st_total = sc.total if sc and sc.total is defined else (sc['total'] if sc and sc['total'] is defined else 0) %}
+              {% set st_done = sc.done if sc and sc.done is defined else (sc['done'] if sc and sc['done'] is defined else 0) %}
+
+              {% if st_total > 0 %}
+                <div class="muted" style="font-size:12px; margin-top:5px;">
+                  <button type="button" class="subtask-toggle" onclick="toggleSubtasks({{ t.id }});">
+                    <span id="subtasks-icon-{{ t.id }}">▸</span> Subtareas: {{ st_done }}/{{ st_total }}
+                  </button>
+                </div>
+
+                <div id="subtasks-{{ t.id }}" style="display:none; margin-top:8px; padding-left:12px;">
+                  {% for s in sub_map.get(t.id, []) %}
+                    <div class="subtask-item {% if t.completed_at or s.completed_at %}row-done{% endif %}" style="display:flex; align-items:center; gap:6px; padding:4px 0;">
+
+                      <form method="post" action="{{ url_for('subtask_toggle', subtask_id=s.id) }}">
+                        <button class="radio subradio"></button>
+                      </form>
+
+                      <span style="font-size:13px;">
+                        {{ s.title }}
+                      </span>
+
+                    </div>
+                  {% endfor %}
+                </div>
+
+              {% endif %}
+            </td>
+
+            <td style="white-space:nowrap; font-size:13px;">
+              {% if t.due_date %}
+                {% if t.due_date.strftime is defined %}
+                  {{ t.due_date.strftime('%d-%m-%Y') }}
+                {% else %}
+                  {% set ds = t.due_date|string %}
+                  {{ ds[8:10] }}-{{ ds[5:7] }}-{{ ds[0:4] if ds|length >= 10 else ds }}
+                {% endif %}
+              {% else %}
+                <span class="muted">—</span>
+              {% endif %}
+            </td>
+
+            <td style="text-align:right;">
+              <div style="display:inline-flex; gap:5px;">
+                <a class="btn btn-soft" style="padding:5px 8px;" href="{{ url_for('task_edit', task_id=t.id, next=url_for('folder_detail', folder_id=folder.id)) }}">✎</a>
+                <form method="post" action="{{ url_for('task_delete', task_id=t.id) }}" style="display:inline;">
+                  <input type="hidden" name="next" value="{{ url_for('folder_detail', folder_id=folder.id) }}">
+                  <button type="submit" class="btn btn-soft" style="padding:5px 8px;" onclick="return confirm('¿Borrar?');">🗑</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="empty">No hay tareas asignadas directamente a esta carpeta.</div>
+    {% endif %}
+  </div>
+
+  <script>
+    function toggleSubtasks(taskId){
+      const el = document.getElementById('subtasks-' + taskId);
+      const icon = document.getElementById('subtasks-icon-' + taskId);
+      if (!el) return;
+      const isHidden = (el.style.display === 'none' || !el.style.display);
+      el.style.display = isHidden ? 'block' : 'none';
+      if (icon) icon.textContent = isHidden ? '▾' : '▸';
+    }
+  </script>
+{% endblock %}

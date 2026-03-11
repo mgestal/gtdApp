@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="page-title">
+    <h1>🚨 Error {{ code }}</h1>
+    <p class="subtitle">{{ msg }}</p>
+  </div>
+  <div class="card">
+    <a class="btn btn-soft" href="{{ url_for('home') }}">Volver</a>
+  </div>
+{% endblock %}

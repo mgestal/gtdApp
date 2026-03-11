@@ -1,0 +1,27 @@
+<div class="tree-node">
+  <div class="tree-node-title">
+
+    {% if node.id %}
+      <a class="tree-folder" href="{{ url_for('folder_detail', folder_id=node.id) }}"> 📁 {{ node.name }}</a>
+    {% else %}
+      <span class="tree-folder">📁 {{ node.name }}  </span>
+    {% endif %}
+
+  </div>
+
+  {% if node.projects and node.projects|length > 0 %}
+    <div class="tree-projects">
+      {% for p in node.projects %}
+        <a class="tree-project" href="{{ url_for('project_detail', project_id=p.id) }}">📜 {{ p.name }}</a>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {% if node.children and node.children|length > 0 %}
+    <div class="tree-children">
+      {% for node in node.children %}
+        {% include "partials/folder_node.html" %}
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>

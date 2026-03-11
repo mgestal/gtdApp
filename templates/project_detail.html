@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+{% block content %} 
+  <div class="page-title">
+    <h1>💼 {{ project.name }}</h1>
+    {% if project.description %}<p class="subtitle">{{ project.description }}</p>{% endif %}
+    {% if project.archived %}<p class="subtitle"><span class="pill">Archivado</span></p>{% endif %}
+  </div>
+
+  <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px; align-items:center;">
+    <div class="dropdown" id="projActions">
+      <button type="button" class="btn btn-soft" onclick="toggleProjActions(event)">
+        Acciones ▾
+      </button>
+      <div class="dropdown-menu" id="projActionsMenu" style="display:none;">
+        <a class="dropdown-item" href="{{ url_for('project_edit', project_id=project.id) }}">Editar proyecto</a>
+        {% if not project.archived %}
+          <form method="post" action="{{ url_for('project_archive', project_id=project.id) }}">
+            <button class="dropdown-item" onclick="return confirm('¿Archivar este proyecto?');">Archivar proyecto</button>
+          </form>
+        {% else %}
+          <span class="dropdown-item disabled">Archivar proyecto</span>
+        {% endif %}
+        <form method="post" action="{{ url_for('project_delete', project_id=project.id) }}">
+          <button class="dropdown-item danger" onclick="return confirm('¿Borrar el proyecto {{ project.name|e }}?');">Borrar proyecto</button>
+        </form>
+        <div class="dropdown-sep"></div>
+        <a class="dropdown-item" href="{{ url_for('project_export', project_id=project.id, fmt='csv') }}">Exportar CSV</a>
+        <a class="dropdown-item" href="{{ url_for('project_export', project_id=project.id, fmt='xml') }}">Exportar XML</a>
+        <form id="importForm" method="post" action="{{ url_for('project_import', project_id=project.id) }}" enctype="multipart/form-data">
+          <input id="importFile" type="file" name="import_file" accept=".csv,.xml" style="display:none;">
+          <button type="button" class="dropdown-item" onclick="startProjectImport()">Importar…</button>
+        </form>
+        <div class="dropdown-sep"></div>
+        {% if not project.archived %}
+          <button type="button" class="dropdown-item danger" onclick="openPurgeModal()">Vaciar tareas…</button>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div id="purgeModal" class="modal" style="display:none;">
+    <div class="modal-backdrop" onclick="closePurgeModal()"></div>
+    <div class="modal-panel">
+      <div class="modal-title">Vaciar proyecto</div>
+      <div class="modal-text">Vas a borrar TODAS las tareas de <b>{{ project.name }}</b>.</div>
+      <form method="post" action="{{ url_for('project_purge_tasks', project_id=project.id) }}" style="margin-top:14px;">
+        <div style="display:flex; justify-content:flex-end; gap:10px;">
+          <button type="button" class="btn btn-soft" onclick="closePurgeModal()">Cancelar</button>
+          <button class="btn btn-danger">Sí, vaciar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><div class="card-title">Activas</div></div>
+    {% if active_tasks %}
+      <table class="table">
+        <thead>
+          <tr>
+            <th style="width:40px;"></th>
+            <th>Tarea y Etiquetas</th>
+            <th style="width:100px;">Fecha</th>
+            <th style="width:100px; text-align:right;">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for t in active_tasks %}
+          {% set sc = sub_counts.get(t.id, {'total':0, 'done':0}) %}
+          <tr>
+			<td style="vertical-align:top; padding-top:6px;">
+			  <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}">
+				<button class="radio"></button>
+			  </form>
+			</td>
+            <td>
+              <div style="font-weight:600; margin-bottom:4px;">
+                            		<div style="font-weight:600; display:flex; align-items:center; gap:6px;">
+							{{ t.title }} {% if t.notes %}
+							<a href="{{ url_for('task_edit', task_id=t.id, next=request.full_path) }}"
+							title="{{ t.notes }}"
+							style="text-decoration:none; font-size:0.9rem; opacity:.75;">
+							📝
+							</a>
+							             {% endif %}
+						</div>
+              </div>
+              
+              <div style="display:flex; flex-wrap:wrap; gap:4px;">
+			    {% if t.recurrence_rule %}<span class="pill" style="font-size:10px;">⟲ periódica</span>{% endif %}
+                {% for tag in tags_map.get(t.id, []) %}
+                  <a class="tagchip taglink" style="margin:0;" href="{{ url_for('tag_detail', tag_id=tag.id) }}">@{{ tag.name }}</a>
+                {% endfor %}
+              </div>
+
+              {% if sc.total > 0 %}
+                <div class="muted" style="font-size:12px; margin-top:5px;">
+                  <button type="button" class="subtask-toggle" onclick="toggleSubtasks({{ t.id }});">
+                    <span id="subtasks-icon-{{ t.id }}">▸</span> Subtareas: {{ sc.done }}/{{ sc.total }}
+                  </button>
+                </div>
+                <div id="subtasks-{{ t.id }}" style="display:none; margin-top:8px; padding-left:12px;">
+					{% for s in sub_map.get(t.id, []) %}
+					  <div class="subtask-item {% if s.completed_at %}row-done{% endif %}" style="display:flex; align-items:center; gap:6px; padding:4px 0;">
+
+						<form method="post" action="{{ url_for('subtask_toggle', subtask_id=s.id) }}">
+						  <button class="radio subradio"></button>
+						</form>
+
+						<span style="font-size:13px;">
+						  {{ s.title }}
+						</span>
+
+					  </div>
+					{% endfor %}
+                </div>
+              {% endif %}
+            </td>
+            <td style="white-space:nowrap; font-size:13px;">
+              {% if t.due_date %}{{ t.due_date.strftime('%d-%m-%Y') }}{% else %}<span class="muted">—</span>{% endif %}
+            </td>
+            <td style="text-align:right;">
+              <div style="display:inline-flex; gap:5px;">
+                <a class="btn btn-soft" style="padding:5px 8px;" href="{{ url_for('task_edit', task_id=t.id, next=request.full_path) }}">✎</a>
+                <form method="post" action="{{ url_for('task_delete', task_id=t.id) }}" style="display:inline;">
+                  <button class="btn btn-soft" style="padding:5px 8px;" onclick="return confirm('¿Borrar?');">🗑</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="empty">No hay tareas activas.</div>
+    {% endif %}
+  </div>
+
+  <div class="card" style="margin-top:14px;">
+    <div class="card-header"><div class="card-title">Completadas</div></div>
+    {% if done_tasks %}
+      <table class="table">
+        <tbody>
+        {% for t in done_tasks %}
+          <tr class="row-done">
+			<td style="vertical-align:top; padding-top:6px;">
+			  <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}">
+				<button class="radio"></button>
+			  </form>
+			</td>
+            <td>
+              <div style="text-decoration: line-through; opacity:0.7;">{{ t.title }}</div>
+              <div style="display:flex; gap:4px; margin-top:2px;">
+                {% for tag in tags_map.get(t.id, []) %}
+                  <span class="tagchip" style="font-size:9px; opacity:0.6;">@{{ tag.name }}</span>
+                {% endfor %}
+              </div>
+            </td>
+            <td style="width:100px; font-size:12px; text-align:right;" class="muted">
+              {{ t.completed_at.strftime('%d-%m-%Y') if t.completed_at else '' }} {{ t.completed_at.strftime('%H:%M') }}
+            </td>
+            <td style="width:100px; text-align:right;">
+                <form method="post" action="{{ url_for('task_delete', task_id=t.id) }}" style="display:inline;">
+                    <button class="btn btn-soft" style="padding:5px 8px;" onclick="return confirm('¿Borrar?');">🗑</button>
+                </form>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="empty">No hay tareas completadas.</div>
+    {% endif %}
+  </div>
+
+{% if not project.archived %}
+  <div class="card" style="margin-top:14px;">
+    <form method="post" action="{{ url_for('task_create') }}" class="form">
+      <input type="hidden" name="project_id" value="{{ project.id }}">
+<div style="display:flex; gap:10px; align-items:flex-start;">
+  <div class="quick-input-wrap" style="flex:1;">
+    <input
+      class="input"
+      name="quick"
+      placeholder="Nueva tarea @etiqueta *18-03 cada semana..."
+      autocomplete="off"
+      required
+    >
+  </div>
+  <button class="btn btn-primary">Añadir</button>
+</div>
+      <div class="hint" style="margin-top:8px;">
+        Sintaxis: nombre + [@etiquetas] + [ [*]dd-mm-[aaaa] | *hoy | *mañana | *+nDias ] [#proyecto]  [cada {día|semana|mes|año}]
+      </div>
+    </form>
+  </div>
+{% endif %}
+
+
+  <script>
+    function toggleProjActions(e){
+      e.stopPropagation();
+      const menu = document.getElementById('projActionsMenu');
+      menu.style.display = (menu.style.display === 'none') ? 'block' : 'none';
+    }
+    document.addEventListener('click', () => { 
+        if(document.getElementById('projActionsMenu')) document.getElementById('projActionsMenu').style.display='none'; 
+    });
+    function openPurgeModal(){ document.getElementById('purgeModal').style.display='block'; }
+    function closePurgeModal(){ document.getElementById('purgeModal').style.display='none'; }
+    function toggleSubtasks(taskId){
+      const el = document.getElementById('subtasks-'+taskId);
+      const icon = document.getElementById('subtasks-icon-'+taskId);
+      if(el.style.display === 'none'){ el.style.display='block'; icon.textContent='▾'; }
+      else { el.style.display='none'; icon.textContent='▸'; }
+    }
+    function startProjectImport(){ document.getElementById('importFile').click(); }
+  </script>
+{% endblock %}

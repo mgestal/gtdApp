@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block content %}
+
+  {% set view_names = {'day': 'Día', 'week': 'Semana', 'month': 'Mes'} %}
+
+  <div class="page-title">
+    <h1>Calendario</h1>
+    <p class="subtitle">Vista {{ view_names.get(view, 'Mes') }} • {{ selected_date.strftime('%d-%m-%Y') }}</p>
+  </div>
+
+  <div style="display:flex; gap:8px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:12px;">
+    <div style="display:flex; gap:6px;">
+      <a class="btn btn-soft" href="{{ url_for('calendar', view=view, date=prev_date.isoformat(), show_completed=1 if show_completed else None) }}">◀️ Anterior</a>
+      <a class="btn btn-soft" href="{{ url_for('calendar', view=view, date=next_date.isoformat(), show_completed=1 if show_completed else None) }}">Siguiente ▶️</a>
+    </div>
+
+    <div style="text-align:center; font-size:1.25rem; font-weight:700; flex:1;">
+      {% set months_es = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'] %}
+      {{ months_es[selected_date.month-1] }} {{ selected_date.year }}
+    </div>
+
+    <div style="display:inline-flex; align-items:center; gap:6px;">
+      <form method="get" style="display:inline-flex; align-items:center; gap:6px; margin:0;">
+        <input type="hidden" name="view" value="{{ view }}" />
+        <input type="hidden" name="date" value="{{ selected_date.isoformat() }}" />
+        <label style="display:inline-flex; align-items:center; gap:6px;">
+          <input type="checkbox" name="show_completed" value="1" {% if show_completed %}checked{% endif %} onchange="this.form.submit();" />
+          Ver realizadas
+        </label>
+      </form>
+    </div>
+  </div>
+
+  <div style="display:flex; gap:6px; margin-bottom:12px;">
+    <a class="btn {{ 'btn-primary' if view=='day' else 'btn-soft' }}" href="{{ url_for('calendar', view='day', date=selected_date.isoformat(), show_completed=1 if show_completed else None) }}">Día</a>
+    <a class="btn {{ 'btn-primary' if view=='week' else 'btn-soft' }}" href="{{ url_for('calendar', view='week', date=selected_date.isoformat(), show_completed=1 if show_completed else None) }}">Semana</a>
+    <a class="btn {{ 'btn-primary' if view=='month' else 'btn-soft' }}" href="{{ url_for('calendar', view='month', date=selected_date.isoformat(), show_completed=1 if show_completed else None) }}">Mes</a>
+  </div>
+
+  <div class="card" style="padding:12px;">
+
+  <div class="card" style="padding:12px;">
+
+    {% set weekday_short_es = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'] %}
+  {% set weekday_full_es = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'] %}
+
+  {% if view == 'month' %}
+      <table class="table" style="table-layout:fixed; width:100%; text-align:center;">
+        <thead>
+          <tr>
+            {% for d in weekday_short_es %}
+              <th>{{ d }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for week in month_weeks %}
+            <tr>
+            {% for d in week %}
+              {% if d %}
+                {% set key = d.isoformat() %}
+                {% set pending = pending_counts.get(key, 0) %}
+                {% set done = completed_counts.get(key, 0) %}
+                {% set is_today = (d == today_date) %}
+                <td style="vertical-align:top; padding:6px; border:1px solid #ddd; height:110px; max-height:110px; background: {{ '#e8f7ff' if is_today else 'transparent' }};">
+                  <a href="{{ url_for('calendar', view='day', date=key, show_completed=1 if show_completed else None) }}" style="display:block; color:inherit; text-decoration:none;">
+                    <div style="font-weight:700; margin-bottom:4px;">{{ d.day }}</div>
+                    {% if pending > 0 %}
+                      <div style="font-size:0.85rem; color:#b20000;">● {{ pending }} pendiente{{ 's' if pending != 1 }}</div>
+                    {% endif %}
+                    {% if show_completed and done > 0 %}
+                      <div style="font-size:0.80rem; color:#288a28;">● {{ done }} realizada{{ 's' if done != 1 }}</div>
+                    {% endif %}
+                  </a>
+                </td>
+              {% else %}
+                <td style="background:#f8f8f8;"></td>
+              {% endif %}
+            {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+    {% elif view == 'week' %}
+      <div style="display:grid; grid-template-columns: repeat(7, 1fr); gap:6px;">
+        {% for d in week_days %}
+          {% set key = d.isoformat() %}
+          {% set pending = pending_counts.get(key, 0) %}
+          {% set done = completed_counts.get(key, 0) %}
+          {% set is_today = (d == today_date) %}
+          <div style="border:1px solid #ddd; border-radius:8px; padding:8px; height:110px; max-height:110px; background: {{ '#e8f7ff' if is_today else 'transparent' }};">
+            <div style="font-weight:700;">{{ weekday_short_es[d.weekday()] }} {{ '%02d'|format(d.day) }}/{{ '%02d'|format(d.month) }}</div>
+            <div style="margin-top:6px;"><a href="{{ url_for('calendar', view='day', date=key, show_completed=1 if show_completed else None) }}" class="btn btn-soft" style="font-size:0.8rem; width:100%;">Ver</a></div>
+            {% if pending > 0 %}
+              <div style="margin-top:6px; color:#b20000;">{{ pending }} pendiente{{ 's' if pending != 1 }}</div>
+            {% endif %}
+            {% if show_completed and done > 0 %}
+              <div style="margin-top:6px; color:#288a28; font-size:0.9rem;">{{ done }} realizada{{ 's' if done != 1 }}</div>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+
+    {% else %}
+      <div style="margin-bottom:12px;"><strong>{{ weekday_full_es[selected_date.weekday()] }} {{ '%02d'|format(selected_date.day) }}-{{ '%02d'|format(selected_date.month) }}-{{ selected_date.year }}</strong></div>
+
+      {% set has_pending = selected_day_pending | length %}
+      {% set has_done = selected_day_completed | length %}
+      {% set show_done_rows = show_completed and has_done %}
+
+      {% if has_pending or show_done_rows %}
+        <table class="table">
+          <thead>
+            <tr>
+              <th style="width:40px;"></th>
+              <th>Título</th>
+              <th style="width:130px;">Ubicación</th>
+              <th style="width:110px;">Fecha</th>
+              <th style="width:90px;"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for t in selected_day_tasks %}
+              {% set completed = t.completed_at is not none %}
+              <tr style="{ 'color:#999; font-style:italic;' if completed else 'color:inherit;' }">
+                <td>
+                  {% if not completed %}
+                    <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}" style="margin:0;">
+                      <input type="hidden" name="next" value="{{ request.full_path }}" />
+                      <button class="radio" aria-label="toggle" title="Marcar / desmarcar"></button>
+                    </form>
+                  {% else %}
+                    <span style="font-size:0.8rem; color:#aaa;">✔</span>
+                  {% endif %}
+                </td>
+                <td>
+                  <div style="font-weight:600; display:flex; align-items:center; gap:6px;">
+                    {{ t.title }}
+
+                    {% if t.notes %}
+                      <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('calendar', view='day', date=selected_date.isoformat(), show_completed=1 if show_completed else None)) }}"
+                         title="{{ t.notes }}"
+                         style="text-decoration:none; font-size:0.9rem; opacity:.75;">
+                         📝
+                      </a>
+                    {% endif %}
+                  </div>
+
+                  <div class="task-tags" style="font-size:0.8rem; opacity:0.8;">
+                    {% if t.recurrence_rule %}
+                      <span class="pill" style="font-size:0.75rem;">⟲ periódica</span>
+                    {% endif %}
+                    {% for tag in tags_map.get(t.id, []) %}
+                      <a class="taglink" href="{{ url_for('tag_detail', tag_id=tag.id) }}" style="margin-right:5px;">@{{ tag.name }}</a>
+                    {% endfor %}
+                  </div>
+                </td>
+                <td>
+                  {% if t.folder_name %}📂 {{ t.folder_name }}{% endif %}
+                  {% if t.folder_name and t.project_name %} · {% endif %}
+                  {% if t.project_name %}💼 {{ t.project_name }}{% endif %}
+                </td>
+                <td>
+                  {% if t.completed_at %}
+                    {{ t.completed_at.strftime('%H:%M') }}
+                  {% elif t.due_date %}
+                    {{ t.due_date.strftime('%d-%m-%Y') }}
+                  {% else %}
+                    &nbsp;
+                  {% endif %}
+                </td>
+                <td><a class="btn btn-soft" href="{{ url_for('task_edit', task_id=t.id) }}">✎</a></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <div class="empty">No hay tareas pendientes para este día.</div>
+      {% endif %}
+
+      {% if has_done and show_completed %}
+        <div style="margin-top:8px; color:#288a28; font-size:0.85rem;">{{ has_done }} tarea{{ 's' if has_done != 1 }} realizadas en total</div>
+      {% endif %}
+
+    {% endif %}
+
+  </div>
+
+{% endblock %}

@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="page-title">
+    <h1>Filtros ✂️</h1>
+    <p class="subtitle">Vistas guardadas de tareas usando expresiones.</p>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Crear filtro</div>
+      </div>
+
+      <form method="post" class="form">
+        <label class="label">Nombre</label>
+        <input class="input" name="name" required>
+
+        <label class="label">Expresión</label>
+        <input class="input" name="expression" placeholder='Ej: @muchoTiempo & inbox' required>
+
+        <div class="hint">
+          Tokens: <code>inbox</code>,
+          <code>@Etiqueta</code>, <code>fecha &lt; hoy</code>, <code>fecha = NULL</code>,
+          <code>p:"Proyecto"</code>, <code>f:"Carpeta"</code>, <code>pf:"CoP"</code>.
+          Operadores: <code>!</code> <code>&amp;</code> <code>|</code> <code>( )</code>.
+        </div>
+
+        <button class="btn btn-primary" type="submit">Guardar</button>
+      </form>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:12px;">
+      <div class="card" style="margin-bottom:0;">
+        <div class="card-header">
+          <div class="card-title">Buscar filtros guardados</div>
+        </div>
+
+        <form method="get" action="{{ url_for('filters_view') }}" class="form">
+          <input
+            class="input"
+            type="text"
+            name="q"
+            value="{{ qtxt or '' }}"
+            placeholder="Buscar filtro..."
+          >
+
+          <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <button class="btn btn-primary" type="submit">Filtrar</button>
+            {% if qtxt %}
+              <a class="btn btn-soft" href="{{ url_for('filters_view') }}">Limpiar</a>
+            {% endif %}
+          </div>
+        </form>
+      </div>
+
+      <div class="card" style="margin-bottom:0;">
+        <div class="card-header">
+          <div class="card-title">Expresión de filtro</div>
+        </div>
+
+        <form method="get" action="{{ url_for('filter_run_expression') }}" class="form">
+          <input
+            class="input"
+            name="expr"
+            placeholder='Ej: @NextAction & fecha < hoy'
+            required
+          >
+
+          <div class="hint">
+            Keywords: done, inbox, @tag p:proy f:folder pf fa:folderAnywhere. (! | & null)
+          </div>
+
+          <button class="btn btn-primary" type="submit">Aplicar</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  
+  <br/>
+
+  <div class="pager" style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:10px;">
+    <div class="muted">
+      Mostrando {{ (page-1)*per_page + 1 if total>0 else 0 }}–{{ [page*per_page, total]|min }} de {{ total }}
+      · página {{ page }} de {{ pages }}
+    </div>
+
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      {% if page > 1 %}
+        <a class="btn btn-soft" href="{{ url_for('filters_view', q=qtxt, page=1) }}">« Primera</a>
+        <a class="btn btn-soft" href="{{ url_for('filters_view', q=qtxt, page=page-1) }}">‹ Anterior</a>
+      {% else %}
+        <span class="btn btn-soft disabled">« Primera</span>
+        <span class="btn btn-soft disabled">‹ Anterior</span>
+      {% endif %}
+
+      {% if page < pages %}
+        <a class="btn btn-soft" href="{{ url_for('filters_view', q=qtxt, page=page+1) }}">Siguiente ›</a>
+        <a class="btn btn-soft" href="{{ url_for('filters_view', q=qtxt, page=pages) }}">Última »</a>
+      {% else %}
+        <span class="btn btn-soft disabled">Siguiente ›</span>
+        <span class="btn btn-soft disabled">Última »</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">✂️ Filtros guardados</div>
+    </div>
+
+    <div class="list">
+      {% for f in rows %}
+        <div class="list-row" style="align-items:flex-start;">
+          <div>
+            <a class="link" href="{{ url_for('filter_run', filter_id=f.id) }}">{{ f.name }}</a>
+            <div class="muted" style="font-size:10px; margin-top:4px;">{{ f.expression }}</div>
+          </div>
+
+          <div class="actions">
+            <a class="btn btn-soft" href="{{ url_for('filter_edit', filter_id=f.id) }}">✎</a>
+
+            <form method="post" action="{{ url_for('filter_delete', filter_id=f.id) }}">
+              <button class="btn btn-soft" type="submit" onclick="return confirm('¿Borrar este filtro?');">🗑</button>
+            </form>
+          </div>
+        </div>
+      {% else %}
+        <div class="empty">
+          {% if qtxt %}
+            No hay filtros que coincidan con la búsqueda.
+          {% else %}
+            No hay filtros guardados.
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  {% if total > 0 %}
+    <div class="pager" style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-top:20px;">
+      <div class="muted">
+        Página {{ page }} de {{ pages }}
+      </div>
+
+      <div style="display:flex; gap:8px;">
+        {% if page > 1 %}
+          <a class="btn btn-soft" href="{{ url_for('filters_view', q=qtxt, page=page-1) }}">‹ Anterior</a>
+        {% endif %}
+        {% if page < pages %}
+          <a class="btn btn-soft" href="{{ url_for('filters_view', q=qtxt, page=page+1) }}">Siguiente ›</a>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}

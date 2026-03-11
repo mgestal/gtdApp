@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="page-title">
+    <h1>✂️ Editar filtro</h1> 
+    <p class="subtitle">Modifica el nombre y la expresión.</p>
+  </div>
+
+  <div class="card">
+    <form method="post" class="form">
+      <label class="label">Nombre</label>
+      <input class="input" name="name" value="{{ flt.name }}" required>
+
+      <label class="label">Expresión</label>
+      <input class="input" name="expression" value="{{ flt.expression }}" required>
+
+      <div class="hint">
+        Ejemplos: <code>@muchoTiempo &amp; inbox</code>,
+        <code>(@NextAction | @WaitingFor) &amp; !p:"SomeTime"</code>,
+        <code>fecha &lt;= 7</code>,
+        <code>fecha = NULL</code>.
+      </div>
+
+      <div class="row">
+        <button class="btn btn-primary">Guardar</button>
+        <a class="btn btn-soft" href="{{ url_for('filters_view') }}">Cancelar</a>
+      </div>
+    </form>
+  </div>
+{% endblock %}

@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="page-title">
+    <h1>🏷️ Editar etiqueta</h1>
+    <p class="subtitle">@{{ tag.name }}</p>
+  </div>
+
+  <div class="card">
+    <form method="post" class="form">
+      <input type="hidden" name="next" value="{{ next_url }}">
+
+      <label class="label">Nombre</label>
+      <input class="input" name="name" value="{{ tag.name }}" required>
+
+      <div class="row">
+        <button class="btn btn-primary" type="submit">Guardar</button>
+        <a class="btn btn-soft" href="{{ next_url }}">Cancelar</a>
+      </div>
+    </form>
+  </div>
+{% endblock %}

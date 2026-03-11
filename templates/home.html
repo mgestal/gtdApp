@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="page-title">
+    <h1>Bandeja de entrada 📥 </h1>
+    <p class="subtitle">Tareas y proyectos sin carpeta.</p>
+  </div>
+
+  <!-- TAREAS EN BANDEJA -->
+  <div class="card" style="margin-top:0;">
+
+    <div class="card-header">
+      <div class="card-title">Tareas sin carpeta</div>
+    </div>
+
+    {% if inbox and inbox|length > 0 %}
+      <table class="table">
+        <thead>
+          <tr>
+            <th style="width:42px;"></th>
+            <th>Tarea</th>
+            <th>Etiquetas</th>
+            <th>Fecha</th>
+            <th style="width:170px;"></th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for t in inbox %}
+          <tr class="{% if t.completed_at %}row-done{% endif %}">
+            <td>
+              <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}">
+                <button class="radio" title="Marcar / desmarcar" aria-label="toggle"></button>
+              </form>
+            </td>
+            <td>
+             				<div style="font-weight:600; display:flex; align-items:center; gap:6px;">
+				  {{ t.title }}
+
+				  {% if t.notes %}
+					<a href="{{ url_for('task_edit', task_id=t.id, next=url_for('next_actions')) }}"
+					   title="{{ t.notes }}"
+					   style="text-decoration:none; font-size:0.9rem; opacity:.75;">
+					   📝
+					</a>
+				  {% endif %}
+				</div>
+
+
+            </td>
+            <td>
+		              {% if t.recurrence_rule %}
+                <span class="pill">⟲ periodica</span>
+              {% endif %}
+              {% for tag in tags_map.get(t.id, []) %}
+                <a class="tagchip taglink" href="{{ url_for('tag_detail', tag_id=tag.id) }}">@{{ tag.name }}</a>
+              {% endfor %}
+            </td>
+            <td>
+              {% if t.due_date %}
+                {{ t.due_date.strftime('%d-%m-%Y') }}
+              {% else %}
+                <span class="muted">—</span>
+              {% endif %}
+            </td>
+            <td class="actions">
+              <a class="btn btn-soft" href="{{ url_for('task_edit', task_id=t.id) }}">✎</a>
+              <form method="post" action="{{ url_for('task_delete', task_id=t.id) }}">
+                <button class="btn btn-soft" onclick="return confirm('¿Borrar esta tarea?');">🗑</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="empty">No hay tareas en la bandeja de entrada.</div>
+    {% endif %}
+  </div>
+
+  <!-- PROYECTOS SIN CARPETA -->
+  <div class="card" style="margin-top:14px;">
+    <div class="card-header">
+      <div class="card-title">Proyectos sin carpeta</div>
+    </div>
+
+    {% if orphan_projects and orphan_projects|length > 0 %}
+      <div class="list">
+        {% for p in orphan_projects %}
+          <div class="list-row">
+            <div>
+              <a class="link" href="{{ url_for('project_detail', project_id=p.id) }}">
+                💼 {{ p.name }}
+              </a>
+              {% if p.archived %}
+                <span class="pill">Archivado</span>
+              {% endif %}
+            </div>
+
+            <div class="actions">
+              <a class="btn btn-soft" href="{{ url_for('project_edit', project_id=p.id) }}">✎</a>
+
+              <form method="post" action="{{ url_for('project_delete', project_id=p.id) }}">
+                <button class="btn btn-soft" onclick="return confirm('¿Borrar este proyecto?');">🗑</button>
+              </form>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty">No hay proyectos sin carpeta.</div>
+    {% endif %}
+  </div>
+  
+  <!-- CREAR TAREA -->
+
+<div class="card" style="margin-top:14px;">
+  <div class="card-header">
+    <div class="card-title">Añadir tarea rápida</div>
+  </div>
+
+  <form method="post" action="{{ url_for('task_create') }}" class="form">
+    <div class="hint">
+      Sintaxis: nombre + [@etiquetas] + [ [*]dd-mm-[aaaa] | *hoy | *mañana | *+nDias ] [#proyecto] [cada {día|semana|mes|año}]
+    </div>
+
+    <div class="quick-input-wrap">
+      <input
+        class="input"
+        name="quick"
+        placeholder=""
+        autocomplete="off"
+        required
+      >
+    </div>
+
+    <button class="btn btn-primary">Añadir a inbox</button>
+  </form>
+</div>
+
+{% endblock %}

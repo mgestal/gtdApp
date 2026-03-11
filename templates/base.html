@@ -1,0 +1,815 @@
+{% macro render_folder_node(f, children_map, projects_map, open_folder_ids=None, current_folder_id=None, current_project_id=None) %}
+
+  {% set node_id = "node-" ~ f.id %}
+  {% set icon_id = "icon-" ~ f.id %}
+  {% set storage_key = "gtd_tree_" ~ f.id %}
+  
+  {% set sub_folders = children_map.get(f.id, []) %}
+  {% set sub_projects = projects_map.get(f.id, []) %}
+  {% set has_children = (sub_folders|length > 0 or sub_projects|length > 0) %}
+
+  {% set default_open = (open_folder_ids and (f.id in open_folder_ids)) %}
+
+  <div class="tree-node {% if current_folder_id is defined and f.id == current_folder_id %}tree-node-active{% endif %}"
+       data-tree-folder="{{ f.id }}" data-default-open="{{ '1' if default_open else '0' }}">
+    
+    <div class="tree-head {% if current_folder_id and f.id == current_folder_id %}tree-head-active{% endif %}">
+      
+      <div class="tree-head-main">
+        {% if has_children %}
+          <button type="button"
+                  class="tree-toggle-icon"
+                  onclick="toggleTreeNode('{{ node_id }}','{{ icon_id }}','{{ storage_key }}')"
+                  aria-label="Expandir o contraer carpeta">
+            <span class="tree-icon" id="{{ icon_id }}">▾</span>
+          </button>
+        {% else %}
+          <span class="tree-icon-spacer"> </span>
+        {% endif %}
+
+        <a class="tree-folder-link {% if current_folder_id and f.id == current_folder_id %}tree-folder-link-active{% endif %}"
+           href="{{ url_for('folder_detail', folder_id=f.id) }}">
+          <span class="tree-label">📂 {{ f.name }}</span>
+        </a>
+      </div>
+
+      {% if folder_task_counts and folder_task_counts.get(f.id) %}
+        <span class="pill">{{ folder_task_counts.get(f.id) }}</span>
+      {% endif %}
+    </div>
+
+    <div class="tree-children" id="{{ node_id }}">
+      {% if has_children %}
+        {% for ch in sub_folders %}
+          {{ render_folder_node(ch, children_map, projects_map, open_folder_ids, current_folder_id, current_project_id) }}
+        {% endfor %}
+        {% for p in sub_projects %}
+          <div class="tree-leaf">
+            <a class="tree-link {% if current_project_id and p.id == current_project_id %}tree-link-active{% endif %}"
+               href="{{ url_for('project_detail', project_id=p.id) }}">
+              <span>💼 {{ p.name }}</span>
+              {% if project_task_counts and project_task_counts.get(p.id) %}
+                <span class="pill">{{ project_task_counts.get(p.id) }}</span>
+              {% endif %}
+            </a>
+          </div>
+        {% endfor %}
+      {% endif %}
+    </div>
+  </div>
+{% endmacro %}
+
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>{{ APP_TITLE }}{% if title %} - {{ title }}{% endif %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+  <style>
+
+    .tree-toggle-icon{
+      background:none;
+      border:none;
+      padding:0;
+      margin:0;
+      font:inherit;
+      color:inherit;
+      cursor:pointer;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      width:1.2em;
+      flex:0 0 1.2em;
+    }
+
+    .tree-icon{
+      width:1.2em;
+      display:inline-block;
+      text-align:center;
+    }
+
+    .tree-icon-spacer{
+      width:1.2em;
+      display:inline-block;
+      flex:0 0 1.2em;
+    }
+
+    .tree-folder-link{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      min-width:0;
+      flex:1;
+      color:inherit;
+      text-decoration:none;
+    }
+
+    .tree-folder-link:hover{
+      text-decoration:none;
+    }
+
+    .tree-folder-link-active{
+      font-weight:600;
+    }
+
+    .tree-label{
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+    }
+
+    /* Menos separación vertical en el nav lateral */
+    .nav{
+      gap:2px;
+    }
+
+    .nav-item{
+      padding:5px 12px;
+      border-radius:10px;
+      line-height:1.15;
+    }
+
+    /* Cabecera con acciones globales del árbol */
+    .side-title-row{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:8px;
+      margin-bottom:6px;
+    }
+
+    .tree-global-actions{
+      display:flex;
+      gap:6px;
+    }
+
+    .tree-global-btn{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      width:28px;
+      height:28px;
+      border:1px solid var(--border);
+      border-radius:8px;
+      background:#fff;
+      cursor:pointer;
+      font-size:14px;
+      line-height:1;
+    }
+
+    .tree-global-btn:hover{
+      background: var(--panel2);
+    }
+
+    /* Igualar la altura visual de sidebar y contenido */
+    .layout{
+      align-items: stretch;
+    }
+
+    .sidebar{
+      align-self: stretch;
+      display:flex;
+      flex-direction:column;
+      height:auto;
+      min-height: calc(100vh - 86px);
+    }
+
+    .main{
+      display:flex;
+      flex-direction:column;
+    }
+
+    .container{
+      flex:1;
+    }
+
+    /* Proyecto con contador alineado */
+    .tree-link{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:8px;
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <a href="{{ url_for('home') }}">✍🏼 {{ APP_TITLE }}</a>
+        <span class="brand-sub">Getting Things Done</span>
+      </div>
+
+      <div class="topbar-actions">
+        <a class="btn btn-soft" href="{{ url_for('calendar') }}">🗓️</a>
+        <a class="btn btn-soft" href="{{ url_for('review') }}">📋</a>
+        <a class="btn btn-soft" href="{{ url_for('dashboard') }}">📈</a>
+        <a class="btn btn-soft" href="{{ url_for('admin') }}">⚙️</a>
+      </div>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-block">
+        <button class="btn btn-primary w100" id="openAddTask">+ Añadir tarea</button>
+      </div>
+
+      <nav class="nav">
+        <a class="nav-item nav-item-count" href="{{ url_for('home') }}">
+          <span>[I] Inbox</span>
+          <span class="nav-count">{{ sidebar_counts.inbox }}</span>
+        </a>
+
+        <a class="nav-item nav-item-count" href="{{ url_for('today') }}">
+          <span>[H] Hoy</span>
+          <span class="nav-count">{{ sidebar_counts.today }}</span>
+        </a>
+        
+        <a class="nav-item nav-item-count" href="{{ url_for('week') }}">
+          <span>[W] Esta semana</span>
+          <span class="nav-count">{{ sidebar_counts.week }}</span>
+        </a>
+
+        <a class="nav-item nav-item-count" href="{{ url_for('next_actions') }}">
+          <span>[N] NextActions</span>
+          <span class="nav-count">
+            {% if sidebar_counts.next == -1 %}
+              !
+            {% else %}
+              {{ sidebar_counts.next }}
+            {% endif %}
+          </span>
+        </a>
+          
+        <a class="nav-item nav-item-count" href="{{ url_for('agenda') }}">
+          <span>[A] Agenda</span>
+          <span class="nav-count">{{ sidebar_counts.agenda }}</span>
+        </a>
+
+        <a class="nav-item nav-item-count" href="{{ url_for('tags') }}">
+          <span>[T] Etiquetas</span>
+          <span class="nav-count">{{ sidebar_counts.tags }}</span>
+        </a>
+
+        <a class="nav-item nav-item-count" href="{{ url_for('filters_view') }}">
+          <span>[F] Filtros</span>
+          <span class="nav-count">{{ sidebar_counts.filters }}</span>
+        </a>
+        
+        <a class="nav-item nav-item-count" href="{{ url_for('projects') }}">
+          <span>[P] Proyectos</span>
+          <span class="nav-count">{{ sidebar_counts.projects }}</span>
+        </a>
+
+        <a class="nav-item" href="{{ url_for('folders') }}">
+          <span>[C] Carpetas</span>
+        </a>
+
+        <a class="nav-item" href="{{ url_for('search') }}">
+          <span>[Q] Buscar</span>
+        </a>
+      </nav>
+      
+      <hr/>
+
+      <div class="side-section">
+        <div class="side-title-row">
+          <div class="side-title">Carpetas / Proyectos</div>
+
+          <div class="tree-global-actions">
+            <button type="button" class="tree-global-btn" onclick="collapseAllTree()" title="Colapsar todas">
+              ▴
+            </button>
+            <button type="button" class="tree-global-btn" onclick="expandAllTree()" title="Expandir todas">
+              ▾
+            </button>
+          </div>
+        </div>
+
+        <div class="tree">
+          {% for f in folders_by_parent.get(None, []) %}
+            {{ render_folder_node(f, folders_by_parent, projects_by_folder, open_folder_ids, current_folder_id, current_project_id) }}
+          {% endfor %}
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <div class="flash-area">
+              {% for category, message in messages %}
+                <div class="flash flash-{{ category|e }}">{{ message }}</div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+      </div>
+    </main>
+  </div>
+
+  <dialog class="modal" id="addTaskModal">
+    <form method="post" action="{{ url_for('task_create') }}" class="modal-card">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title">Añadir tarea</div>
+		  <div class="hint">
+			  Sintaxis: nombre + [@etiquetas] + [ [*]dd-mm-[aaaa] | *hoy | *mañana | *+nDias ] [#proyecto]  [cada {día|semana|mes|año}]<br>
+			  Ejemplos: <code>Llamar a Juan @NextAction *mañana</code>,
+			  <code>Comprar tinta 18-03 #Oficina</code>,
+			  <code>Revisar cuentas @Finanzas *+3 cada mes</code>.
+			</div>
+        </div>
+        <button type="button" class="btn btn-soft" id="closeAddTask" aria-label="Cerrar">✕</button>
+      </div>
+
+      <div class="modal-body">
+		<div class="quick-input-wrap">
+		  <label class="label">Tarea</label>
+		  <input name="quick" class="input" placeholder="" autocomplete="off" required>
+		</div>
+        <div class="grid2">
+          <div>
+            <label class="label">Asignar a carpeta (opcional)</label>
+            <select class="input" name="folder_id">
+              <option value="">(ninguna)</option>
+              {% for f in all_folders %}
+                <option value="{{ f.id }}">{{ f.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label class="label">Asignar a proyecto (opcional)</label>
+            <select class="input" name="project_id">
+              <option value="">(ninguno)</option>
+              {% for p in all_projects %}
+                <option value="{{ p.id }}">{{ p.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+
+        <div class="grid2">
+          <div>
+            <label class="label">Fecha de finalización</label>
+            <input type="date" name="due_date" class="input">
+          </div>
+          <div>
+            <label class="label">Recurrencia (RRULE simple)</label>
+            <select class="input" id="recPreset">
+              <option value="">Sin recurrencia</option>
+              <option value="FREQ=DAILY;INTERVAL=1">Diaria</option>
+              <option value="FREQ=WEEKLY;INTERVAL=1">Semanal</option>
+              <option value="FREQ=MONTHLY;INTERVAL=1">Mensual</option>
+              <option value="FREQ=YEARLY;INTERVAL=1">Anual</option>
+              <option value="FREQ=WEEKLY;BYDAY=FR;INTERVAL=1">Cada viernes</option>
+              <option value="FREQ=MONTHLY;BYMONTHDAY=1;INTERVAL=1">Cada 1 de mes</option>
+            </select>
+          </div>
+        </div>
+
+        <label class="label">RRULE (editable)</label>
+        <input name="recurrence_rule" class="input" id="recRule" placeholder="">
+        <div class="modal-sub">
+          <i>Ej: FREQ=WEEKLY;BYDAY=MO,WE,FR;INTERVAL=1</i>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="submit" class="btn btn-primary">Guardar</button>
+        <button type="button" class="btn btn-soft" id="cancelAddTask">Cancelar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script>
+    (function () {
+      const dlg = document.getElementById('addTaskModal');
+      const openBtn = document.getElementById('openAddTask');
+      const closeBtn = document.getElementById('closeAddTask');
+      const cancelBtn = document.getElementById('cancelAddTask');
+
+      const preset = document.getElementById('recPreset');
+      const rule = document.getElementById('recRule');
+
+      if (preset && rule) preset.addEventListener('change', () => { rule.value = preset.value; });
+
+      function openModal() { if (dlg && dlg.showModal) dlg.showModal(); }
+      function closeModal() { if (dlg && dlg.close) dlg.close(); }
+
+      if (openBtn) openBtn.addEventListener('click', openModal);
+      if (closeBtn) closeBtn.addEventListener('click', closeModal);
+      if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
+
+      if (dlg) {
+        dlg.addEventListener('click', (e) => {
+          const rect = dlg.getBoundingClientRect();
+          const inDialog = rect.top <= e.clientY && e.clientY <= rect.top + rect.height
+                        && rect.left <= e.clientX && e.clientX <= rect.left + rect.width;
+          if (!inDialog) closeModal();
+        });
+      }
+    })();
+  </script>
+  
+  <script>
+    function toggleTreeNode(nodeId, iconId, storageKey){
+      const body = document.getElementById(nodeId);
+      const icon = document.getElementById(iconId);
+      if (!body) return;
+
+      const isHidden = (body.style.display === 'none');
+      body.style.display = isHidden ? 'block' : 'none';
+      if (icon) icon.textContent = isHidden ? '▾' : '▸';
+
+      try{
+        localStorage.setItem(storageKey, isHidden ? '1' : '0');
+      } catch(e){}
+    }
+
+    function collapseAllTree(){
+      const nodes = document.querySelectorAll('.tree-node[data-tree-folder]');
+      for (const n of nodes){
+        const folderId = n.getAttribute('data-tree-folder');
+        const body = document.getElementById('node-' + folderId);
+        const icon = document.getElementById('icon-' + folderId);
+        if (body) body.style.display = 'none';
+        if (icon) icon.textContent = '▸';
+        try{
+          localStorage.setItem('gtd_tree_' + folderId, '0');
+        } catch(e){}
+      }
+    }
+
+    function expandAllTree(){
+      const nodes = document.querySelectorAll('.tree-node[data-tree-folder]');
+      for (const n of nodes){
+        const folderId = n.getAttribute('data-tree-folder');
+        const body = document.getElementById('node-' + folderId);
+        const icon = document.getElementById('icon-' + folderId);
+        if (body) body.style.display = 'block';
+        if (icon) icon.textContent = '▾';
+        try{
+          localStorage.setItem('gtd_tree_' + folderId, '1');
+        } catch(e){}
+      }
+    }
+
+    (function restoreTreeState(){
+      const nodes = document.querySelectorAll('.tree-node[data-tree-folder]');
+      for (const n of nodes){
+        const folderId = n.getAttribute('data-tree-folder');
+        const defaultOpen = n.getAttribute('data-default-open') === '1';
+        const nodeId = 'node-' + folderId;
+        const iconId = 'icon-' + folderId;
+        const key = 'gtd_tree_' + folderId;
+
+        const body = document.getElementById(nodeId);
+        const icon = document.getElementById(iconId);
+        if (!body) continue;
+        
+        let open = defaultOpen;
+        const saved = localStorage.getItem(key);
+
+        if (!defaultOpen) {
+          if (saved === '0') open = false;
+          if (saved === '1') open = true;
+        }
+
+        body.style.display = open ? 'block' : 'none';
+        if (icon) icon.textContent = open ? '▾' : '▸';
+      }
+    })();
+  </script>
+  
+  
+  <script>
+document.addEventListener("DOMContentLoaded", function () {
+
+  const endpoint = "{{ url_for('api_tags_search') }}";
+
+  const box = document.createElement("div");
+  box.className = "tag-autocomplete";
+  box.hidden = true;
+  box.style.position = "absolute";
+  box.style.zIndex = "9999";
+
+  let activeInput = null;
+  let activeItems = [];
+  let activeIndex = -1;
+  let activeToken = null;
+
+  function closeBox(){
+    box.hidden = true;
+    box.innerHTML = "";
+    activeItems = [];
+    activeIndex = -1;
+    activeToken = null;
+  }
+
+  function getCaret(input){
+    return input.selectionStart || 0;
+  }
+
+  function getTagTokenAtCaret(input){
+    const value = input.value;
+    const caret = getCaret(input);
+    const left = value.slice(0, caret);
+
+    const m = left.match(/(?:^|\s)@([^\s@#]*)$/);
+    if(!m) return null;
+
+    const query = m[1] || "";
+    const start = left.lastIndexOf("@");
+
+    return {
+      query,
+      start,
+      end: caret
+    };
+  }
+
+  function positionBox(input){
+    const rect = input.getBoundingClientRect();
+    const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+    const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
+
+    box.style.left = (rect.left + scrollLeft) + "px";
+    box.style.top = (rect.top + scrollTop + input.offsetHeight + 4) + "px";
+    box.style.width = rect.width + "px";
+  }
+
+  function renderItems(){
+    box.innerHTML = "";
+
+    if(!activeItems.length){
+      const empty = document.createElement("div");
+      empty.className = "tag-autocomplete-empty";
+      empty.textContent = "Sin sugerencias";
+      box.appendChild(empty);
+      box.hidden = false;
+      return;
+    }
+
+    activeItems.forEach((item,idx)=>{
+
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "tag-autocomplete-item" + (idx===activeIndex ? " active": "");
+      btn.textContent = "@"+item.name;
+
+      btn.addEventListener("mousedown",function(e){
+        e.preventDefault();
+        applySuggestion(item.name);
+      });
+
+      box.appendChild(btn);
+
+    });
+
+    box.hidden = false;
+  }
+
+  function applySuggestion(tagName){
+
+    if(!activeInput || !activeToken) return;
+
+    const value = activeInput.value;
+
+    const before = value.slice(0,activeToken.start);
+    const after  = value.slice(activeToken.end);
+
+    const inserted = "@"+tagName+" ";
+
+    activeInput.value = before + inserted + after;
+
+    const pos = (before+inserted).length;
+
+    activeInput.focus();
+    activeInput.setSelectionRange(pos,pos);
+
+    closeBox();
+  }
+
+  async function fetchSuggestions(input){
+
+    const token = getTagTokenAtCaret(input);
+
+    activeInput = input;
+    activeToken = token;
+
+    if(!token){
+      closeBox();
+      return;
+    }
+
+    const q = token.query.trim();
+
+    if(!q){
+      closeBox();
+      return;
+    }
+
+    try{
+
+      const res = await fetch(endpoint+"?q="+encodeURIComponent(q));
+
+      if(!res.ok){
+        closeBox();
+        return;
+      }
+
+      const data = await res.json();
+
+      activeItems = Array.isArray(data.items) ? data.items : [];
+
+      activeIndex = activeItems.length ? 0 : -1;
+
+      positionBox(input);
+      renderItems();
+
+    }
+    catch(err){
+      console.error("autocomplete error",err);
+      closeBox();
+    }
+
+  }
+
+  const tagInputSelector = 'input[name="quick"], input[name="tags_csv"]';
+
+  document.addEventListener("focusin",function(e){
+
+    if(!e.target.matches(tagInputSelector)) return;
+
+    const input = e.target;
+
+    const wrap = input.closest(".quick-input-wrap");
+    if(wrap && !wrap.contains(box)){
+      wrap.appendChild(box);
+    } else if (!document.body.contains(box)) {
+      document.body.appendChild(box);
+    }
+
+    input.setAttribute("autocomplete","off");
+
+  });
+
+  document.addEventListener("input",function(e){
+
+    if(!e.target.matches(tagInputSelector)) return;
+
+    fetchSuggestions(e.target);
+
+  });
+
+  document.addEventListener("click",function(e){
+
+    if(e.target.matches(tagInputSelector)){
+      fetchSuggestions(e.target);
+      return;
+    }
+
+    if(!box.contains(e.target)){
+      closeBox();
+    }
+
+  });
+
+  document.addEventListener("keydown",function(e){
+
+    const input = e.target;
+
+    if(!input.matches(tagInputSelector)) return;
+
+    if(box.hidden) return;
+
+    if(e.key==="ArrowDown"){
+
+      if(activeItems.length){
+        e.preventDefault();
+        activeIndex = (activeIndex+1)%activeItems.length;
+        renderItems();
+      }
+
+      return;
+
+    }
+
+    if(e.key==="ArrowUp"){
+
+      if(activeItems.length){
+        e.preventDefault();
+        activeIndex = (activeIndex-1+activeItems.length)%activeItems.length;
+        renderItems();
+      }
+
+      return;
+
+    }
+
+    if(e.key==="Enter" || e.key==="Tab"){
+
+      if(activeItems.length && activeIndex>=0){
+        e.preventDefault();
+        applySuggestion(activeItems[activeIndex].name);
+      }
+
+      return;
+
+    }
+
+    if(e.key==="Escape"){
+
+      e.preventDefault();
+      closeBox();
+
+    }
+
+  });
+
+});
+</script>
+  
+
+  <footer class="footer-content" style="margin-top: 40px; text-align: center; font-size: 0.9rem; opacity: 0.7;">
+    <p>&copy; 2026 Marcos Gestal. Todos los derechos reservados.</p>
+    <ul style="list-style: none; padding: 0;">
+      <li><a href="mailto:mgestal@gmail.com">mgestal@gmail.com</a></li>
+    </ul>
+  </footer>
+</body>
+
+<script>
+document.addEventListener("keydown", function(e){
+
+  const tag = e.target.tagName.toLowerCase();
+  if(tag === "input" || tag === "textarea" || e.target.isContentEditable){
+    return;
+  }
+
+  // Ignorar atajos con modificadores (Ctrl, Meta, Alt) para no interferir con copiar/pegar etc.
+  if(e.ctrlKey || e.metaKey || e.altKey){
+    return;
+  }
+
+  const key = e.key.toLowerCase();
+
+  if(key === "+"){
+    const dlg = document.getElementById("addTaskModal");
+    if(dlg && dlg.showModal){
+      dlg.showModal();
+      e.preventDefault();
+    }
+  }
+
+  if(key === "p"){
+    window.location.href = "{{ url_for('projects') }}";
+  }
+  
+  if(key === "n"){
+    window.location.href = "{{ url_for('next_actions') }}";
+  }
+  
+  if(key === "c"){
+    window.location.href = "{{ url_for('folders') }}";
+  }
+  
+  if(key === "f"){
+    window.location.href = "{{ url_for('filters_view') }}";
+  }
+
+  if(key === "i"){
+    window.location.href = "{{ url_for('home') }}";
+  }
+  
+  if(key === "q"){
+    window.location.href = "{{ url_for('search') }}";
+  }
+
+  if(key === "t"){
+    window.location.href = "{{ url_for('tags') }}";
+  }
+  
+  if(key === "h"){
+    window.location.href = "{{ url_for('today') }}";
+  }
+
+  if(key === "a"){
+    window.location.href = "{{ url_for('agenda') }}";
+  }
+  
+  if(key === "w"){
+    window.location.href = "{{ url_for('week') }}";
+  }
+
+});
+</script>
+
+</html>

@@ -1,0 +1,239 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="page-title">
+    <h1>✍🏼 Editar tarea</h1> 
+    <p class="subtitle">Modificar título, fecha, proyecto, etiquetas y recurrencia.</p>
+  </div>
+
+  <div class="card">
+    <form method="post" class="form">
+      <input type="hidden" name="next" value="{{ next_url }}">
+
+      <label class="label">Título</label>
+      <input class="input" name="title" value="{{ task.title }}" required>
+
+      <label class="label">Notas</label>
+      <textarea class="input" name="notes" rows="2">{% if task.notes %}{{ task.notes }}{% endif %}</textarea>
+
+      <div class="grid2">
+        <div>
+          <label class="label">Carpeta</label>
+          <select class="input" name="folder_id">
+            <option value="">(ninguna)</option>
+            {% for f in folders %}
+              <option value="{{ f.id }}" {% if task.folder_id == f.id %}selected{% endif %}>{{ f.name }}</option>
+            {% endfor %}
+          </select>
+          <div class="hint">Si seleccionas un proyecto, la carpeta se ignorará.</div>
+        </div>
+
+        <div>
+          <label class="label">Fecha de finalización</label>
+          <input class="input" type="date" name="due_date"
+                 value="{% if task.due_date %}{{ task.due_date }}{% endif %}">
+        </div>
+
+        <div>
+          <label class="label">Proyecto</label>
+          <select class="input" name="project_id">
+            <option value="">(Inbox / sin proyecto)</option>
+            {% for p in projects %}
+              <option value="{{ p.id }}" {% if task.project_id == p.id %}selected{% endif %}>
+                {{ p.name }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <label class="label">Etiquetas (separadas por comas): <i>@NextAction, @casa...</i></label>
+      <input class="input" id="tags_csv" name="tags_csv" placeholder="@NextAction, @casa" autocomplete="off" value="{{ tags_csv }}">
+
+      <label class="label">Recurrencia (preset)</label>
+      <select class="input" id="recPresetEdit">
+        <option value="">Sin recurrencia</option>
+        <option value="FREQ=DAILY;INTERVAL=1">Diaria</option>
+        <option value="FREQ=WEEKLY;INTERVAL=1">Semanal</option>
+        <option value="FREQ=MONTHLY;INTERVAL=1">Mensual</option>
+        <option value="FREQ=YEARLY;INTERVAL=1">Anual</option>
+        <option value="FREQ=WEEKLY;BYDAY=FR;INTERVAL=1">Cada viernes</option>
+        <option value="FREQ=MONTHLY;BYMONTHDAY=1;INTERVAL=1">Cada 1 de mes</option>
+      </select>
+
+      <label class="label">RRULE (<i>Ej: FREQ=WEEKLY;BYDAY=MO,WE,FR;INTERVAL=1</i>)</label>
+      <input class="input"
+             name="recurrence_rule"
+             id="recRuleEdit"
+             value="{% if task.recurrence_rule %}{{ task.recurrence_rule }}{% endif %}">
+
+      <div class="row">
+        <button class="btn btn-primary">Guardar</button>
+        <a class="btn btn-soft" href="{{ next_url }}">Cancelar</a>
+      </div>
+    </form>
+  </div>
+
+  <!-- =========================
+       SUBTAREAS
+       ========================= -->
+  <div class="card" style="margin-top:14px;">
+    <div class="card-header" style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+      <div class="card-title">Subtareas</div>
+
+      {% set total = (sub_counts.total if sub_counts is defined and sub_counts and sub_counts.total is defined else (sub_counts['total'] if sub_counts is defined and sub_counts and sub_counts['total'] is defined else 0)) %}
+      {% set done  = (sub_counts.done  if sub_counts is defined and sub_counts and sub_counts.done  is defined else (sub_counts['done']  if sub_counts is defined and sub_counts and sub_counts['done']  is defined else 0)) %}
+
+      <div class="muted" style="font-size:12px;">
+        {% if total > 0 %}
+          {{ done }}/{{ total }} realizadas
+        {% else %}
+          Sin subtareas
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Formulario añadir subtarea -->
+    <form method="post" action="{{ url_for('subtask_add', task_id=task.id) }}" class="form" style="margin-top:10px;">
+      <input type="hidden" name="next" value="{{ next_url }}">
+
+      <div class="grid2" style="align-items:end;">
+        <div>
+          <label class="label">Nueva subtarea</label>
+          <input class="input" name="title" placeholder="Título de la subtarea" required>
+        </div>
+        <div>
+          <label class="label">Fecha límite (dd-mm-aaaa)</label>
+          <input class="input" name="due_date" placeholder="04-03-2026">
+        </div>
+      </div>
+
+      <label class="label">Descripción</label>
+      <textarea class="input" name="description" rows="1" placeholder="Opcional"></textarea>
+
+      <div class="row">
+        <button class="btn btn-soft" type="submit">Añadir subtarea</button>
+      </div>
+
+      <div class="hint">
+        Las subtareas solo pertenecen a esta tarea. No se usan en búsqueda/filtros/agenda como entradas propias.
+      </div>
+    </form>
+
+    <hr style="border:0; border-top:1px solid rgba(0,0,0,.08); margin:14px 0;">
+
+    <!-- Listado de subtareas -->
+    {% if subtasks and subtasks|length > 0 %}
+      <div class="subtask-list">
+        {% for s in subtasks %}
+          {% set faded = (task.completed_at is not none) %}
+          {% set is_done = (s.completed_at is not none) %}
+
+          <div class="subtask-row {% if faded or is_done %}row-done{% endif %}">
+            <div style="display:flex; gap:10px; align-items:flex-start; width:100%;">
+
+              <!-- Toggle -->
+              <form method="post" action="{{ url_for('subtask_toggle', subtask_id=s.id) }}" style="margin-top:2px;">
+                <input type="hidden" name="next" value="{{ next_url }}">
+                <button class="radio" aria-label="toggle" title="Marcar / desmarcar"></button>
+              </form>
+
+              <div style="flex:1;">
+
+                <!-- Update (incluye 💾). El 🗑 va fuera (form separado) pero en la misma fila visual -->
+
+<!-- ✅ BLOQUE COMPACTO: descripción + botones en la misma fila -->
+<div class="st-edit">
+
+  <!-- Form UPDATE: título + fecha + descripción -->
+  <form method="post"
+        action="{{ url_for('subtask_update', subtask_id=s.id) }}"
+        id="stupd-{{ s.id }}"
+        class="st-form">
+    <input type="hidden" name="next" value="{{ next_url }}">
+
+    <div class="st-top">
+      <input class="input" name="title" value="{{ s.title }}" required>
+      <input class="input st-date" name="due_date"
+             value="{% if s.due_date %}{{ s.due_date.strftime('%d-%m-%Y') }}{% endif %}"
+             placeholder="dd-mm-aaaa">
+    </div>
+
+    <!-- La descripción va en su propia fila (grid) con botones a la derecha -->
+    <div class="st-desc-row">
+      <textarea class="input st-desc" name="description" rows="1"
+                placeholder="Descripción (opcional)">{% if s.description %}{{ s.description }}{% endif %}</textarea>
+
+
+      <!-- 💾 envía el form de update -->
+      <button type="submit" class="btn btn-soft st-btn" title="Guardar subtarea">💾</button>
+
+      <!-- 🗑 envía el form de delete (se define debajo) -->
+      <button type="submit"
+              class="btn btn-soft st-btn"
+              form="stdel-{{ s.id }}"
+              onclick="return confirm('¿Borrar esta subtarea?');"
+              title="Borrar subtarea">🗑</button>
+    </div>
+  </form>
+
+  <!-- Form DELETE: solo para enviar POST a delete con next -->
+  <form method="post"
+        action="{{ url_for('subtask_delete', subtask_id=s.id) }}"
+        id="stdel-{{ s.id }}"
+        style="display:none;">
+    <input type="hidden" name="next" value="{{ next_url }}">
+  </form>
+
+  <div class="muted st-meta">
+    {% if s.due_date %}
+      Límite: {{ s.due_date.strftime('%d-%m-%Y') }}
+    {% else %}
+      Sin fecha
+    {% endif %}
+    ·
+    {% if s.completed_at %}
+      Realizada: {{ s.completed_at.strftime('%d-%m-%Y %H:%M') }}
+    {% else %}
+      No realizada
+    {% endif %}
+    {% if task.completed_at %}
+      · <span class="muted">Tarea madre completada (subtareas difuminadas)</span>
+    {% endif %}
+  </div>
+
+</div>
+
+
+              </div>
+            </div>
+          </div>
+
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty">No hay subtareas aún.</div>
+    {% endif %}
+  </div>
+
+  <script>
+    (function () {
+      const preset = document.getElementById('recPresetEdit');
+      const rule = document.getElementById('recRuleEdit');
+      if (!preset || !rule) return;
+
+      const currentRule = rule.value.trim();
+      if (currentRule) {
+        for (let opt of preset.options) {
+          if (opt.value === currentRule) {
+            opt.selected = true;
+            break;
+          }
+        }
+      }
+
+      preset.addEventListener('change', function () {
+        rule.value = this.value;
+      });
+    })();
+  </script>
+{% endblock %}

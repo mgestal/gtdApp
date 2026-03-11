@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="page-title">
+    <h1>💼 Editar proyecto</h1> 
+    <p class="subtitle">Cambiar nombre, descripción y carpeta.</p>
+  </div>
+
+  <div class="card">
+    <form method="post" class="form">
+      <label class="label">Nombre</label>
+      <input class="input" name="name" value="{{ project.name }}" required>
+
+      <label class="label">Descripción</label>
+      <textarea class="input" name="description" rows="4">{% if project.description %}{{ project.description }}{% endif %}</textarea>
+
+      <label class="label">Carpeta</label>
+      <select class="input" name="folder_id">
+        <option value="">(sin carpeta)</option>
+        {% for f in folders %}
+          <option value="{{ f.id }}" {% if project.folder_id == f.id %}selected{% endif %}>
+            {{ f.name }}
+          </option>
+        {% endfor %}
+      </select>
+
+      <div class="row">
+        <button class="btn btn-primary">Guardar</button>
+        <a class="btn btn-soft" href="{{ url_for('project_detail', project_id=project.id) }}">Cancelar</a>
+      </div>
+    </form>
+  </div>
+{% endblock %}

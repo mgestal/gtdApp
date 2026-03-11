@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="page-title">
+    <h1>Etiquetas 🏷️</h1>
+    <p class="subtitle">{{ total }} etiquetas · página {{ page }} de {{ pages }}</p>
+  </div>
+  
+  <form method="get" class="form" style="margin-bottom:12px;">
+  <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+    <input class="input" name="q" value="{{ qtxt }}" placeholder="Filtrar etiquetas (ej: next)">
+    <button class="btn btn-soft" type="submit">Aplicar filtro</button>
+    {% if qtxt %}
+      <a class="btn btn-soft" href="{{ url_for('tags') }}">Quitar filtro</a>
+    {% endif %}
+  </div>
+</form>
+
+<div class="muted" style="font-size:12px; margin-bottom:10px;">
+  {% if qtxt %}
+    Filtro activo: <b>{{ qtxt }}</b> · {{ total }} resultados
+  {% else %}
+    {{ total }} etiquetas
+  {% endif %}
+</div>
+  
+
+  <div class="card">
+    <div class="pager" style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap;">
+      <div class="muted">
+        Mostrando {{ (page-1)*per_page + 1 if total>0 else 0 }}–{{ [page*per_page, total]|min }} de {{ total }}
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        {% if page > 1 %}
+          <a class="btn btn-soft" href="{{ url_for('tags', page=1) }}">« Primera</a>
+          <a class="btn btn-soft" href="{{ url_for('tags', page=page-1) }}">‹ Anterior</a>
+        {% else %}
+          <span class="btn btn-soft disabled">« Primera</span>
+          <span class="btn btn-soft disabled">‹ Anterior</span>
+        {% endif %}
+
+        {% if page < pages %}
+          <a class="btn btn-soft" href="{{ url_for('tags', page=page+1) }}">Siguiente ›</a>
+          <a class="btn btn-soft" href="{{ url_for('tags', page=pages) }}">Última »</a>
+        {% else %}
+          <span class="btn btn-soft disabled">Siguiente ›</span>
+          <span class="btn btn-soft disabled">Última »</span>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="list" style="margin-top:10px;">
+      {% for t in rows %}
+		<div class="list-row tag-row">
+		  <div>
+			<a class="tagchiptags taglink" href="{{ url_for('tag_detail', tag_id=t.id) }}">
+			  @{{ t.name }}
+			</a>
+		  </div>
+
+		  <div class="actions tag-actions">
+			<a class="btn btn-soft" href="{{ url_for('tag_edit', tag_id=t.id) }}">✎</a>
+
+			<form method="post" action="{{ url_for('tag_delete', tag_id=t.id) }}">
+			  <button class="btn btn-soft"
+					  onclick="return confirm('¿Borrar la etiqueta @{{ t.name }} de todas las tareas?');">
+				🗑
+			  </button>
+			</form>
+			<span class="muted">{{ t.task_count }} tareas</span>
+		  </div>
+
+		</div>
+		
+      {% else %}
+        <div class="empty">No hay etiquetas.</div>
+      {% endfor %}
+    </div>
+
+    <div class="pager" style="margin-top:12px; display:flex; gap:10px; align-items:center; justify-content:flex-end; flex-wrap:wrap;">
+      {% if page > 1 %}
+        <a class="btn btn-soft" href="{{ url_for('tags', page=page-1) }}">‹ Anterior</a>
+      {% endif %}
+      {% if page < pages %}
+        <a class="btn btn-soft" href="{{ url_for('tags', page=page+1) }}">Siguiente ›</a>
+      {% endif %}
+    </div>
+  </div>
+{% endblock %}

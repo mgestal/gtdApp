@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="page-title">
+    <h1>Carpetas 📂</h1>
+    <p class="subtitle">Crear, renombrar, mover y borrar (solo si están vacías).</p>
+  </div>
+
+ <div class="card">
+    <div class="card-header"><div class="card-title">Crear carpeta</div></div>
+
+    <form method="post" action="{{ url_for('folder_create') }}" class="form">
+      <label class="label">Nombre</label>
+      <input class="input" name="name" required>
+
+      <label class="label">Padre</label>
+      <select class="input" name="parent_id">
+        <option value="">(raíz)</option>
+        {# Para el selector usamos la lista mostrada; si quieres TODAS las carpetas siempre,
+           habría que pasar otra variable desde backend #}
+        {% for f in rows %}
+          <option value="{{ f.id }}">{{ f.name }}</option>
+        {% endfor %}
+      </select>
+
+      <button class="btn btn-primary" type="submit">Crear</button>
+    </form>
+  </div>
+  
+  <form method="get" class="form" style="margin-bottom:12px;">
+    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+      <input class="input" name="q" value="{{ qtxt }}" placeholder="Filtrar carpetas (ej: arp)">
+      <button class="btn btn-soft" type="submit">Aplicar filtro</button>
+      {% if qtxt %}
+        <a class="btn btn-soft" href="{{ url_for('folders') }}">Quitar filtro</a>
+      {% endif %}
+    </div>
+  </form>
+
+  <div class="muted" style="font-size:12px; margin-bottom:10px;">
+    {% if qtxt %}
+      Filtro activo: <b>{{ qtxt }}</b> · {{ total }} resultados
+    {% else %}
+      {{ total }} carpetas
+    {% endif %}
+  </div>
+
+  <br/>
+
+  <div class="card">
+    <div class="card-header"><div class="card-title">Listado</div></div>
+
+    <div class="list">
+      {% if rows and rows|length > 0 %}
+        {% for f in rows %}
+          <div class="list-row" style="align-items:flex-start;">
+            <div>
+              <a class="link" href="{{ url_for('folder_detail', folder_id=f.id) }}" style="text-decoration:none;">
+                📁 {{ f.name }}
+              </a>
+              <div class="muted" style="font-size:12px;">
+                id={{ f.id }}{% if f.parent_id %}, parent={{ f.parent_id }}{% endif %}
+              </div>
+            </div>
+
+            <div class="actions">
+              <form method="post" action="{{ url_for('folder_rename', folder_id=f.id) }}" style="display:flex; gap:8px;">
+                <input class="input" name="name" value="{{ f.name }}" style="width:180px;">
+                <button class="btn btn-soft" type="submit">Renombrar</button>
+              </form>
+
+              <a class="btn btn-soft" href="{{ url_for('folder_move', folder_id=f.id) }}">Mover</a>
+
+              <form method="post" action="{{ url_for('folder_delete', folder_id=f.id) }}">
+                <button class="btn btn-soft" type="submit"
+                        onclick="return confirm('¿Borrar carpeta {{ f.name|e }}?');">🗑</button>
+              </form>
+            </div>
+          </div>
+        {% endfor %}
+      {% else %}
+        <div class="empty">No hay carpetas.</div>
+      {% endif %}
+    </div>
+
+    {% if pages > 1 %}
+      <div class="pagination" style="margin-top:12px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        {% if page > 1 %}
+          <a class="btn btn-soft" href="{{ url_for('folders', q=qtxt, page=page-1) }}">« Anterior</a>
+        {% endif %}
+        <span class="muted">Página {{ page }} / {{ pages }}</span>
+        {% if page < pages %}
+          <a class="btn btn-soft" href="{{ url_for('folders', q=qtxt, page=page+1) }}">Siguiente »</a>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+{% endblock %}

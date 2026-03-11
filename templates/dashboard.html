@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="page-title">
+    <h1>Dashboard 📈</h1>
+    <p class="subtitle">Estadísticas rápidas y próximos vencimientos.</p>
+  </div>
+
+  <h3 style="margin-bottom: 12px; font-size: 1rem; opacity: 0.7;">General</h3>
+  <div class="grid3" style="margin-bottom: 24px;">
+    <div class="card stat">
+      <div class="stat-k">Tareas totales</div>
+      <div class="stat-v">{{ stats.total }}</div>
+    </div>
+    <div class="card stat">
+      <div class="stat-k">Abiertas</div>
+      <div class="stat-v">{{ stats.open }}</div>
+    </div>
+    <div class="card stat">
+      <div class="stat-k">Completadas (histórico)</div>
+      <div class="stat-v">{{ stats.completed }}</div>
+    </div>
+    <div class="card stat">
+      <div class="stat-k">Inbox abiertas</div>
+      <div class="stat-v">{{ stats.inbox }}</div>
+    </div>
+    <div class="card stat">
+      <div class="stat-k">Proyectos activos</div>
+      <div class="stat-v">{{ stats.projects }}</div>
+    </div>
+    <div class="card stat">
+      <div class="stat-k">Archivados</div>
+      <div class="stat-v">{{ stats.archived }}</div>
+    </div>
+  </div>
+
+  <h3 style="margin-bottom: 12px; font-size: 1rem; opacity: 0.7;">Completadas por período</h3>
+  <div class="grid3" style="margin-bottom: 24px;">
+    <div class="card stat" style="border-top: 3px solid #4CAF50;">
+      <div class="stat-k">Hoy</div>
+      <div class="stat-v">{{ stats.comp_today }}</div>
+    </div>
+    <div class="card stat" style="border-top: 3px solid #2196F3;">
+      <div class="stat-k">Esta semana</div>
+      <div class="stat-v">{{ stats.comp_week }}</div>
+    </div>
+    <div class="card stat" style="border-top: 3px solid #9C27B0;">
+      <div class="stat-k">Este mes</div>
+      <div class="stat-v">{{ stats.comp_month }}</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">Vencen en 7 días</div>
+    </div>
+    {% if due_soon and due_soon|length > 0 %}
+      <table class="table">
+        <thead>
+          <tr>
+            <th style="width:42px;"></th> {# Columna para el radio button #}
+            <th>Tarea</th>
+            <th style="width:180px;">Ubicación</th>
+            <th style="width:110px;">Fecha</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in due_soon %}
+            <tr>
+              <td>
+                <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}">
+                  <input type="hidden" name="next" value="{{ url_for('dashboard') }}">
+                  <button class="radio" aria-label="toggle" title="Marcar como completada"></button>
+                </form>
+              </td>
+              <td>
+                <a href="{{ url_for('task_edit', task_id=t.id) }}" style="font-weight: 500;">
+				
+				<div style="font-weight:600; display:flex; align-items:center; gap:6px;">
+				  {{ t.title }}
+
+				  {% if t.notes %}
+					<a href="{{ url_for('task_edit', task_id=t.id, next=url_for('next_actions')) }}"
+					   title="{{ t.notes }}"
+					   style="text-decoration:none; font-size:0.9rem; opacity:.75;">
+					   📝
+					</a>
+				  {% endif %}
+				</div>
+
+				
+				</a>
+              </td>
+              <td style="font-size: 0.8rem;">
+                {% if t.folder_name %}
+                  <a href="{{ url_for('folder_detail', folder_id=t.folder_id) }}">📂 {{ t.folder_name }}</a>
+                {% endif %}
+                
+                {% if t.folder_name and t.project_name %}
+                  <span class="muted"> · </span>
+                {% endif %}
+                
+                {% if t.project_name %}
+                  <a href="{{ url_for('project_detail', project_id=t.project_id) }}">💼 {{ t.project_name }}</a>
+                {% endif %}
+                
+                {% if not t.folder_name and not t.project_name %}
+                  <span class="muted">Inbox</span>
+                {% endif %}
+              </td>
+              <td style="font-size: 0.9rem;">
+                {{ t.due_date.strftime('%d-%m-%Y') }}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="empty">Nada próximo para los siguientes 7 días.</div>
+    {% endif %}
+  </div>
+{% endblock %}

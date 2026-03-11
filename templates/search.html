@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="page-title">
+    <h1>Buscar 🕵🏻</h1> 
+    <p class="subtitle">Por título/notas (FullText en MariaDB).</p>
+  </div>
+
+<form method="get" action="{{ url_for('search') }}" class="form">
+  <label class="label">Consulta</label>
+  <div style="display:flex; gap:10px;">
+    <input class="input" name="q" value="{{ qtxt }}" placeholder="Palabra(s) clave">
+    <button class="btn btn-primary">Buscar</button>
+  </div>
+</form>
+
+<br/>
+
+{% if qtxt and total > 0 %}
+  <div class="pager" style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin:15px 0 10px 0;">
+    <div class="muted" style="font-size: 13px;">
+      Mostrando {{ (page-1)*per_page + 1 }}–{{ [page*per_page, total]|min }} de {{ total }}
+    </div>
+
+    <div style="display:flex; gap:6px;">
+      {% if page > 1 %}
+        <a class="btn btn-soft" style="padding:5px 10px; font-size:12px;" href="{{ url_for('search', q=qtxt, page=1) }}">«</a>
+        <a class="btn btn-soft" style="padding:5px 10px; font-size:12px;" href="{{ url_for('search', q=qtxt, page=page-1) }}">‹</a>
+      {% endif %}
+
+      {% if page < pages %}
+        <a class="btn btn-soft" style="padding:5px 10px; font-size:12px;" href="{{ url_for('search', q=qtxt, page=page+1) }}">›</a>
+        <a class="btn btn-soft" style="padding:5px 10px; font-size:12px;" href="{{ url_for('search', q=qtxt, page=pages) }}">»</a>
+      {% endif %}
+    </div>
+  </div>
+{% endif %}
+
+
+
+    {% if qtxt and rows and rows|length > 0 %}
+	  <div class="card">
+      <table class="table">
+        <thead>
+          <tr>
+            <th style="width:40px;"></th>
+            <th>Tarea</th>
+            <th style="width:100px;">Fecha</th>
+            <th style="width:160px;">Ubicación</th>
+            <th style="width:100px; text-align:right;">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for t in rows %}
+          <tr class="{% if t.completed_at %}row-done{% endif %}">
+            <td>
+              <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}">
+                <button class="radio" aria-label="toggle"></button>
+              </form>
+            </td>
+
+            <td>
+              <div style="font-weight:600; margin-bottom:4px;">
+                            		<div style="font-weight:600; display:flex; align-items:center; gap:6px;">
+							{{ t.title }} {% if t.notes %}
+							<a href="{{ url_for('task_edit', task_id=t.id, next=url_for('next_actions')) }}"
+							title="{{ t.notes }}"
+							style="text-decoration:none; font-size:0.9rem; opacity:.75;">
+							📝
+							</a>
+							             {% endif %}
+						</div>
+              </div>
+              
+              <div style="display:flex; flex-wrap:wrap; gap:4px;">
+                {% if t.recurrence_rule %}<span class="pill" style="font-size:10px;">⟲ periódica</span>{% endif %}
+                {% for tag in tags_map.get(t.id, []) %}
+                  <a class="tagchip taglink" style="margin:0; font-size:9px;" href="{{ url_for('tag_detail', tag_id=tag.id) }}">@{{ tag.name }}</a>
+                {% endfor %}
+              </div>
+            </td>
+
+            <td style="white-space:nowrap; font-size:13px;">
+              {% if t.due_date %}{{ t.due_date.strftime('%d-%m-%Y') }}{% else %}<span class="muted">—</span>{% endif %}
+            </td>
+
+            <td style="font-size:12px;">
+              {% if t.project_id %}
+                <a href="{{ url_for('project_detail', project_id=t.project_id) }}" class="link" style="text-decoration:none;">💼 {{ t.project_name }}</a>
+              {% elif t.folder_id %}
+                <a href="{{ url_for('folder_detail', folder_id=t.folder_id) }}" class="link" style="text-decoration:none;">📂 {{ t.folder_name }}</a>
+              {% else %}
+                <span class="muted">📥 Inbox</span>
+              {% endif %}
+            </td>
+
+            <td style="text-align:right;">
+              <div style="display:inline-flex; gap:5px;">
+                <a class="btn btn-soft" style="padding:5px 8px;" href="{{ url_for('task_edit', task_id=t.id) }}">✎</a>
+                <form method="post" action="{{ url_for('task_delete', task_id=t.id) }}" style="display:inline;">
+                  <button class="btn btn-soft" style="padding:5px 8px;" onclick="return confirm('¿Borrar?');">🗑</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+	</div>
+    {% elif qtxt %}
+       <div class="card">Sin resultados para "{{ qtxt }}"</div>
+    {% else %}
+     
+    {% endif %}
+
+{% endblock %}
+

@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="page-title">
+    <h1>Admin ⚙️</h1>
+    <p class="subtitle">Datos de configuración almacenados en <code>instance/config.json</code>. Protegido por <code>GTD_ADMIN_PASSWORD</code>.</p>
+  </div>
+
+  {% if not env_pwd_set %}
+    <div class="card">
+      <div class="flash flash-error">
+        GTD_ADMIN_PASSWORD no está definida en el entorno. Por seguridad, no se permite acceso admin.
+      </div>
+    </div>
+  {% endif %}
+
+  {% if not is_admin %}
+    <div class="card" style="max-width: 500px; margin: 0 auto;">
+      <form method="post" class="form">
+        <input type="hidden" name="action" value="login">
+        <label class="label">Contraseña admin</label>
+        <input class="input" type="password" name="password" autocomplete="current-password">
+        <button class="btn btn-primary">Entrar</button>
+      </form>
+    </div>
+  {% else %}
+
+    <div class="grid2">
+      
+      <div class="admin-col-left">
+        
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Conexión MariaDB</div>
+          </div>
+          
+          <form method="post" class="form" style="margin-bottom: 15px;">
+            <input type="hidden" name="action" value="test_db">
+            <button class="btn btn-soft">Probar conexión</button>
+          </form>
+
+          <form method="post" class="form">
+            <input type="hidden" name="action" value="save_config">
+
+            <label class="label">Host</label>
+            <input class="input" name="db_host" value="{{ cfg.db.host }}">
+
+            <label class="label">Puerto</label>
+            <input class="input" name="db_port" value="{{ cfg.db.port }}">
+
+            <label class="label">Usuario</label>
+            <input class="input" name="db_user" value="{{ cfg.db.user }}">
+
+            <label class="label">Password</label>
+            <input class="input" type="password" name="db_password" value="{{ cfg.db.password }}">
+
+            <label class="label">Base de datos</label>
+            <input class="input" name="db_database" value="{{ cfg.db.database }}">
+
+            <div class="row" style="margin-top:10px;">
+              <button class="btn btn-primary">Guardar Configuración</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="card" style="margin-top:20px;">
+          <div class="card-header">
+            <div class="card-title">Copias de seguridad</div>
+          </div>
+
+          <form method="post" class="form">
+            <input type="hidden" name="action" value="backup_db">
+            <div class="hint">Se guardarán en <code>backups/</code>.</div>
+            <button class="btn btn-primary">Crear copia ahora</button>
+          </form>
+
+          <hr style="border:none; border-top:1px solid var(--border); margin:15px 0;">
+
+          <form method="post" class="form">
+            <input type="hidden" name="action" value="restore_db">
+            <label class="label">Importar copia (.sql)</label>
+            <select class="input" name="backup_file" required>
+              <option value="">(elige una copia)</option>
+              {% for b in backups %}
+                <option value="{{ b }}">{{ b }}</option>
+              {% endfor %}
+            </select>
+            <div class="hint">¡Cuidado! Esto sobrescribe la base de datos actual.</div>
+            <button class="btn btn-soft" onclick="return confirm('¿Seguro?');">Importar copia</button>
+          </form>
+
+          {% if backups and backups|length > 0 %}
+            <div class="hint" style="margin-top:10px;">Copias disponibles: {{ backups|length }}</div>
+          {% else %}
+            <div class="empty" style="margin-top:10px;">No hay copias todavía.</div>
+          {% endif %}
+        </div>
+      </div>
+        
+
+      <div class="admin-col-right">
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Paginación</div>
+          </div>
+
+          <form method="post" class="form">
+            <input type="hidden" name="action" value="save_pagination">
+            <div class="grid2" style="gap:10px;">
+              <div>
+                <label class="label">Agenda</label>
+                <input class="input" type="number" name="agenda_per_page" value="{{ cfg.get('app', {}).get('pagination', {}).get('agenda_per_page', 50) }}">
+              </div>
+              <div>
+                <label class="label">Buscar</label>
+                <input class="input" type="number" name="search_per_page" value="{{ cfg.get('app', {}).get('pagination', {}).get('search_per_page', 50) }}">
+              </div>
+              <div>
+                <label class="label">Etiquetas</label>
+                <input class="input" type="number" name="tags_per_page" value="{{ cfg.get('app', {}).get('pagination', {}).get('tags_per_page', 12) }}">
+              </div>
+              <div>
+                <label class="label">Detalle Etiqueta</label>
+                <input class="input" type="number" name="tag_detail_per_page" value="{{ cfg.get('app', {}).get('pagination', {}).get('tag_detail_per_page', 50) }}">
+              </div>
+              <div>
+                <label class="label">Carpetas</label>
+                <input class="input" type="number" name="folders_per_page" value="{{ cfg.get('app', {}).get('pagination', {}).get('folders_per_page', 10) }}">
+              </div>
+              <div>
+                <label class="label">Filtros</label>
+                <input class="input" type="number" name="filters_per_page" value="{{ cfg.get('app', {}).get('pagination', {}).get('filters_per_page', 25) }}">
+              </div>
+              <div>
+                <label class="label">Proyectos</label>
+                <input class="input" type="number" name="projects_per_page" value="{{ cfg.get('app', {}).get('pagination', {}).get('projects_per_page', 25) }}">
+              </div>
+            </div>
+            <div class="row" style="margin-top:15px;">
+              <button class="btn btn-primary" type="submit">Guardar paginación</button>
+            </div>
+          </form>
+        </div>
+        
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Mantenimiento</div>
+              <div class="card-sub">Limpieza y mantenimiento básico del sistema</div>
+            </div>
+          </div>
+
+          <div class="list" style="gap:12px;">
+
+            <div class="list-row" style="align-items:flex-start;">
+              <div style="flex:1;">
+                <div style="font-weight:600; margin-bottom:4px;">Limpiar tareas realizadas</div>
+                <div class="hint">Borra tareas con <code>completed_at</code> anterior al límite indicado.</div>
+              </div>
+
+              <form method="post" class="form" style="min-width:230px; gap:8px; margin:0;">
+                <input type="hidden" name="action" value="purge_completed_tasks">
+                <select class="input" name="older_than_days" required>
+                  <option value="7">7 días</option>
+                  <option value="15">15 días</option>
+                  <option value="30" selected>30 días</option>
+                  <option value="365">365 días</option>
+                </select>
+                <button class="btn btn-soft" type="submit" onclick="return confirm('¿Seguro?');">
+                  Borrar tareas antiguas
+                </button>
+              </form>
+            </div>
+
+            <div class="list-row" style="align-items:flex-start;">
+              <div style="flex:1;">
+                <div style="font-weight:600; margin-bottom:4px;">Borrar proyectos vacíos</div>
+                <div class="hint">Elimina proyectos que no tengan ninguna tarea asociada.</div>
+              </div>
+
+              <form method="post" class="form" style="margin:0;">
+                <input type="hidden" name="action" value="purge_empty_projects">
+                <button class="btn btn-soft" type="submit" onclick="return confirm('¿Borrar proyectos vacíos?');">
+                  Borrar proyectos vacíos
+                </button>
+              </form>
+            </div>
+
+            <div class="list-row" style="align-items:flex-start;">
+              <div style="flex:1;">
+                <div style="font-weight:600; margin-bottom:4px;">Eliminar etiquetas no usadas</div>
+                <div class="hint">Borra etiquetas que no estén asociadas a ninguna tarea.</div>
+              </div>
+
+              <form method="post" class="form" style="margin:0;">
+                <input type="hidden" name="action" value="purge_unused_tags">
+                <button class="btn btn-soft" type="submit" onclick="return confirm('¿Eliminar etiquetas no usadas?');">
+                  Limpiar etiquetas
+                </button>
+              </form>
+            </div>
+
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:20px;">
+          <div class="card-header">
+            <div class="card-title">Inicializar GTD</div>
+            <div class="card-sub">Crea las etiquetas/carpetas requeridas para review completo.</div>
+          </div>
+
+          <p>Esto se asegura de que existan:</p>
+          <ul>
+            <li>Etiquetas: <code>NextAction</code>, <code>EnSeguimiento</code>, <code>Agenda</code>, <code>EnEspera</code></li>
+            <li>Carpetas: <code>✅ Checklists</code>, <code>ADTV</code>, <code>🔜 EstaSemanaNo</code></li>
+          </ul>
+
+          <form method="post" class="form">
+            <input type="hidden" name="action" value="initialize_system">
+            <button class="btn btn-primary" type="submit" onclick="return confirm('¿Inicializar sistema GTD? Se crearán etiquetas/carpetas faltantes.');">
+              Inicializar sistema GTD
+            </button>
+          </form>
+        </div>
+
+
+
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}

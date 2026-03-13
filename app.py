@@ -80,21 +80,29 @@ def get_pagination(total: int, per_page: int, page: int) -> Tuple[int, int, int]
     return page, pages, offset
 
 
-def safe_next_url(next_url: Optional[str], fallback_endpoint: str = "home", **fallback_values) -> str:
-    """Evita open redirect y normaliza rutas bajo script_root."""
+def safe_next_url(next_url: Optional[str], fallback_endpoint: str = "home", **fallback_values: Any) -> str:
+    """
+    Devuelve siempre una ruta interna relativa a la app, respetando script_root.
+    Bloquea URLs absolutas externas.
+    """
+    script_root = (request.script_root or "").rstrip("/")
     fallback = url_for(fallback_endpoint, **fallback_values)
+
     next_url = (next_url or "").strip()
     if not next_url:
         return fallback
 
-    parsed = urlparse(next_url)
-    if parsed.scheme or parsed.netloc:
+    p = urlparse(next_url)
+
+    # Si viene una URL absoluta, ignorarla y volver al fallback interno
+    if p.scheme or p.netloc:
         return fallback
 
-    script_root = (request.script_root or "").rstrip("/")
+    # Asegurar ruta absoluta
     if not next_url.startswith("/"):
         next_url = "/" + next_url
 
+    # Si la app cuelga de /GTDApp, prefijarlo si falta
     if script_root and next_url != script_root and not next_url.startswith(script_root + "/"):
         next_url = script_root + next_url
 
@@ -3843,10 +3851,10 @@ def gmail_import_to_inbox():
 
     Requisitos:
     - instance/gmail_credentials.json
-    - token OAuth generado en instance/gmail_token.json
+    - instance/gmail_token.json
     - tabla imported_emails
     """
-    next_url = request.form.get("next") or request.referrer or url_for("home")
+    next_url = safe_next_url(request.form.get("next"), "home")
 
     try:
         ensure_imported_emails_table()

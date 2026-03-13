@@ -1,4 +1,37 @@
-/__pycache__
-/backups
-static/emojis.txt
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Flask instance folder (config sensible)
+instance/config.json
+instance/gmail_credentials.json
+instance/gmail_token.json
+
+# Tokens
 .token-gtdapp
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# Temporary
+*.tmp
+*.bak
+backups/
+
+
+static/emojis.txt

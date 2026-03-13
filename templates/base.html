@@ -203,6 +203,7 @@
       </div>
 
       <div class="topbar-actions">
+        <button class="btn btn-soft sidebar-toggle-btn" id="sidebarToggleBtn" type="button" aria-label="Mostrar u ocultar menú"> ☰ </button>
         <a class="btn btn-soft" href="{{ url_for('calendar') }}">🗓️</a>
         <a class="btn btn-soft" href="{{ url_for('review') }}">📋</a>
         <a class="btn btn-soft" href="{{ url_for('dashboard') }}">📈</a>
@@ -211,8 +212,15 @@
     </div>
   </header>
 
+  <div class="sidebar-backdrop" id="sidebarBackdrop" hidden></div>
+
   <div class="layout">
-    <aside class="sidebar">
+    <aside class="sidebar" id="appSidebar">
+
+    <div class="sidebar-collapsed-tab" id="sidebarCollapsedTab">
+      <span>✍🏼 GTDApp: Menú de acciones</span>
+    </div>
+
       <div class="sidebar-block">
         <button class="btn btn-primary w100" id="openAddTask">+ Añadir tarea</button>
       </div>
@@ -494,6 +502,96 @@
 </script>
 
 <script src="{{ url_for('static', filename='tag_autocomplete.js') }}"></script>
+
+
+<script>
+(function () {
+  const btn = document.getElementById("sidebarToggleBtn");
+  const backdrop = document.getElementById("sidebarBackdrop");
+  const collapsedTab = document.getElementById("sidebarCollapsedTab");
+  const DESKTOP_KEY = "gtd_sidebar_collapsed";
+
+  if (!btn || !backdrop) return;
+
+  function isMobile() {
+    return window.innerWidth <= 640;
+  }
+
+  function syncBackdrop() {
+    if (isMobile()) {
+      const open = document.body.classList.contains("sidebar-open");
+      backdrop.hidden = !open;
+      backdrop.classList.toggle("is-visible", open);
+    } else {
+      backdrop.hidden = true;
+      backdrop.classList.remove("is-visible");
+    }
+  }
+
+  function applyDesktopState() {
+    const collapsed = localStorage.getItem(DESKTOP_KEY) === "1";
+    document.body.classList.toggle("sidebar-collapsed", collapsed);
+    document.body.classList.remove("sidebar-open");
+    syncBackdrop();
+  }
+
+  function toggleSidebar() {
+    if (isMobile()) {
+      document.body.classList.toggle("sidebar-open");
+      document.body.classList.remove("sidebar-collapsed");
+      syncBackdrop();
+      return;
+    }
+
+    const collapsed = document.body.classList.toggle("sidebar-collapsed");
+    localStorage.setItem(DESKTOP_KEY, collapsed ? "1" : "0");
+    syncBackdrop();
+  }
+
+  function openDesktopSidebar() {
+    document.body.classList.remove("sidebar-collapsed");
+    localStorage.setItem(DESKTOP_KEY, "0");
+    syncBackdrop();
+  }
+
+  btn.addEventListener("click", toggleSidebar);
+
+  if (collapsedTab) {
+    collapsedTab.addEventListener("click", function () {
+      if (!isMobile()) {
+        openDesktopSidebar();
+      }
+    });
+  }
+
+  backdrop.addEventListener("click", function () {
+    if (isMobile()) {
+      document.body.classList.remove("sidebar-open");
+      syncBackdrop();
+    }
+  });
+
+  window.addEventListener("resize", function () {
+    if (isMobile()) {
+      document.body.classList.remove("sidebar-collapsed");
+      document.body.classList.remove("sidebar-open");
+      syncBackdrop();
+    } else {
+      document.body.classList.remove("sidebar-open");
+      applyDesktopState();
+    }
+  });
+
+  if (isMobile()) {
+    document.body.classList.remove("sidebar-collapsed");
+    document.body.classList.remove("sidebar-open");
+    syncBackdrop();
+  } else {
+    applyDesktopState();
+  }
+})();
+</script>
+
 
   <footer class="footer-content" style="margin-top: 40px; text-align: center; font-size: 0.9rem; opacity: 0.7;">
     <p>&copy; 2026 Marcos Gestal. Todos los derechos reservados.</p>

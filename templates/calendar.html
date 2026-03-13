@@ -123,7 +123,7 @@
           <tbody>
             {% for t in selected_day_tasks %}
               {% set completed = t.completed_at is not none %}
-              <tr style='color:#999; font-style:italic;' if completed else 'color:inherit;'>
+              <tr class="{% if completed %}row-done{% endif %}">
                 <td>
                   {% if not completed %}
                     <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}" style="margin:0;">

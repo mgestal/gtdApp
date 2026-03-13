@@ -393,7 +393,12 @@ def create_inbox_task_from_text(raw_text: str):
 
             task_id = cur.lastrowid or 0
 
-            for tag_name in tags:
+            # Añadir automáticamente la etiqueta telegrambot
+            all_tags = list(tags)
+            if "telegrambot" not in [t.lower() for t in all_tags]:
+                all_tags.append("telegrambot")
+
+            for tag_name in all_tags:
 
                 cur.execute("SELECT id FROM tags WHERE name=%s", (tag_name,))
                 row = cur.fetchone()
@@ -411,7 +416,7 @@ def create_inbox_task_from_text(raw_text: str):
 
         conn.commit()
 
-        return task_id, title, due_date, tags
+        return task_id, title, due_date, all_tags
 
     except Exception:
 
@@ -434,10 +439,185 @@ def format_task_line(row: Dict[str, Any]) -> str:
 
     return f"• {title}"
 
+def format_task_extended(row):
+    """
+    Formato Telegram:
+    • Título
+      📁 Proyecto o carpeta
+      🏷 @tag1 @tag2
+      📅 dd/mm/aaaa
+    """
+    title = (row.get("title") or "").strip() or "(sin título)"
+    project_name = (row.get("project_name") or "").strip()
+    folder_name = (row.get("folder_name") or "").strip()
+    tags = row.get("tags") or []
+    due_date = row.get("due_date")
+
+    lines = [f"• {title}"]
+
+    # Mostrar solo proyecto; si no existe, carpeta
+    if project_name:
+        lines.append(f"  💼 {project_name}")
+    elif folder_name:
+        lines.append(f"  📂 {folder_name}")
+    else:
+        lines.append("  📥 Inbox")
+
+    if tags:
+        tag_text = " ".join(f"@{t}" for t in tags)
+        lines.append(f"  🏷 {tag_text}")
+
+    if due_date:
+        lines.append(f"  📅 {due_date.strftime('%d/%m/%Y')}")
+
+    return "\n".join(lines)
+
+
+
+def get_today_tasks_extended():
+    """
+    Devuelve tareas pendientes para hoy con contexto:
+    - project_name
+    - folder_name
+    - tags
+    """
+    conn = get_db_conn()
+
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    t.id,
+                    t.title,
+                    t.due_date,
+                    p.name AS project_name,
+                    fd.name AS folder_name
+                FROM tasks t
+                LEFT JOIN projects p ON p.id = t.project_id
+                LEFT JOIN folders fd ON fd.id = COALESCE(t.folder_id, p.folder_id)
+                WHERE t.completed_at IS NULL
+                  AND t.due_date = CURDATE()
+                ORDER BY t.id ASC
+                """
+            )
+            rows = list(cur.fetchall())
+
+            task_ids = [int(r["id"]) for r in rows]
+
+            tags_map = {}
+            if task_ids:
+                placeholders = ",".join(["%s"] * len(task_ids))
+                cur.execute(
+                    f"""
+                    SELECT
+                        tt.task_id,
+                        tg.name
+                    FROM task_tags tt
+                    JOIN tags tg ON tg.id = tt.tag_id
+                    WHERE tt.task_id IN ({placeholders})
+                    ORDER BY tg.name
+                    """,
+                    tuple(task_ids),
+                )
+                for r in cur.fetchall():
+                    tags_map.setdefault(int(r["task_id"]), []).append(r["name"])
+
+            for row in rows:
+                row["tags"] = tags_map.get(int(row["id"]), [])
+
+            return rows
+
+    finally:
+        conn.close()
+
+
+def get_agenda_tasks_extended(limit: int = 15):
+    """
+    Devuelve próximas tareas pendientes con fecha, ordenadas por due_date.
+    """
+    conn = get_db_conn()
+
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    t.id,
+                    t.title,
+                    t.due_date,
+                    p.name AS project_name,
+                    fd.name AS folder_name
+                FROM tasks t
+                LEFT JOIN projects p ON p.id = t.project_id
+                LEFT JOIN folders fd ON fd.id = COALESCE(t.folder_id, p.folder_id)
+                WHERE t.completed_at IS NULL
+                  AND t.due_date IS NOT NULL
+                ORDER BY t.due_date ASC, t.id ASC
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            rows = list(cur.fetchall())
+
+            task_ids = [int(r["id"]) for r in rows]
+
+            tags_map = {}
+            if task_ids:
+                placeholders = ",".join(["%s"] * len(task_ids))
+                cur.execute(
+                    f"""
+                    SELECT
+                        tt.task_id,
+                        tg.name
+                    FROM task_tags tt
+                    JOIN tags tg ON tg.id = tt.tag_id
+                    WHERE tt.task_id IN ({placeholders})
+                    ORDER BY tg.name
+                    """,
+                    tuple(task_ids),
+                )
+                for r in cur.fetchall():
+                    tags_map.setdefault(int(r["task_id"]), []).append(r["name"])
+
+            for row in rows:
+                row["tags"] = tags_map.get(int(row["id"]), [])
+
+            return rows
+
+    finally:
+        conn.close()
+
+async def cmd_agenda(update, context):
+    rows = get_agenda_tasks_extended(limit=15)
+
+    if not rows:
+        await update.message.reply_text("📅 No hay tareas en agenda.")
+        return
+
+    text = "📅 Agenda\n\n" + "\n\n".join(format_task_extended(r) for r in rows)
+
+    await update.message.reply_text(text)
 
 # =========================================================
 # Comandos
 # =========================================================
+
+async def cmd_today(update, context):
+    rows = get_today_tasks_extended()
+
+    if not rows:
+        await update.message.reply_text("📅 Hoy no tienes tareas.")
+        return
+
+    text = "📅 Hoy\n\n" + "\n\n".join(format_task_extended(r) for r in rows[:20])
+
+    if len(rows) > 20:
+        text += f"\n\n… y {len(rows) - 20} más."
+
+    await update.message.reply_text(text)
+
+
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -587,6 +767,8 @@ def bot_help_text() -> str:
         "/info - muestra información del bot\n"
         "/nextactions - lista tareas con etiqueta NextAction\n"
         "/hoy - lista tareas con fecha de hoy\n"
+        "/today - lista tareas con fecha de hoy (formato extendido)\n"
+        "/agenda - lista tareas en agenda\n"
         "/done - lista tareas completadas hoy\n"
         "/whoami - muestra tu user_id y chat_id"
     )
@@ -762,6 +944,8 @@ def main():
     app.add_handler(CommandHandler("nextactions", cmd_nextactions))
     app.add_handler(CommandHandler("done", cmd_done))
     app.add_handler(CommandHandler("hoy", cmd_hoy))
+    app.add_handler(CommandHandler("today", cmd_today))
+    app.add_handler(CommandHandler("agenda", cmd_agenda))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
 
@@ -792,6 +976,8 @@ def main_debug() -> None:
     app.add_handler(CommandHandler("nextactions", cmd_nextactions))
     app.add_handler(CommandHandler("done", cmd_done))   
     app.add_handler(CommandHandler("hoy", cmd_hoy))
+    app.add_handler(CommandHandler("today", cmd_today))
+    app.add_handler(CommandHandler("agenda", cmd_agenda))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
 

@@ -16,6 +16,8 @@ from zoneinfo import ZoneInfo
 
 from flask import Flask, abort, flash, g, redirect, render_template, request, session, url_for, send_file, jsonify
 
+from urllib.parse import urlparse
+
 import io
 import csv
 from xml.etree import ElementTree as ET
@@ -94,15 +96,12 @@ def safe_next_url(next_url: Optional[str], fallback_endpoint: str = "home", **fa
 
     p = urlparse(next_url)
 
-    # Si viene una URL absoluta, ignorarla y volver al fallback interno
     if p.scheme or p.netloc:
         return fallback
 
-    # Asegurar ruta absoluta
     if not next_url.startswith("/"):
         next_url = "/" + next_url
 
-    # Si la app cuelga de /GTDApp, prefijarlo si falta
     if script_root and next_url != script_root and not next_url.startswith(script_root + "/"):
         next_url = script_root + next_url
 
@@ -1062,6 +1061,8 @@ def inject_common():
         "folder_tree": load_folder_tree(include_archived=False),
         "all_folders": q("SELECT id, name FROM folders ORDER BY name"),
         "all_projects": q("SELECT id, name FROM projects WHERE archived=0 ORDER BY name"),
+        "TAG_SEARCH_URL": url_for("api_tags_search"),
+        "SCRIPT_ROOT": request.script_root or "",
     }
 
 @app.context_processor
@@ -3824,7 +3825,7 @@ def next_actions():
         tags_map=tags_map,
     )
     
-    
+  
 @app.route("/api/tags/search")
 def api_tags_search():
     qtxt = (request.args.get("q") or "").strip().lower()
@@ -3832,17 +3833,19 @@ def api_tags_search():
     if not qtxt:
         return jsonify({"items": []})
 
+    qtxt = qtxt[:50]
+
     rows = q(
         "SELECT id, name "
         "FROM tags "
         "WHERE LOWER(name) LIKE %s "
         "ORDER BY name "
         "LIMIT 8",
-        (f"{qtxt}%",),
+        (f"%{qtxt}%",),
     )
 
     return jsonify({"items": rows})
-
+    
 
 @app.route("/gmail/import_to_inbox", methods=["POST"])
 def gmail_import_to_inbox():

@@ -180,14 +180,45 @@ Arrancar:
 
 # Seguridad
 
-Archivos que **NO deben subirse al repositorio**:
+Archivos que **NO subidos al repositorio**:
 
-    instance/config.json
-    instance/gmail_credentials.json
-    instance/gmail_token.json
-    .token-gtdapp
+    instance/config.json               (configuracion acceso BBDD)
+    instance/gmail_credentials.json    (GoogleAPI: oauth 2.0 credentials)
+    instance/gmail_token.json          (GoogleAPI: autorizacion)
+    .token-gtdapp                      (token bot telegram)
 
-Añadirlos al `.gitignore`.
+Añadidos al `.gitignore`.
+
+
+------------------------------------------------------------------------
+
+# Formato config.json
+
+
+{
+  "db": {
+    "host": "127.0.0.1",
+    "port": 3306,
+    "user": "user",
+    "password": "password",
+    "database": "gtd",
+    "charset": "utf8mb4"
+  },
+  "app": {
+    "timezone": "Europe/Madrid",
+    "title": "GTD App",
+    "pagination": {
+      "agenda_per_page": 15,
+      "search_per_page": 20,
+      "tags_per_page": 10,
+      "tag_detail_per_page": 10,
+      "folders_per_page": 10,
+      "filters_per_page": 10,
+      "projects_per_page": 15
+    }
+  }
+}
+
 
 ------------------------------------------------------------------------
 
@@ -209,17 +240,6 @@ Añadirlos al `.gitignore`.
     │   └── gmail_token.json
     │
     └── .token-gtdapp
-
-------------------------------------------------------------------------
-
-# Roadmap
-
--   completar tareas desde Telegram
--   notificaciones Telegram
--   adjuntos en tareas
--   OCR de documentos
--   integración calendario
--   API REST
 
 ------------------------------------------------------------------------
 

@@ -21,6 +21,13 @@ import csv
 from xml.etree import ElementTree as ET
 from werkzeug.utils import secure_filename
 
+from gmail_import import (
+    build_gmail_service,
+    list_matching_messages,
+    get_message_metadata,
+    message_to_task_payload,
+)
+
 
 BASE_DIR = Path(__file__).resolve().parent
 INSTANCE_DIR = BASE_DIR / "instance"
@@ -139,6 +146,48 @@ def save_config(cfg: Dict[str, Any]) -> None:
 
 app = Flask(__name__, instance_relative_config=True)
 app.config["SECRET_KEY"] = os.environ.get("GTD_SECRET_KEY", "CHANGE_ME_IN_PROD")
+
+
+
+# ---------------- Gmail import ----------------
+
+def gmail_credentials_path() -> Path:
+    return BASE_DIR / "instance" / "gmail_credentials.json"
+
+
+def gmail_token_path() -> Path:
+    return BASE_DIR / "instance" / "gmail_token.json"
+
+
+def gmail_default_query() -> str:
+    """
+    Query por defecto para importar.
+    Recomendación: usar una etiqueta específica, por ejemplo:
+    label:ToGTD in:inbox
+    """
+    return os.environ.get("GTD_GMAIL_QUERY", "label:ToGTD in:inbox")
+
+
+def ensure_imported_emails_table() -> None:
+    exec_sql(
+        "CREATE TABLE IF NOT EXISTS imported_emails ("
+        "id INT AUTO_INCREMENT PRIMARY KEY, "
+        "gmail_message_id VARCHAR(255) NOT NULL UNIQUE, "
+        "gmail_thread_id VARCHAR(255) NULL, "
+        "task_id INT NOT NULL, "
+        "imported_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "
+        "INDEX idx_imported_emails_task_id (task_id)"
+        ")"
+    )
+    commit()
+
+
+def gmail_message_already_imported(message_id: str) -> bool:
+    row = q1(
+        "SELECT id FROM imported_emails WHERE gmail_message_id=%s",
+        (message_id,),
+    )
+    return row is not None
 
 
 
@@ -3785,3 +3834,95 @@ def api_tags_search():
     )
 
     return jsonify({"items": rows})
+
+
+@app.route("/gmail/import_to_inbox", methods=["POST"])
+def gmail_import_to_inbox():
+    """
+    Importa correos de Gmail como tareas en Inbox.
+
+    Requisitos:
+    - instance/gmail_credentials.json
+    - token OAuth generado en instance/gmail_token.json
+    - tabla imported_emails
+    """
+    next_url = request.form.get("next") or request.referrer or url_for("home")
+
+    try:
+        ensure_imported_emails_table()
+
+        creds_path = gmail_credentials_path()
+        token_path = gmail_token_path()
+
+        if not creds_path.exists():
+            flash(
+                "Falta instance/gmail_credentials.json. "
+                "Descarga el OAuth client de Google Cloud y colócalo ahí.",
+                "error",
+            )
+            return redirect(next_url)
+
+        service = build_gmail_service(creds_path, token_path)
+
+        gmail_query = (request.form.get("gmail_query") or "").strip() or gmail_default_query()
+        max_results_raw = (request.form.get("max_results") or "").strip()
+
+        try:
+            max_results = int(max_results_raw) if max_results_raw else 20
+        except ValueError:
+            max_results = 20
+
+        max_results = max(1, min(max_results, 100))
+
+        found = list_matching_messages(service, gmail_query=gmail_query, max_results=max_results)
+
+        if not found:
+            flash("No se encontraron correos para importar.", "ok")
+            return redirect(next_url)
+
+        created = 0
+        skipped = 0
+
+        for item in found:
+            message_id = item.get("id")
+            if not message_id:
+                skipped += 1
+                continue
+
+            if gmail_message_already_imported(message_id):
+                skipped += 1
+                continue
+
+            full_msg = get_message_metadata(service, message_id)
+            payload = message_to_task_payload(full_msg)
+
+            task_id = exec_sql(
+                "INSERT INTO tasks(title, notes, project_id, folder_id, due_date, recurrence_rule) "
+                "VALUES(%s,%s,NULL,NULL,%s,NULL)",
+                (
+                    payload["title"],
+                    payload["notes"],
+                    payload["due_date"],
+                ),
+            )
+
+            exec_sql(
+                "INSERT INTO imported_emails(gmail_message_id, gmail_thread_id, task_id) "
+                "VALUES(%s,%s,%s)",
+                (
+                    payload["gmail_message_id"],
+                    payload["gmail_thread_id"],
+                    task_id,
+                ),
+            )
+
+            created += 1
+
+        commit()
+        flash(f"Importación Gmail completada: {created} tareas creadas, {skipped} omitidas.", "ok")
+
+    except Exception as e:
+        rollback()
+        flash(f"No se pudieron importar los correos: {e}", "error")
+
+    return redirect(next_url)

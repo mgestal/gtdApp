@@ -2,8 +2,41 @@
 {% block content %}
   <div class="page-title">
     <h1>Bandeja de entrada 📥 </h1>
-    <p class="subtitle">Tareas y proyectos sin carpeta.</p>
   </div>
+
+<div class="card" style="margin-top:14px;">
+
+<form method="post" action="{{ url_for('gmail_import_to_inbox') }}" class="form">
+  <input type="hidden" name="next" value="{{ request.script_root ~ '/' }}">
+
+  <label class="label">Importar correos de gtdApp.inbox@gmail.com </label>
+
+  <div style="display:flex; gap:10px;">
+    <input
+      class="input"
+      type="text"
+      name="gmail_query"
+      value="label:ToGTD in:inbox"
+      placeholder="Query Gmail (ej: label:ToGTD in:inbox)"
+    >
+
+    <input
+      class="input"
+      type="number"
+      name="max_results"
+      value="20"
+      min="1"
+      max="100"
+      style="width:90px;"
+    >
+
+    <button class="btn btn-primary" type="submit">
+      Cargar correos a Inbox
+    </button>
+  </div>
+</form>
+
+</div>
 
   <!-- TAREAS EN BANDEJA -->
   <div class="card" style="margin-top:0;">

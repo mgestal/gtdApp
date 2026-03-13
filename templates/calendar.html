@@ -123,7 +123,7 @@
           <tbody>
             {% for t in selected_day_tasks %}
               {% set completed = t.completed_at is not none %}
-              <tr style="{ 'color:#999; font-style:italic;' if completed else 'color:inherit;' }">
+              <tr style='color:#999; font-style:italic;' if completed else 'color:inherit;'>
                 <td>
                   {% if not completed %}
                     <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}" style="margin:0;">
@@ -157,9 +157,9 @@
                   </div>
                 </td>
                 <td>
-                  {% if t.folder_name %}📂 {{ t.folder_name }}{% endif %}
-                  {% if t.folder_name and t.project_name %} · {% endif %}
-                  {% if t.project_name %}💼 {{ t.project_name }}{% endif %}
+                  {% if t.folder_id and t.folder_name %}<a href="{{ url_for('folder_detail', folder_id=t.folder_id) }}" style="text-decoration:none;">📂 {{ t.folder_name }}</a>{% endif %}
+                  {% if t.folder_id and t.folder_name and t.project_id and t.project_name %} · {% endif %}
+                  {% if t.project_id and t.project_name %}<a href="{{ url_for('project_detail', project_id=t.project_id) }}" style="text-decoration:none;">💼 {{ t.project_name }}</a>{% endif %}
                 </td>
                 <td>
                   {% if t.completed_at %}

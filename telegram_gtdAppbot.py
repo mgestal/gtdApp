@@ -13,6 +13,7 @@ from telegram.constants import ChatType
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
 
+
 # =========================================================
 # Paths
 # =========================================================
@@ -596,7 +597,7 @@ def format_done_task_line(row: Dict[str, Any]) -> str:
     completed_at = row.get("completed_at")
 
     if completed_at:
-        return f"• {title} [{completed_at.strftime('%H:%M')}]"
+        return f"• ({completed_at.strftime('%H:%M')}) - {title}"
 
     return f"• {title}"
 
@@ -667,6 +668,82 @@ async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text(text)
 
 
+
+def get_today_tasks():
+    """
+    Devuelve las tareas con due_date = hoy y no completadas
+    """
+    conn = pymysql.connect(
+        host="localhost",
+        user="gtd",
+        password="gtd_password",
+        database="gtd",
+        charset="utf8mb4",
+        cursorclass=pymysql.cursors.DictCursor
+    )
+
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT id, title
+            FROM tasks
+            WHERE due_date = CURDATE()
+            AND completed_at IS NULL
+            ORDER BY id
+        """)
+        rows = cur.fetchall()
+
+    conn.close()
+
+    return rows
+
+
+async def send_today_summary():
+    """
+    Envía la lista de tareas de hoy al chat configurado.
+    """
+    from telegram import Bot
+    import datetime
+
+    token = load_bot_token()
+    bot = Bot(token)
+
+    chat_id = load_chat_id()   # veremos esto abajo
+
+    today_tasks = get_today_tasks()  # tu función existente
+
+    text = "====================================== \n"
+    text += f"  Tareas para hoy ({datetime.date.today().strftime('%d/%m/%Y')}):\n"
+    text += "====================================== \n\n"
+
+    if not today_tasks:
+        text += "📅 Hoy no tienes tareas."
+    else:
+        text += "📅 Tareas para hoy:\n\n"
+        for t in today_tasks:
+            text += f"• {t['title']}\n"
+
+    text += "\n\n¡Que tengas un gran día! 🚀 \n\n"
+
+    await bot.send_message(chat_id=chat_id, text=text)
+
+
+def save_chat_id(chat_id):
+    path = BASE_DIR / "instance" / "telegram_chat.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"chat_id": chat_id}), encoding="utf-8")
+
+
+async def cmd_start(update, context):
+    save_chat_id(update.effective_chat.id)
+    await update.message.reply_text("Bot configurado 👍")
+
+def load_chat_id():
+    path = BASE_DIR / "instance" / "telegram_chat.json"
+    return json.loads(path.read_text())["chat_id"]
+
+    
+    
+
 # =========================================================
 # Main
 # =========================================================
@@ -693,6 +770,8 @@ def main():
     print("GtdAppBot arrancado.")
 
     app.run_polling(drop_pending_updates=False)
+
+
 
 
 

@@ -437,6 +437,7 @@ def format_task_line(row: Dict[str, Any]) -> str:
 # =========================================================
 # Comandos
 # =========================================================
+
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if await reject_if_unauthorized(update):
@@ -570,6 +571,102 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     print("Telegram bot error:", repr(context.error))
 
+def bot_help_text() -> str:
+    return (
+        "GtdAppBot\n\n"
+        "Envía un mensaje y lo crearé como tarea en Inbox.\n\n"
+        "Formato soportado:\n"
+        "• tarea @etiqueta  [*hoy  *mañana dd/mm/aaaa] \n"
+        " Ejemplos:\n"
+        "• Comprar pilas @Casa *hoy\n"
+        "• Llamar al dentista 18/03/2026\n\n"
+        "Comandos válidos:\n"
+        "/start - mensaje de bienvenida\n"
+        "/help - muestra esta ayuda\n"
+        "/info - muestra información del bot\n"
+        "/nextactions - lista tareas con etiqueta NextAction\n"
+        "/hoy - lista tareas con fecha de hoy\n"
+        "/done - lista tareas completadas hoy\n"
+        "/whoami - muestra tu user_id y chat_id"
+    )
+
+
+def format_done_task_line(row: Dict[str, Any]) -> str:
+    title = row.get("title", "").strip() or "(sin título)"
+    completed_at = row.get("completed_at")
+
+    if completed_at:
+        return f"• {title} [{completed_at.strftime('%H:%M')}]"
+
+    return f"• {title}"
+
+async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    print("cmd_start llamado")
+
+    if await reject_if_unauthorized(update):
+        print("cmd_start rechazado")
+        return
+
+    if update.message:
+        await update.message.reply_text(bot_help_text())
+
+
+async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    print("cmd_help llamado")
+
+    if await reject_if_unauthorized(update):
+        print("cmd_help rechazado")
+        return
+
+    if update.message:
+        await update.message.reply_text(bot_help_text())
+
+
+async def cmd_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    print("cmd_info llamado")
+
+    if await reject_if_unauthorized(update):
+        print("cmd_info rechazado")
+        return
+
+    if update.message:
+        await update.message.reply_text(bot_help_text())
+
+
+async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    print("cmd_done llamado")
+
+    if await reject_if_unauthorized(update):
+        print("cmd_done rechazado")
+        return
+
+    today_d = today_local()
+
+    rows = q(
+        "SELECT id, title, completed_at "
+        "FROM tasks "
+        "WHERE completed_at IS NOT NULL "
+        "AND DATE(completed_at)=%s "
+        "ORDER BY completed_at DESC, id DESC",
+        (today_d,),
+    )
+
+    if not rows:
+        if update.message:
+            await update.message.reply_text("No hay tareas completadas hoy.")
+        return
+
+    text = "Tareas completadas hoy:\n\n" + "\n".join(
+        format_done_task_line(r) for r in rows[:30]
+    )
+
+    if len(rows) > 30:
+        text += f"\n\n… y {len(rows) - 30} más."
+
+    if update.message:
+        await update.message.reply_text(text)
+
+
 # =========================================================
 # Main
 # =========================================================
@@ -582,8 +679,11 @@ def main():
     app = Application.builder().token(token).build()
 
     app.add_handler(CommandHandler("start", cmd_start))
-    app.add_handler(CommandHandler("nextactions", cmd_nextactions))
+    app.add_handler(CommandHandler("help", cmd_help))
+    app.add_handler(CommandHandler("info", cmd_info))
     app.add_handler(CommandHandler("whoami", cmd_whoami))
+    app.add_handler(CommandHandler("nextactions", cmd_nextactions))
+    app.add_handler(CommandHandler("done", cmd_done))
     app.add_handler(CommandHandler("hoy", cmd_hoy))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
@@ -607,9 +707,13 @@ def main_debug() -> None:
     app = Application.builder().token(token).build()
 
     app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(CommandHandler("help", cmd_help))
+    app.add_handler(CommandHandler("info", cmd_info))
     app.add_handler(CommandHandler("whoami", cmd_whoami))
     app.add_handler(CommandHandler("nextactions", cmd_nextactions))
+    app.add_handler(CommandHandler("done", cmd_done))   
     app.add_handler(CommandHandler("hoy", cmd_hoy))
+
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
 
     app.add_error_handler(error_handler)

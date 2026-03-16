@@ -23,13 +23,19 @@ import csv
 from xml.etree import ElementTree as ET
 from werkzeug.utils import secure_filename
 
-from gmail_import import (
-    build_gmail_service,
-    list_matching_messages,
-    get_message_metadata,
-    message_to_task_payload,
+from calendar_import import (
+    build_google_service,
+    list_upcoming_events,
+    list_recent_events_by_created,
+    event_to_task_payload,
 )
 
+
+from calendar_import import  (
+    build_google_service,
+    list_upcoming_events, 
+    event_to_task_payload,
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 INSTANCE_DIR = BASE_DIR / "instance"
@@ -201,6 +207,41 @@ def gmail_message_already_imported(message_id: str) -> bool:
 
 
 from urllib.parse import urlparse
+
+
+# ---------------- GCalendar import ----------------
+
+
+def google_credentials_path() -> Path:
+    return BASE_DIR / "instance" / "gmail_credentials.json"
+
+
+def google_token_path() -> Path:
+    return BASE_DIR / "instance" / "gmail_token.json"
+
+
+def ensure_imported_calendar_events_table() -> None:
+    exec_sql(
+        "CREATE TABLE IF NOT EXISTS imported_calendar_events ("
+        "id INT AUTO_INCREMENT PRIMARY KEY, "
+        "google_event_id VARCHAR(255) NOT NULL UNIQUE, "
+        "task_id INT NOT NULL, "
+        "imported_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "
+        "INDEX idx_imported_calendar_events_task_id (task_id)"
+        ")"
+    )
+    commit()
+
+
+def calendar_event_already_imported(event_id: str) -> bool:
+    row = q1(
+        "SELECT id FROM imported_calendar_events WHERE google_event_id=%s",
+        (event_id,),
+    )
+    return row is not None
+
+
+
 
 # -----------------------------------------------
 # ---------------- DB helpers ----------------
@@ -4035,5 +4076,120 @@ def gmail_import_to_inbox():
     except Exception as e:
         rollback()
         flash(f"No se pudieron importar los correos: {e}", "error")
+
+    return redirect(next_url)
+
+
+@app.route("/calendar/import_to_inbox", methods=["POST"])
+def calendar_import_to_inbox():
+    next_url = safe_next_url(request.form.get("next"), "home")
+
+    try:
+        ensure_imported_calendar_events_table()
+
+        creds_path = google_credentials_path()
+        token_path = google_token_path()
+
+        if not creds_path.exists():
+            flash("Falta instance/gmail_credentials.json.", "error")
+            return redirect(next_url)
+
+        service = build_google_service(
+            creds_path,
+            token_path,
+            api_name="calendar",
+            api_version="v3",
+        )
+
+        import_mode = (request.form.get("import_mode") or "event_date").strip()
+        range_value = (request.form.get("range_value") or "today").strip()
+        calendar_id = (request.form.get("calendar_id") or "primary").strip()
+
+        if import_mode == "created_date":
+            events = list_recent_events_by_created(
+                service,
+                calendar_id=calendar_id,
+                created_range=range_value,
+            )
+        else:
+            events = list_upcoming_events(
+                service,
+                calendar_id=calendar_id,
+                days_range=range_value,
+            )
+
+        if not events:
+            flash("No se encontraron eventos para importar.", "ok")
+            return redirect(next_url)
+
+        tag_calendar_id = get_or_create_tag("calendar")
+        tag_agenda_id = get_or_create_tag("agenda")
+
+        created = 0
+        skipped = 0
+
+        for ev in events:
+            event_id = ev.get("id")
+            if not event_id:
+                skipped += 1
+                continue
+
+            if calendar_event_already_imported(event_id):
+                skipped += 1
+                continue
+
+            payload = event_to_task_payload(ev)
+
+            task_id = exec_sql(
+                "INSERT INTO tasks(title, notes, project_id, folder_id, due_date, recurrence_rule) "
+                "VALUES(%s,%s,NULL,NULL,%s,NULL)",
+                (
+                    payload["title"],
+                    payload["notes"],
+                    payload["due_date"],
+                ),
+            )
+
+            exec_sql(
+                "INSERT IGNORE INTO task_tags(task_id, tag_id) VALUES(%s,%s)",
+                (task_id, tag_calendar_id),
+            )
+            exec_sql(
+                "INSERT IGNORE INTO task_tags(task_id, tag_id) VALUES(%s,%s)",
+                (task_id, tag_agenda_id),
+            )
+
+            exec_sql(
+                "INSERT INTO imported_calendar_events(google_event_id, task_id) VALUES(%s,%s)",
+                (payload["google_event_id"], task_id),
+            )
+
+            created += 1
+
+        commit()
+
+        range_labels = {
+            "today": "hoy",
+            "7days": "7 días",
+            "15days": "15 días",
+        }
+        range_txt = range_labels.get(range_value, range_value)
+
+        if import_mode == "created_date":
+            flash(
+                f"Importación Calendar por fecha de creación ({range_txt}): "
+                f"{created} tareas creadas, {skipped} omitidas.",
+                "ok",
+            )
+        else:
+            flash(
+                f"Importación Calendar por fecha del evento ({range_txt}): "
+                f"{created} tareas creadas, {skipped} omitidas.",
+                "ok",
+            )
+
+    except Exception as e:
+        rollback()
+        flash(f"No se pudieron importar los eventos: {e}", "error")
 
     return redirect(next_url)

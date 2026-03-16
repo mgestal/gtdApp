@@ -36,6 +36,31 @@
   </div>
 </form>
 
+
+<form method="post" action="{{ url_for('calendar_import_to_inbox') }}" class="form">
+  <input type="hidden" name="next" value="{{ request.script_root ~ '/' }}">
+  <input type="hidden" name="calendar_id" value="primary">
+
+  <label class="label">Importar eventos de Calendar</label>
+
+  <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+    <select class="input" name="import_mode" id="calendar-import-mode" style="max-width:220px;">
+      <option value="event_date">Fecha del evento</option>
+      <option value="created_date">Fecha de creación</option>
+    </select>
+
+    <select class="input" name="range_value" id="calendar-range-value" style="max-width:180px;">
+      <option value="today">Hoy</option>
+      <option value="7days">7 días</option>
+      <option value="15days">15 días</option>
+    </select>
+
+    <button class="btn btn-primary" type="submit">
+      Cargar eventos a Inbox
+    </button>
+  </div>
+</form>
+
 </div>
 
   <!-- TAREAS EN BANDEJA -->

@@ -71,6 +71,18 @@ CREATE TABLE `imported_emails` (
 ) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
+
+DROP TABLE IF EXISTS `imported_calendar_events`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE IF NOT EXISTS imported_calendar_events (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    google_event_id VARCHAR(255) NOT NULL UNIQUE,
+    task_id INT NOT NULL,
+    imported_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_imported_calendar_events_task_id (task_id)
+);
+
 --
 -- Table structure for table `projects`
 --

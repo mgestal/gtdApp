@@ -177,7 +177,7 @@
 
   <form method="post" action="{{ url_for('task_create') }}" class="form">
     <div class="hint">
-      Sintaxis: nombre + [@etiquetas] + [ [*]dd-mm-[aaaa] | *hoy | *mañana | *+nDias ] [#proyecto] [cada {día|semana|mes|año}]
+      Sintaxis: nombre + [@etiquetas] + [ [*]dd-mm-[aaaa] | *hoy | *mañana | *+nDias ] [h:HH:MM] [#proyecto] [cada {día|semana|mes|año}]
     </div>
 
     <div class="quick-input-wrap">
@@ -189,7 +189,7 @@
         required
       >
     </div>
-
+    
     <button class="btn btn-primary">Añadir a inbox</button>
   </form>
 </div>

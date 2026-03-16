@@ -328,10 +328,10 @@
         <div>
           <div class="modal-title">Añadir tarea</div>
 		  <div class="hint">
-			  Sintaxis: nombre + [@etiquetas] + [ [*]dd-mm-[aaaa] | *hoy | *mañana | *+nDias ] [#proyecto]  [cada {día|semana|mes|año}]<br>
+        Sintaxis: nombre + [@etiquetas] + [ [*]dd-mm-[aaaa] | *hoy | *mañana | *+nDias ] [h:HH:MM] [#proyecto]  [cada {día|semana|mes|año}]<br>
 			  Ejemplos: <code>Llamar a Juan @NextAction *mañana</code>,
 			  <code>Comprar tinta 18-03 #Oficina</code>,
-			  <code>Revisar cuentas @Finanzas *+3 cada mes</code>.
+        <code>Revisar cuentas @Finanzas *+3 h:23:30 cada mes</code>.
 			</div>
         </div>
         <button type="button" class="btn btn-soft" id="closeAddTask" aria-label="Cerrar">✕</button>
@@ -367,6 +367,9 @@
           <div>
             <label class="label">Fecha de finalización</label>
             <input type="date" name="due_date" class="input">
+
+            <label class="label" style="margin-top:8px;">Hora (opcional)</label>
+            <input type="time" name="due_time" class="input">
           </div>
           <div>
             <label class="label">Recurrencia (RRULE simple)</label>

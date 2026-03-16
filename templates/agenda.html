@@ -38,6 +38,7 @@
             <th style="width:42px;"></th>
             <th>Tarea</th>
             <th style="width:90px;">Fecha</th>
+            <th style="width:80px;">Hora</th>
             <th style="width:160px;">Ubicación</th>
             <th style="width:95px;"></th> {# Espacio de acciones reducido #}
           </tr>
@@ -56,7 +57,7 @@
 				  {{ t.title }}
 
 				  {% if t.notes %}
-					<a href="{{ url_for('task_edit', task_id=t.id, next=url_for('next_actions')) }}"
+          <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('agenda', page=page)) }}"
 					   title="{{ t.notes }}"
 					   style="text-decoration:none; font-size:0.9rem; opacity:.75;">
 					   📝
@@ -76,6 +77,19 @@
 
             <td style="font-size: 0.85rem;">
               {% if t.due_date %}{{ t.due_date.strftime('%d-%m-%Y') }}{% else %}<span class="muted">—</span>{% endif %}
+            </td>
+
+            <td style="font-size: 0.85rem;">
+              {% if t.due_time %}
+                {% if t.due_time.strftime is defined %}
+                  {{ t.due_time.strftime('%H:%M') }}
+                {% else %}
+                  {% set ts = t.due_time|string %}
+                  {{ ts[:5] }}
+                {% endif %}
+              {% else %}
+                <span class="muted">—</span>
+              {% endif %}
             </td>
 
             <td style="font-size: 0.8rem;">
@@ -98,7 +112,7 @@
             </td>
 
             <td class="actions" style="text-align: right;">
-              <a class="btn btn-soft" href="{{ url_for('task_edit', task_id=t.id) }}"> ✎ </a>
+              <a class="btn btn-soft" href="{{ url_for('task_edit', task_id=t.id, next=url_for('agenda', page=page)) }}"> ✎ </a>
               <form method="post" action="{{ url_for('task_delete', task_id=t.id) }}" style="display:inline;">
                 <button class="btn btn-soft" onclick="return confirm('¿Borrar esta tarea?');"> 🗑 </button>
               </form>

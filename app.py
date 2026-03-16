@@ -9,7 +9,7 @@ import pymysql
 
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
@@ -31,10 +31,11 @@ from calendar_import import (
 )
 
 
-from calendar_import import  (
-    build_google_service,
-    list_upcoming_events, 
-    event_to_task_payload,
+from gmail_import import (
+    build_gmail_service, 
+    list_matching_messages,
+    get_message_metadata, 
+    message_to_task_payload
 )
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -299,6 +300,10 @@ def ensure_schema_updates() -> None:
         "ALTER TABLE tags "
         "ADD COLUMN IF NOT EXISTS type VARCHAR(80) NULL AFTER name"
     )
+    exec_sql(
+        "ALTER TABLE tasks "
+        "ADD COLUMN IF NOT EXISTS due_time TIME NULL AFTER due_date"
+    )
     commit()
     _schema_bootstrapped = True
 
@@ -357,6 +362,8 @@ DATE_BARE_RE = re.compile(
     r'\d{1,2}-\d{1,2}(?:-\d{4})?'
     r')\b'
 )
+
+TIME_TOKEN_RE = re.compile(r'(?<!\S)h:(\d{1,2}:\d{2})\b', re.IGNORECASE)
 
 def parse_due_token(token: str) -> date:
     token = (token or "").strip().lower()
@@ -422,6 +429,40 @@ def extract_due_date_from_quick(raw_text: str) -> Tuple[Optional[date], str]:
         return due_date, cleaned
 
     return None, s
+
+
+def parse_due_time_token(token: str) -> time:
+    m = re.fullmatch(r'(\d{1,2}):(\d{2})', (token or '').strip())
+    if not m:
+        raise ValueError(f"Hora inválida: {token}")
+
+    hh = int(m.group(1))
+    mm = int(m.group(2))
+    if hh < 0 or hh > 23 or mm < 0 or mm > 59:
+        raise ValueError(f"Hora inválida: {token}")
+
+    return time(hour=hh, minute=mm)
+
+
+def extract_due_time_from_quick(raw_text: str) -> Tuple[Optional[time], str]:
+    """
+    Devuelve (due_time, cleaned_text)
+
+    Soporta prefijo: h:HH:MM
+    Ejemplos válidos: h:23:30, h:8:05
+    """
+    s = (raw_text or '').strip()
+    if not s:
+        return None, s
+
+    m = TIME_TOKEN_RE.search(s)
+    if not m:
+        return None, s
+
+    due_time = parse_due_time_token(m.group(1))
+    cleaned = (s[:m.start()] + " " + s[m.end():]).strip()
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    return due_time, cleaned
 
 
 def parse_task_quick_entry(raw_title: str) -> Tuple[str, List[str], Optional[str]]:
@@ -1260,7 +1301,7 @@ def agenda():
     pages = max(1, (total + per_page - 1) // per_page)
 
     rows = q(
-        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, "
+        "SELECT t.id, t.title, t.notes, t.due_date, t.due_time, t.completed_at, t.recurrence_rule, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.id AS folder_id, fd.name AS folder_name "
         "FROM tasks t "
@@ -1268,7 +1309,7 @@ def agenda():
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "WHERE t.due_date IS NOT NULL "
         "AND t.completed_at IS NULL "
-        "ORDER BY (t.completed_at IS NOT NULL) ASC, t.due_date ASC, t.id DESC "
+        "ORDER BY (t.completed_at IS NOT NULL) ASC, t.due_date ASC, (t.due_time IS NULL) ASC, t.due_time ASC, t.id DESC "
         "LIMIT %s OFFSET %s",
         (per_page, offset),
     )
@@ -1945,6 +1986,7 @@ def task_create():
 
     raw = (request.form.get("quick") or "").strip()
     due = request.form.get("due_date") or None
+    due_time_raw = (request.form.get("due_time") or "").strip()
     recurrence = (request.form.get("recurrence_rule") or "").strip() or None
 
     if not raw:
@@ -1958,9 +2000,12 @@ def task_create():
 
     # 2) Extraer fecha desde texto rápido
     detected_due_date = None
+    detected_due_time = None
     try:
         if not due:
             detected_due_date, raw_work = extract_due_date_from_quick(raw_work)
+        if not due_time_raw:
+            detected_due_time, raw_work = extract_due_time_from_quick(raw_work)
     except ValueError as e:
         flash(str(e), "error")
         return redirect(request.referrer or url_for("home"))
@@ -1998,6 +2043,7 @@ def task_create():
 
     # 6) Resolver due_date final
     due_date = None
+    due_time = None
     if due:
         try:
             due_date = datetime.strptime(due, "%Y-%m-%d").date()
@@ -2005,6 +2051,15 @@ def task_create():
             due_date = None
     elif detected_due_date:
         due_date = detected_due_date
+
+    if due_time_raw:
+        try:
+            due_time = parse_due_time_token(due_time_raw)
+        except ValueError:
+            flash("Hora inválida. Usa formato HH:MM.", "error")
+            return redirect(request.referrer or url_for("home"))
+    elif detected_due_time:
+        due_time = detected_due_time
 
     try:
         project_sel = (request.form.get("project_id") or "").strip()
@@ -2038,8 +2093,8 @@ def task_create():
                     )
 
         task_id = exec_sql(
-            "INSERT INTO tasks(title, project_id, folder_id, due_date, recurrence_rule) VALUES(%s,%s,%s,%s,%s)",
-            (title, project_id, folder_id, due_date, recurrence),
+            "INSERT INTO tasks(title, project_id, folder_id, due_date, due_time, recurrence_rule) VALUES(%s,%s,%s,%s,%s,%s)",
+            (title, project_id, folder_id, due_date, due_time, recurrence),
         )
 
         for t in tags:
@@ -2075,15 +2130,29 @@ def task_quick_add():
           y asigna la tarea a ese proyecto
     """
     raw = (request.form.get("quick") or "").strip()
+    due_time_raw = (request.form.get("due_time") or "").strip()
     if not raw:
         flash("El nombre de la tarea es obligatorio.", "error")
         return redirect(request.form.get("next") or request.referrer or url_for("home"))
 
     try:
         due_date, raw = extract_due_date_from_quick(raw)
+        detected_due_time = None
+        if not due_time_raw:
+            detected_due_time, raw = extract_due_time_from_quick(raw)
     except ValueError as e:
         flash(str(e), "error")
         return redirect(request.form.get("next") or request.referrer or url_for("home"))
+
+    due_time = None
+    if due_time_raw:
+        try:
+            due_time = parse_due_time_token(due_time_raw)
+        except ValueError:
+            flash("Hora inválida. Usa formato HH:MM.", "error")
+            return redirect(request.form.get("next") or request.referrer or url_for("home"))
+    else:
+        due_time = detected_due_time
 
     title, tags, quick_project_name = parse_task_quick_entry(raw)
     
@@ -2131,8 +2200,8 @@ def task_quick_add():
         #    - si hay project_id => la tarea va al proyecto
         #    - si no hay project_id => va a la carpeta (si existe)
         task_id = exec_sql(
-            "INSERT INTO tasks(title, project_id, folder_id, due_date) VALUES(%s,%s,%s,%s)",
-            (title, project_id, folder_id, due_date),
+            "INSERT INTO tasks(title, project_id, folder_id, due_date, due_time) VALUES(%s,%s,%s,%s,%s)",
+            (title, project_id, folder_id, due_date, due_time),
         )
 
         # 3) Etiquetas
@@ -2163,7 +2232,7 @@ def task_edit(task_id: int):
 
     # ---------- load task ----------
     task = q1(
-        "SELECT id, title, notes, due_date, project_id, folder_id, recurrence_rule, completed_at "
+        "SELECT id, title, notes, due_date, due_time, project_id, folder_id, recurrence_rule, completed_at "
         "FROM tasks WHERE id=%s",
         (task_id,),
     )
@@ -2205,6 +2274,7 @@ def task_edit(task_id: int):
         raw_title = normalize_name(request.form.get("title", ""))
         notes = (request.form.get("notes") or "").strip() or None
         due_raw = (request.form.get("due_date") or "").strip()
+        due_time_raw = (request.form.get("due_time") or "").strip()
         recurrence = (request.form.get("recurrence_rule") or "").strip() or None
 
         project_raw = (request.form.get("project_id") or "").strip()
@@ -2224,9 +2294,16 @@ def task_edit(task_id: int):
 
         # 2) Extraer fecha del título (solo si el campo due_date está vacío)
         detected_due_date = None
+        detected_due_time = None
         if not due_raw:
             try:
                 detected_due_date, raw_work = extract_due_date_from_quick(raw_work)
+            except ValueError as e:
+                flash(str(e), "error")
+                return redirect(url_for("task_edit", task_id=task_id, next=next_url))
+        if not due_time_raw:
+            try:
+                detected_due_time, raw_work = extract_due_time_from_quick(raw_work)
             except ValueError as e:
                 flash(str(e), "error")
                 return redirect(url_for("task_edit", task_id=task_id, next=next_url))
@@ -2253,6 +2330,7 @@ def task_edit(task_id: int):
         clean_title = raw_work
         clean_title = re.sub(r'@([^\s@#]+)', '', clean_title)
         clean_title = re.sub(r'#([^\s#]+)', '', clean_title)
+        clean_title = re.sub(TIME_TOKEN_RE, '', clean_title)
         clean_title = re.sub(r'\s+', ' ', clean_title).strip(" -_,.;:")
 
         if not clean_title:
@@ -2261,6 +2339,7 @@ def task_edit(task_id: int):
 
         # ── Resolver due_date final ──
         due_date = None
+        due_time = None
         if due_raw:
             try:
                 due_date = datetime.strptime(due_raw, "%Y-%m-%d").date()
@@ -2269,6 +2348,15 @@ def task_edit(task_id: int):
                 return redirect(url_for("task_edit", task_id=task_id, next=next_url))
         elif detected_due_date:
             due_date = detected_due_date
+
+        if due_time_raw:
+            try:
+                due_time = parse_due_time_token(due_time_raw)
+            except ValueError:
+                flash("Hora inválida. Usa formato HH:MM.", "error")
+                return redirect(url_for("task_edit", task_id=task_id, next=next_url))
+        elif detected_due_time:
+            due_time = detected_due_time
 
         # ── Resolver proyecto / carpeta ──
         project_id = None
@@ -2310,9 +2398,9 @@ def task_edit(task_id: int):
         try:
             exec_sql(
                 "UPDATE tasks "
-                "SET title=%s, notes=%s, due_date=%s, project_id=%s, folder_id=%s, recurrence_rule=%s "
+                "SET title=%s, notes=%s, due_date=%s, due_time=%s, project_id=%s, folder_id=%s, recurrence_rule=%s "
                 "WHERE id=%s",
-                (clean_title, notes, due_date, project_id, folder_id, recurrence, task_id),
+                (clean_title, notes, due_date, due_time, project_id, folder_id, recurrence, task_id),
             )
 
             # Tags: borrar y reinsertar
@@ -2592,8 +2680,7 @@ def folder_detail(folder_id: int):
         (folder_id,)
     )
     tags_map = load_tags_map([t["id"] for t in tasks])
-    
-    task_ids = [t["id"] for t in tasks] if tasks else []
+    task_ids = [t["id"] for t in tasks]
 
     sub_map = {}
     sub_counts = {}

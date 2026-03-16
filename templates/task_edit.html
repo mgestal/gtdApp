@@ -2,7 +2,7 @@
 {% block content %}
   <div class="page-title">
     <h1>✍🏼 Editar tarea</h1> 
-    <p class="subtitle">Modificar título, fecha, proyecto, etiquetas y recurrencia.</p>
+    <p class="subtitle">Modificar título, fecha/hora, proyecto, etiquetas y recurrencia.</p>
   </div>
 
   <div class="card">
@@ -24,17 +24,8 @@
               <option value="{{ f.id }}" {% if task.folder_id == f.id %}selected{% endif %}>{{ f.name }}</option>
             {% endfor %}
           </select>
-          <div class="hint">Si seleccionas un proyecto, la carpeta se ignorará.</div>
-        </div>
 
-        <div>
-          <label class="label">Fecha de finalización</label>
-          <input class="input" type="date" name="due_date"
-                 value="{% if task.due_date %}{{ task.due_date }}{% endif %}">
-        </div>
-
-        <div>
-          <label class="label">Proyecto</label>
+          <label class="label" style="margin-top:10px;">Proyecto (+prioridad)</label>
           <select class="input" name="project_id">
             <option value="">(Inbox / sin proyecto)</option>
             {% for p in projects %}
@@ -44,6 +35,17 @@
             {% endfor %}
           </select>
         </div>
+
+        <div>
+          <label class="label">Fecha de finalización</label>
+          <input class="input" type="date" name="due_date"
+                 value="{% if task.due_date %}{{ task.due_date }}{% endif %}">
+
+           <label class="label" style="margin-top:8px;">Hora (opcional)</label>
+           <input class="input" type="time" name="due_time"
+             value="{% if task.due_time %}{{ task.due_time.strftime('%H:%M') if task.due_time.strftime is defined else (task.due_time|string)[:5] }}{% endif %}">
+        </div>
+
       </div>
 
       <label class="label">Etiquetas (separadas por comas): <i>@NextAction, @casa...</i></label>

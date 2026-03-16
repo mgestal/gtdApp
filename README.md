@@ -17,6 +17,7 @@ Incluye:
 -   subtareas
 -   lenguaje de filtros avanzado
 -   importación de correos desde Gmail
+-   importación de eventos desde Google Calendar
 -   captura rápida desde Telegram
 
 El objetivo es tener un sistema **GTD completo, ligero y auto‑alojado**.
@@ -75,7 +76,7 @@ Permite construir consultas complejas similares a **Todoist / Things**.
 
 # Integración Gmail
 
-Importa correos automáticamente como tareas en Inbox.
+Importa correos automáticamente como tareas en Inbox (añade tag inbox.email)
 
 Características:
 
@@ -83,10 +84,26 @@ Características:
 -   evita duplicados
 -   guarda enlace al correo
 -   permite filtrar con queries de Gmail
+-   parsea título de proyecto en busqueda de etiquetas, proyectos, fechas...
 
 Ejemplo de query:
 
     label:ToGTD in:inbox
+
+------------------------------------------------------------------------
+
+# Integración Google Calendar
+
+Importa eventos automáticamente como tareas en Inbox (añade tag inbox.calendar)
+
+Características:
+
+-   usa **Google Calendar API**
+-   evita duplicados
+-   guarda enlace al evento
+-   permite dos tipos importaciones: por fecha de ocurrencia del evento 
+                                     o por fecha de creación del evento
+
 
 ------------------------------------------------------------------------
 
@@ -110,8 +127,17 @@ Ejemplo:
 
   Comando          Función
   ---------------- --------------------------------------
+  `/info` `/help`  información del bot y ayuda
   `/nextactions`   lista tareas con etiqueta NextAction
-  `/hoy`           lista tareas con fecha hoy
+  `/hoy`           lista tareas con fecha hoy (resumen)
+  `/today`         lista tareas con fecha hoy (extendido)
+  `/agenda`        lista tareas agendadas con fecha
+  `/done`          lista tareas completadas hoy
+
+
+### Script send_today.py
+
+   Envía a telegram un listado de las tareas para hoy
 
 ------------------------------------------------------------------------
 
@@ -142,16 +168,26 @@ Ejemplo:
   "db": {
     "host": "127.0.0.1",
     "port": 3306,
-    "user": "gtd",
+    "user": "user",
     "password": "password",
     "database": "gtd",
     "charset": "utf8mb4"
   },
   "app": {
     "timezone": "Europe/Madrid",
-    "title": "GTD App"
+    "title": "GTD App",
+    "pagination": {
+      "agenda_per_page": 15,
+      "search_per_page": 20,
+      "tags_per_page": 10,
+      "tag_detail_per_page": 10,
+      "folders_per_page": 10,
+      "filters_per_page": 10,
+      "projects_per_page": 15
+    }
   }
 }
+
 ```
 
 ------------------------------------------------------------------------
@@ -168,7 +204,7 @@ Abrir:
 
 # Telegram Bot
 
-Guardar el token en:
+Guardar el token para publicación en:
 
     .token-gtdapp
 
@@ -190,35 +226,6 @@ Archivos que **NO subidos al repositorio**:
 Añadidos al `.gitignore`.
 
 
-------------------------------------------------------------------------
-
-# Formato config.json
-
-
-{
-  "db": {
-    "host": "127.0.0.1",
-    "port": 3306,
-    "user": "user",
-    "password": "password",
-    "database": "gtd",
-    "charset": "utf8mb4"
-  },
-  "app": {
-    "timezone": "Europe/Madrid",
-    "title": "GTD App",
-    "pagination": {
-      "agenda_per_page": 15,
-      "search_per_page": 20,
-      "tags_per_page": 10,
-      "tag_detail_per_page": 10,
-      "folders_per_page": 10,
-      "filters_per_page": 10,
-      "projects_per_page": 15
-    }
-  }
-}
-
 
 ------------------------------------------------------------------------
 
@@ -227,17 +234,26 @@ Añadidos al `.gitignore`.
     gtdApp/
     │
     ├── app.py
+    ├── calendar_import.py
     ├── gmail_import.py
-    ├── telegram_bot.py
+    ├── send_today.py
     ├── subtasks.py
+    ├── telegram_bot.py
     │
     ├── templates/
+    │
+    ├── sql
+    |   └── esquema.sql
+    │
     ├── static/
+    │   ├── style.css
+    |   └── tag_autocomplete.js
     │
     ├── instance/
     │   ├── config.json
     │   ├── gmail_credentials.json
-    │   └── gmail_token.json
+    │   ├── gmail_token.json
+    |   └── telegram_chat.json
     │
     └── .token-gtdapp
 

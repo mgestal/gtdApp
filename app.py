@@ -4135,15 +4135,88 @@ def gmail_import_to_inbox():
             full_msg = get_message_metadata(service, message_id)
             payload = message_to_task_payload(full_msg)
 
+            raw = (payload.get("title") or "").strip()
+            raw_work = raw
+
+            # Parseo estilo task_create sobre el subject del correo.
+            tags = re.findall(r'@([^\s@#]+)', raw_work)
+
+            detected_due_date = None
+            detected_due_time = None
+            if not payload.get("due_date"):
+                detected_due_date, raw_work = extract_due_date_from_quick(raw_work)
+            detected_due_time, raw_work = extract_due_time_from_quick(raw_work)
+
+            recurrence = None
+            for pattern, rule in RECURRENCE_PATTERNS.items():
+                if re.search(pattern, raw_work, flags=re.IGNORECASE):
+                    recurrence = rule
+                    break
+
+            project_name = None
+            project_candidates = re.findall(r'#([^\s#]+)', raw_work)
+            for candidate in project_candidates:
+                if re.fullmatch(r'\d{2}-\d{2}-\d{4}', candidate):
+                    continue
+                project_name = normalize_name(candidate)
+                break
+
+            title = raw_work
+            title = re.sub(r'@([^\s@#]+)', '', title)
+            title = re.sub(r'\bcada\s+dia\b', '', title, flags=re.IGNORECASE)
+            title = re.sub(r'\bcada\s+semana\b', '', title, flags=re.IGNORECASE)
+            title = re.sub(r'\bcada\s+mes\b', '', title, flags=re.IGNORECASE)
+            title = re.sub(r'\bcada\s+año\b', '', title, flags=re.IGNORECASE)
+            title = re.sub(r'#([^\s#]+)', '', title)
+            title = re.sub(TIME_TOKEN_RE, '', title)
+            title = re.sub(r'\s+', ' ', title).strip(" -_,.;:")
+
+            if not title:
+                title = raw or "(sin asunto)"
+
+            due_date = payload.get("due_date") or detected_due_date
+            due_time = detected_due_time
+
+            project_id = None
+            if project_name:
+                project_id = find_project_by_name_active(project_name)
+                if project_id is None:
+                    project_id = exec_sql(
+                        "INSERT INTO projects(name, archived) VALUES(%s, %s)",
+                        (project_name, 0),
+                    )
+
+            tag_names = []
+            seen_tags = set()
+            for t in tags + ["inbox.gmail"]:
+                t_norm = normalize_name(t)
+                if not t_norm:
+                    continue
+                low = t_norm.lower()
+                if low in seen_tags:
+                    continue
+                seen_tags.add(low)
+                tag_names.append(t_norm)
+
             task_id = exec_sql(
-                "INSERT INTO tasks(title, notes, project_id, folder_id, due_date, recurrence_rule) "
-                "VALUES(%s,%s,NULL,NULL,%s,NULL)",
+                "INSERT INTO tasks(title, notes, project_id, folder_id, due_date, due_time, recurrence_rule) "
+                "VALUES(%s,%s,%s,NULL,%s,%s,%s)",
                 (
-                    payload["title"],
+                    title,
                     payload["notes"],
-                    payload["due_date"],
+                    project_id,
+                    due_date,
+                    due_time,
+                    recurrence,
                 ),
             )
+
+            for tname in tag_names:
+                tid = get_or_create_tag(tname)
+                exec_sql(
+                    "INSERT IGNORE INTO task_tags(task_id, tag_id) VALUES(%s,%s)",
+                    (task_id, tid),
+                )
 
             exec_sql(
                 "INSERT INTO imported_emails(gmail_message_id, gmail_thread_id, task_id) "
@@ -4209,7 +4282,7 @@ def calendar_import_to_inbox():
             flash("No se encontraron eventos para importar.", "ok")
             return redirect(next_url)
 
-        tag_calendar_id = get_or_create_tag("calendar")
+        tag_calendar_id = get_or_create_tag("inbox.calendar")
         tag_agenda_id = get_or_create_tag("agenda")
 
         created = 0

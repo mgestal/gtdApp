@@ -8,16 +8,29 @@
   <form method="get" class="form" style="margin-bottom:12px;">
   <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
     <input class="input" name="q" value="{{ qtxt }}" placeholder="Filtrar etiquetas (ej: next)">
+    <select class="input" name="type">
+      <option value="">Todos los tipos</option>
+      <option value="{{ type_filter_none_token }}" {% if type_filter == type_filter_none_token %}selected{% endif %}>Sin tipo</option>
+      {% for tp in tag_types %}
+        <option value="{{ tp }}" {% if type_filter == tp %}selected{% endif %}>{{ tp }}</option>
+      {% endfor %}
+    </select>
     <button class="btn btn-soft" type="submit">Aplicar filtro</button>
-    {% if qtxt %}
+    {% if qtxt or type_filter %}
       <a class="btn btn-soft" href="{{ url_for('tags') }}">Quitar filtro</a>
     {% endif %}
   </div>
 </form>
 
 <div class="muted" style="font-size:12px; margin-bottom:10px;">
-  {% if qtxt %}
-    Filtro activo: <b>{{ qtxt }}</b> · {{ total }} resultados
+  {% if qtxt or type_filter %}
+    Filtro activo:
+    {% if qtxt %}<b>{{ qtxt }}</b>{% endif %}
+    {% if qtxt and type_filter %} · {% endif %}
+    {% if type_filter %}
+      tipo <b>{% if type_filter == type_filter_none_token %}Sin tipo{% else %}{{ type_filter }}{% endif %}</b>
+    {% endif %}
+    · {{ total }} resultados
   {% else %}
     {{ total }} etiquetas
   {% endif %}
@@ -31,16 +44,16 @@
       </div>
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
         {% if page > 1 %}
-          <a class="btn btn-soft" href="{{ url_for('tags', page=1) }}">« Primera</a>
-          <a class="btn btn-soft" href="{{ url_for('tags', page=page-1) }}">‹ Anterior</a>
+          <a class="btn btn-soft" href="{{ url_for('tags', page=1, q=qtxt, type=type_filter) }}">« Primera</a>
+          <a class="btn btn-soft" href="{{ url_for('tags', page=page-1, q=qtxt, type=type_filter) }}">‹ Anterior</a>
         {% else %}
           <span class="btn btn-soft disabled">« Primera</span>
           <span class="btn btn-soft disabled">‹ Anterior</span>
         {% endif %}
 
         {% if page < pages %}
-          <a class="btn btn-soft" href="{{ url_for('tags', page=page+1) }}">Siguiente ›</a>
-          <a class="btn btn-soft" href="{{ url_for('tags', page=pages) }}">Última »</a>
+          <a class="btn btn-soft" href="{{ url_for('tags', page=page+1, q=qtxt, type=type_filter) }}">Siguiente ›</a>
+          <a class="btn btn-soft" href="{{ url_for('tags', page=pages, q=qtxt, type=type_filter) }}">Última »</a>
         {% else %}
           <span class="btn btn-soft disabled">Siguiente ›</span>
           <span class="btn btn-soft disabled">Última »</span>
@@ -55,12 +68,16 @@
 			<a class="tagchiptags taglink" href="{{ url_for('tag_detail', tag_id=t.id) }}">
 			  @{{ t.name }}
 			</a>
+      {% if t.type %}
+        <span class="muted" style="margin-left:8px;">({{ t.type }})</span>
+      {% endif %}
 		  </div>
 
 		  <div class="actions tag-actions">
-			<a class="btn btn-soft" href="{{ url_for('tag_edit', tag_id=t.id) }}">✎</a>
+      <a class="btn btn-soft" href="{{ url_for('tag_edit', tag_id=t.id, next=url_for('tags', page=page, q=qtxt, type=type_filter)) }}">✎</a>
 
-			<form method="post" action="{{ url_for('tag_delete', tag_id=t.id) }}">
+      <form method="post" action="{{ url_for('tag_delete', tag_id=t.id) }}">
+        <input type="hidden" name="next" value="{{ url_for('tags', page=page, q=qtxt, type=type_filter) }}">
 			  <button class="btn btn-soft"
 					  onclick="return confirm('¿Borrar la etiqueta @{{ t.name }} de todas las tareas?');">
 				🗑
@@ -78,10 +95,10 @@
 
     <div class="pager" style="margin-top:12px; display:flex; gap:10px; align-items:center; justify-content:flex-end; flex-wrap:wrap;">
       {% if page > 1 %}
-        <a class="btn btn-soft" href="{{ url_for('tags', page=page-1) }}">‹ Anterior</a>
+        <a class="btn btn-soft" href="{{ url_for('tags', page=page-1, q=qtxt, type=type_filter) }}">‹ Anterior</a>
       {% endif %}
       {% if page < pages %}
-        <a class="btn btn-soft" href="{{ url_for('tags', page=page+1) }}">Siguiente ›</a>
+        <a class="btn btn-soft" href="{{ url_for('tags', page=page+1, q=qtxt, type=type_filter) }}">Siguiente ›</a>
       {% endif %}
     </div>
   </div>

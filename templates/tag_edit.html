@@ -12,6 +12,9 @@
       <label class="label">Nombre</label>
       <input class="input" name="name" value="{{ tag.name }}" required>
 
+      <label class="label">Tipo (opcional)</label>
+      <input class="input" name="type" value="{{ tag.type or '' }}" placeholder="contexto, herramienta...">
+
       <div class="row">
         <button class="btn btn-primary" type="submit">Guardar</button>
         <a class="btn btn-soft" href="{{ next_url }}">Cancelar</a>

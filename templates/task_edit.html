@@ -10,7 +10,7 @@
       <input type="hidden" name="next" value="{{ next_url }}">
 
       <label class="label">Título</label>
-      <input class="input" name="title" value="{{ task.title }}" required>
+      <input class="input js-tag-autocomplete" name="title" value="{{ task.title }}" autocomplete="off" required>
 
       <label class="label">Notas</label>
       <textarea class="input" name="notes" rows="2">{% if task.notes %}{{ task.notes }}{% endif %}</textarea>

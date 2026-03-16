@@ -154,6 +154,8 @@ def save_config(cfg: Dict[str, Any]) -> None:
 app = Flask(__name__, instance_relative_config=True)
 app.config["SECRET_KEY"] = os.environ.get("GTD_SECRET_KEY", "CHANGE_ME_IN_PROD")
 
+_schema_bootstrapped = False
+
 
 
 # ---------------- Gmail import ----------------
@@ -221,6 +223,7 @@ def get_db_conn():
 @app.before_request
 def _before():
     g.cfg = load_config()
+    ensure_schema_updates()
 
 @app.teardown_request
 def _teardown(exc):
@@ -244,6 +247,19 @@ def q(sql: str, params: Tuple[Any, ...] = ()) -> List[Dict[str, Any]]:
 def q1(sql: str, params: Tuple[Any, ...] = ()) -> Optional[Dict[str, Any]]:
     rows = q(sql, params)
     return rows[0] if rows else None
+
+
+def ensure_schema_updates() -> None:
+    global _schema_bootstrapped
+    if _schema_bootstrapped:
+        return
+
+    exec_sql(
+        "ALTER TABLE tags "
+        "ADD COLUMN IF NOT EXISTS type VARCHAR(80) NULL AFTER name"
+    )
+    commit()
+    _schema_bootstrapped = True
 
 
 def ensure_review_defaults() -> None:
@@ -1647,7 +1663,7 @@ def project_delete(project_id: int):
 
 @app.route("/tags/<int:tag_id>/edit", methods=["GET", "POST"])
 def tag_edit(tag_id: int):
-    tag = q1("SELECT id, name FROM tags WHERE id=%s", (tag_id,))
+    tag = q1("SELECT id, name, type FROM tags WHERE id=%s", (tag_id,))
     if not tag:
         abort(404)
 
@@ -1655,12 +1671,13 @@ def tag_edit(tag_id: int):
 
     if request.method == "POST":
         name = normalize_name(request.form.get("name", ""))
+        tag_type = normalize_name(request.form.get("type", "")) or None
         if not name:
             flash("El nombre es obligatorio.", "error")
             return redirect(url_for("tag_edit", tag_id=tag_id, next=next_url))
 
         try:
-            exec_sql("UPDATE tags SET name=%s WHERE id=%s", (name, tag_id))
+            exec_sql("UPDATE tags SET name=%s, type=%s WHERE id=%s", (name, tag_type, tag_id))
             commit()
             flash("Etiqueta actualizada.", "ok")
             return redirect(next_url)
@@ -1698,6 +1715,8 @@ def tag_delete(tag_id: int):
 @app.route("/tags")
 def tags():
     qtxt = (request.args.get("q") or "").strip()
+    type_filter = normalize_name(request.args.get("type", ""))
+    type_filter_none_token = "__none__"
 
     per_page = cfg_int(["app", "pagination", "tags_per_page"], default=25, min_v=5, max_v=500)
 
@@ -1709,10 +1728,18 @@ def tags():
     offset = (page - 1) * per_page
 
     params = []
-    where = ""
+    where_parts = []
     if qtxt:
-        where = "WHERE LOWER(tg.name) LIKE %s"
+        where_parts.append("LOWER(tg.name) LIKE %s")
         params.append(f"%{qtxt.lower()}%")
+    if type_filter:
+        if type_filter == type_filter_none_token:
+            where_parts.append("(tg.type IS NULL OR TRIM(tg.type) = '')")
+        else:
+            where_parts.append("LOWER(COALESCE(tg.type, '')) = %s")
+            params.append(type_filter.lower())
+
+    where = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
 
     total_row = q1(f"SELECT COUNT(*) AS c FROM tags tg {where}", tuple(params))
     total = int(total_row["c"]) if total_row else 0
@@ -1724,20 +1751,31 @@ def tags():
 
     # (opcional pero útil) contador de tareas por etiqueta
     rows = q(
-        "SELECT tg.id, tg.name, COUNT(tt.task_id) AS task_count "
+        "SELECT tg.id, tg.name, tg.type, COUNT(tt.task_id) AS task_count "
         "FROM tags tg "
         "LEFT JOIN task_tags tt ON tt.tag_id=tg.id "
         f"{where} "
-        "GROUP BY tg.id, tg.name "
-        "ORDER BY tg.name "
+        "GROUP BY tg.id, tg.name, tg.type "
+        "ORDER BY tg.name ASC, (tg.type IS NULL) ASC, tg.type ASC  "
         "LIMIT %s OFFSET %s",
         tuple(params + [per_page, offset]),
     )
+
+    type_rows = q(
+        "SELECT DISTINCT tg.type "
+        "FROM tags tg "
+        "WHERE tg.type IS NOT NULL AND TRIM(tg.type) <> '' "
+        "ORDER BY tg.name asc, tg.type"
+    )
+    tag_types = [r["type"] for r in type_rows]
 
     return render_template(
         "tags.html",
         rows=rows,
         qtxt=qtxt,
+        type_filter=type_filter,
+        type_filter_none_token=type_filter_none_token,
+        tag_types=tag_types,
         page=page,
         pages=pages,
         total=total,
@@ -2123,7 +2161,7 @@ def task_edit(task_id: int):
 
     # ---------- POST: update ----------
     if request.method == "POST":
-        title = normalize_name(request.form.get("title", ""))
+        raw_title = normalize_name(request.form.get("title", ""))
         notes = (request.form.get("notes") or "").strip() or None
         due_raw = (request.form.get("due_date") or "").strip()
         recurrence = (request.form.get("recurrence_rule") or "").strip() or None
@@ -2132,11 +2170,55 @@ def task_edit(task_id: int):
         folder_raw = (request.form.get("folder_id") or "").strip()
         tags_csv_form = request.form.get("tags_csv") or ""
 
-        if not title:
+        if not raw_title:
             flash("El título es obligatorio.", "error")
             return redirect(url_for("task_edit", task_id=task_id, next=next_url))
 
-        # Fecha (YYYY-MM-DD del <input type="date">)
+        # ── Parsear el título en busca de @etiquetas, #proyecto, fecha y recurrencia ──
+
+        raw_work = raw_title
+
+        # 1) Extraer etiquetas @etiqueta del título
+        parsed_tags = re.findall(r'@([^\s@#]+)', raw_work)
+
+        # 2) Extraer fecha del título (solo si el campo due_date está vacío)
+        detected_due_date = None
+        if not due_raw:
+            try:
+                detected_due_date, raw_work = extract_due_date_from_quick(raw_work)
+            except ValueError as e:
+                flash(str(e), "error")
+                return redirect(url_for("task_edit", task_id=task_id, next=next_url))
+
+        # 3) Extraer recurrencia del título (solo si el campo recurrence_rule está vacío)
+        if not recurrence:
+            for pattern, rule in RECURRENCE_PATTERNS.items():
+                if re.search(pattern, raw_work, flags=re.IGNORECASE):
+                    recurrence = rule
+                    raw_work = re.sub(pattern, '', raw_work, flags=re.IGNORECASE)
+                    break
+
+        # 4) Extraer #Proyecto del título (solo si no se seleccionó proyecto/carpeta en el formulario)
+        quick_project_name = None
+        if not project_raw and not folder_raw:
+            project_candidates = re.findall(r'#([^\s#]+)', raw_work)
+            for candidate in project_candidates:
+                if re.fullmatch(r'\d{2}-\d{2}-\d{4}', candidate):
+                    continue
+                quick_project_name = candidate.strip()
+                break
+
+        # 5) Limpiar el título de tokens parseados
+        clean_title = raw_work
+        clean_title = re.sub(r'@([^\s@#]+)', '', clean_title)
+        clean_title = re.sub(r'#([^\s#]+)', '', clean_title)
+        clean_title = re.sub(r'\s+', ' ', clean_title).strip(" -_,.;:")
+
+        if not clean_title:
+            flash("No se detectó un título válido tras extraer etiquetas, fecha y proyecto.", "error")
+            return redirect(url_for("task_edit", task_id=task_id, next=next_url))
+
+        # ── Resolver due_date final ──
         due_date = None
         if due_raw:
             try:
@@ -2144,38 +2226,57 @@ def task_edit(task_id: int):
             except ValueError:
                 flash("Fecha inválida.", "error")
                 return redirect(url_for("task_edit", task_id=task_id, next=next_url))
+        elif detected_due_date:
+            due_date = detected_due_date
 
-        # Proyecto / carpeta (exclusivos)
+        # ── Resolver proyecto / carpeta ──
         project_id = None
+        folder_id = None
+
         if project_raw:
             try:
                 project_id = int(project_raw)
             except ValueError:
                 project_id = None
-
-        folder_id = None
-        if folder_raw:
+        elif folder_raw:
             try:
                 folder_id = int(folder_raw)
             except ValueError:
                 folder_id = None
+        elif quick_project_name:
+            # #Proyecto extraído del título
+            project_id = find_project_by_name_active(quick_project_name)
+            if project_id is None:
+                project_id = exec_sql(
+                    "INSERT INTO projects(name, archived) VALUES(%s, %s)",
+                    (quick_project_name, 0),
+                )
 
         if project_id:
             folder_id = None
         elif folder_id:
             project_id = None
 
+        # ── Combinar etiquetas: las del formulario tags_csv + las extraídas del título ──
+        tags_from_form = parse_tags_csv(tags_csv_form)
+        existing_lower = {t.lower() for t in tags_from_form}
+        for t in parsed_tags:
+            t_norm = normalize_name(t)
+            if t_norm and t_norm.lower() not in existing_lower:
+                tags_from_form.append(t_norm)
+                existing_lower.add(t_norm.lower())
+
         try:
             exec_sql(
                 "UPDATE tasks "
                 "SET title=%s, notes=%s, due_date=%s, project_id=%s, folder_id=%s, recurrence_rule=%s "
                 "WHERE id=%s",
-                (title, notes, due_date, project_id, folder_id, recurrence, task_id),
+                (clean_title, notes, due_date, project_id, folder_id, recurrence, task_id),
             )
 
             # Tags: borrar y reinsertar
             exec_sql("DELETE FROM task_tags WHERE task_id=%s", (task_id,))
-            for tname in parse_tags_csv(tags_csv_form):
+            for tname in tags_from_form:
                 tid = get_or_create_tag(tname)
                 exec_sql(
                     "INSERT IGNORE INTO task_tags(task_id, tag_id) VALUES(%s,%s)",
@@ -2184,7 +2285,6 @@ def task_edit(task_id: int):
 
             commit()
             flash("Tarea actualizada.", "ok")
-            # ✅ SIEMPRE vuelve al origen (normalizado con /gtdApp)
             return redirect(next_url)
 
         except Exception as e:

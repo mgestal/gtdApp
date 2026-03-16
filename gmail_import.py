@@ -158,7 +158,7 @@ def message_to_task_payload(msg: Dict[str, Any]) -> Dict[str, Any]:
     parsed_dt = parse_gmail_date(date_value)
     due_date = None  # No asignamos fecha automáticamente
 
-    title = f"[Email] {subject}"[:255]
+    title = f"@inbox.email {subject}"[:255]
     notes = snippet_to_notes(
         subject=subject,
         from_value=from_value,

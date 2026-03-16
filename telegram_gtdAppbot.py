@@ -893,9 +893,9 @@ async def send_today_summary():
 
     today_tasks = get_today_tasks()  # tu función existente
 
-    text = "====================================== \n"
+    text = "================================= \n"
     text += f"  Tareas para hoy ({datetime.date.today().strftime('%d/%m/%Y')}):\n"
-    text += "====================================== \n\n"
+    text += "================================= \n\n"
 
     if not today_tasks:
         text += "📅 Hoy no tienes tareas."

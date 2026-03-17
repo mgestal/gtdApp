@@ -352,7 +352,7 @@
       <div class="muted">{{ en_seguimiento_tasks|length }}</div>
     </div>
 
-    <div class="review-subtitle">Tareas <b>@EnSeguimiento</b> próximos 15 días</div>
+    <div class="review-subtitle"><b>@EnSeguimiento</b> viables ya o en los próximos 15 días</div>
     {% if not en_seguimiento_exists %}
       <div class="empty">No existe la etiqueta EnSeguimiento.</div>
     {% elif en_seguimiento_tasks %}
@@ -555,7 +555,7 @@
   <div class="card">
     <div class="card-header">
       <div class="card-title">7) Revisión ADTV / SomeTime</div>
-      <div class="muted">{{ adtv_projects|length + esta_semana_no_projects|length }}</div>
+      <div class="muted">{{ adtv_projects|length + esta_semana_no_projects|length + sometime_tasks_no_project|length }}</div>
     </div>
 
     <div class="review-subtitle">Proyectos en ADTV</div>
@@ -595,6 +595,39 @@
         </div>
       {% else %}
         <div class="empty">No hay proyectos en 🔜EstaSemanaNo.</div>
+      {% endif %}
+    </div>
+
+    <div class="review-subtitle">Tareas en SomeTime sin proyecto</div>
+    <div class="card" style="padding:10px; margin-bottom:10px;">
+      {% if not sometime_folder_exists %}
+        <div class="empty">No existe la carpeta SomeTime/Sometime.</div>
+      {% elif sometime_tasks_no_project %}
+        <div class="review-mini-list" style="margin-bottom:0;">
+          {% for t in sometime_tasks_no_project %}
+            <div class="review-mini-item">
+              <div class="review-mini-item-title">
+                <a class="link" href="{{ url_for('task_edit', task_id=t.id) }}">{{ t.title }}</a>
+                {% if t.notes %}
+                  <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('next_actions')) }}"
+                     title="{{ t.notes }}"
+                     style="text-decoration:none; font-size:0.9rem; opacity:.75;">
+                     📝
+                  </a>
+                {% endif %}
+              </div>
+              <div class="review-mini-meta">
+                {% if t.due_date %}{{ t.due_date.strftime('%d-%m-%Y') }}{% else %}Sin fecha{% endif %}
+                {% if t.folder_name %}
+                  <span class="muted"> · </span>
+                  <a href="{{ url_for('folder_detail', folder_id=t.folder_id) }}">📂 {{ t.folder_name }}</a>
+                {% endif %}
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty">No hay tareas en SomeTime/Sometime sin proyecto.</div>
       {% endif %}
     </div>
   </div>

@@ -4042,8 +4042,25 @@ def review():
     ]
 
     # 7) ADTV / SomeTime
+    sometime_folder_exists = folder_exists("Sometime")
     adtv_folder_exists = folder_exists("ADTV")
     esta_semana_no_folder_exists = folder_exists("🔜 EstaSemanaNo")
+
+    sometime_tasks_no_project = []
+    sometime_folder_row = q1("SELECT id FROM folders WHERE LOWER(name)=LOWER(%s)", ("Sometime",))
+    if sometime_folder_row and sometime_folder_row.get("id") is not None:
+        sometime_ids = get_folder_tree_ids(int(sometime_folder_row["id"]))
+        if sometime_ids:
+            placeholders = ",".join(["%s"] * len(sometime_ids))
+            sometime_tasks_no_project = q(
+                "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, "
+                "f.name AS folder_name, f.id AS folder_id "
+                "FROM tasks t "
+                "LEFT JOIN folders f ON f.id=t.folder_id "
+                f"WHERE t.completed_at IS NULL AND t.project_id IS NULL AND t.folder_id IN ({placeholders}) "
+                "ORDER BY (t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC",
+                tuple(sometime_ids),
+            ) or []
 
     adtv_projects = q(
         "SELECT p.id, p.name, p.description, p.archived, f.name AS folder_name "
@@ -4107,6 +4124,7 @@ def review():
         en_seguimiento_tasks,
         agenda_overdue,
         en_espera_tasks,
+        sometime_tasks_no_project,
         checklist_tasks,
     ):
         all_task_ids.extend([t["id"] for t in group])
@@ -4130,6 +4148,8 @@ def review():
         active_projects_rutinas=active_projects_rutinas,
         active_projects_other=active_projects_other,
         empty_projects=empty_projects,
+        sometime_folder_exists=sometime_folder_exists,
+        sometime_tasks_no_project=sometime_tasks_no_project,
         adtv_folder_exists=adtv_folder_exists,
         adtv_projects=adtv_projects,
         esta_semana_no_folder_exists=esta_semana_no_folder_exists,

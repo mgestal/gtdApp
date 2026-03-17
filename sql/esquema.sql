@@ -96,6 +96,7 @@ CREATE TABLE `projects` (
   `name` varchar(255) NOT NULL,
   `description` text DEFAULT NULL,
   `archived` tinyint(1) NOT NULL DEFAULT 0,
+  `archived_at` datetime DEFAULT NULL,
   `active_name` varchar(255) GENERATED ALWAYS AS (if(`archived` = 0,`name`,NULL)) STORED,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NULL DEFAULT NULL,
@@ -103,6 +104,7 @@ CREATE TABLE `projects` (
   UNIQUE KEY `uq_project_active_name` (`active_name`),
   KEY `idx_projects_folder` (`folder_id`),
   KEY `idx_projects_archived` (`archived`),
+  KEY `idx_projects_archived_at` (`archived_at`),
   CONSTRAINT `fk_projects_folder` FOREIGN KEY (`folder_id`) REFERENCES `folders` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB AUTO_INCREMENT=26 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -184,11 +186,15 @@ CREATE TABLE `tasks` (
   `completed_at` datetime DEFAULT NULL,
   `last_completed_at` datetime DEFAULT NULL,
   `recurrence_rule` varchar(255) DEFAULT NULL,
+  `archived` tinyint(1) NOT NULL DEFAULT 0,
+  `archived_at` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `idx_tasks_project` (`project_id`),
   KEY `idx_tasks_due` (`due_date`),
   KEY `idx_tasks_due_time` (`due_time`),
   KEY `idx_tasks_completed` (`completed_at`),
+  KEY `idx_tasks_archived` (`archived`),
+  KEY `idx_tasks_archived_at` (`archived_at`),
   KEY `idx_tasks_folder` (`folder_id`),
   FULLTEXT KEY `ftx_tasks_title_notes` (`title`,`notes`),
   CONSTRAINT `fk_tasks_folder` FOREIGN KEY (`folder_id`) REFERENCES `folders` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,

@@ -310,7 +310,23 @@ def ensure_schema_updates() -> None:
     )
     exec_sql(
         "ALTER TABLE tasks "
+        "ADD COLUMN IF NOT EXISTS archived_at DATETIME NULL AFTER archived"
+    )
+    exec_sql(
+        "ALTER TABLE projects "
+        "ADD COLUMN IF NOT EXISTS archived_at DATETIME NULL AFTER archived"
+    )
+    exec_sql(
+        "ALTER TABLE tasks "
         "ADD INDEX IF NOT EXISTS idx_tasks_archived (archived)"
+    )
+    exec_sql(
+        "ALTER TABLE tasks "
+        "ADD INDEX IF NOT EXISTS idx_tasks_archived_at (archived_at)"
+    )
+    exec_sql(
+        "ALTER TABLE projects "
+        "ADD INDEX IF NOT EXISTS idx_projects_archived_at (archived_at)"
     )
     commit()
     _schema_bootstrapped = True
@@ -1768,7 +1784,7 @@ def project_move(project_id: int):
 @app.route("/projects/<int:project_id>/unarchive", methods=["POST"])
 def project_unarchive(project_id: int):
     try:
-        exec_sql("UPDATE projects SET archived=0, updated_at=NOW() WHERE id=%s", (project_id,))
+        exec_sql("UPDATE projects SET archived=0, archived_at=NULL, updated_at=NOW() WHERE id=%s", (project_id,))
         commit()
         flash("Proyecto desarchivado (activo de nuevo).", "ok")
     except Exception as e:
@@ -1802,7 +1818,8 @@ def project_delete(project_id: int):
         rollback()
         flash(f"No se pudo borrar el proyecto: {e}", "error")
 
-    return redirect(url_for("projects"))
+    next_url = safe_next_url(request.form.get("next"), "projects")
+    return redirect(next_url)
 
 
 
@@ -2013,8 +2030,10 @@ def dashboard():
         LEFT JOIN projects p ON t.project_id = p.id
         LEFT JOIN folders f ON t.folder_id = f.id
         WHERE t.completed_at IS NULL 
+                    AND t.archived = 0
           AND t.due_date IS NOT NULL 
           AND t.due_date <= %s 
+                    AND (t.project_id IS NULL OR p.archived = 0)
         ORDER BY t.due_date ASC 
         """,
         (today + timedelta(days=7),)
@@ -2522,7 +2541,8 @@ def task_delete(task_id: int):
             pass
         flash(f"No se pudo borrar la tarea: {e}", "error")
 
-    return redirect(request.form.get("next") or request.referrer or url_for("home"))
+    next_url = safe_next_url(request.form.get("next"), "home")
+    return redirect(next_url)
 
 
 
@@ -2617,14 +2637,15 @@ def task_unarchive(task_id: int):
         abort(404)
 
     try:
-        exec_sql("UPDATE tasks SET archived=0 WHERE id=%s", (task_id,))
+        exec_sql("UPDATE tasks SET archived=0, archived_at=NULL WHERE id=%s", (task_id,))
         commit()
         flash("Tarea desarchivada.", "ok")
     except Exception as e:
         rollback()
         flash(f"No se pudo desarchivar la tarea: {e}", "error")
 
-    return redirect(request.form.get("next") or request.referrer or url_for("archive_view"))
+    next_url = safe_next_url(request.form.get("next"), "archive_view")
+    return redirect(next_url)
 
 
 # ---------------- Routes: projects / folders CRUD ----------------
@@ -2656,7 +2677,7 @@ def project_create():
 @app.route("/projects/<int:project_id>/archive", methods=["POST"])
 def project_archive(project_id: int):
     try:
-        exec_sql("UPDATE projects SET archived=1, updated_at=NOW() WHERE id=%s", (project_id,))
+        exec_sql("UPDATE projects SET archived=1, archived_at=NOW(), updated_at=NOW() WHERE id=%s", (project_id,))
         commit()
         flash("Proyecto archivado.", "ok")
     except Exception as e:
@@ -3347,7 +3368,7 @@ def admin():
                 if total_to_archive > 0:
                     exec_sql(
                         "UPDATE tasks "
-                        "SET archived=1 "
+                        "SET archived=1, archived_at=NOW() "
                         "WHERE archived=0 "
                         "AND project_id IS NULL "
                         "AND completed_at IS NOT NULL "
@@ -3423,11 +3444,18 @@ def archive_view():
     per_page = cfg_int(["app", "pagination", "archive_per_page"], default=25, min_v=5, max_v=500)
 
     try:
-        page = int(request.args.get("page", "1"))
+        task_page = int(request.args.get("task_page", "1"))
     except ValueError:
-        page = 1
-    page = max(page, 1)
-    offset = (page - 1) * per_page
+        task_page = 1
+    task_page = max(task_page, 1)
+    task_offset = (task_page - 1) * per_page
+
+    try:
+        project_page = int(request.args.get("project_page", "1"))
+    except ValueError:
+        project_page = 1
+    project_page = max(project_page, 1)
+    project_offset = (project_page - 1) * per_page
 
     params_tasks: List[Any] = []
     where_tasks = ["t.archived=1"]
@@ -3444,21 +3472,21 @@ def archive_view():
     where_tasks_sql = " AND ".join(where_tasks)
     where_projects_sql = " AND ".join(where_projects)
 
-    total_row = q1(
+    total_tasks_row = q1(
         "SELECT COUNT(*) AS c "
         "FROM tasks t "
         "WHERE " + where_tasks_sql,
         tuple(params_tasks),
     )
-    total = int(total_row["c"]) if total_row else 0
-    pages = max(1, (total + per_page - 1) // per_page)
+    total_tasks = int(total_tasks_row["c"]) if total_tasks_row else 0
+    task_pages = max(1, (total_tasks + per_page - 1) // per_page)
 
-    if page > pages:
-        page = pages
-        offset = (page - 1) * per_page
+    if task_page > task_pages:
+        task_page = task_pages
+        task_offset = (task_page - 1) * per_page
 
     archived_tasks = q(
-        "SELECT t.id, t.title, t.completed_at, "
+        "SELECT t.id, t.title, t.completed_at, t.archived_at, "
         "p.id AS project_id, p.name AS project_name, "
         "fd.id AS folder_id, fd.name AS folder_name "
         "FROM tasks t "
@@ -3467,16 +3495,30 @@ def archive_view():
         "WHERE " + where_tasks_sql + " "
         "ORDER BY t.completed_at DESC, t.id DESC "
         "LIMIT %s OFFSET %s",
-        tuple(params_tasks + [per_page, offset]),
+        tuple(params_tasks + [per_page, task_offset]),
     )
 
+    total_projects_row = q1(
+        "SELECT COUNT(*) AS c "
+        "FROM projects p "
+        "WHERE " + where_projects_sql,
+        tuple(params_projects),
+    )
+    total_projects = int(total_projects_row["c"]) if total_projects_row else 0
+    project_pages = max(1, (total_projects + per_page - 1) // per_page)
+
+    if project_page > project_pages:
+        project_page = project_pages
+        project_offset = (project_page - 1) * per_page
+
     archived_projects = q(
-        "SELECT p.id, p.name, p.description, p.folder_id, f.name AS folder_name "
+        "SELECT p.id, p.name, p.description, p.folder_id, p.archived_at, f.name AS folder_name "
         "FROM projects p "
         "LEFT JOIN folders f ON f.id=p.folder_id "
         "WHERE " + where_projects_sql + " "
-        "ORDER BY p.name ASC",
-        tuple(params_projects),
+        "ORDER BY p.name ASC "
+        "LIMIT %s OFFSET %s",
+        tuple(params_projects + [per_page, project_offset]),
     )
 
     task_ids = [r["id"] for r in archived_tasks]
@@ -3488,9 +3530,12 @@ def archive_view():
         archived_tasks=archived_tasks,
         archived_projects=archived_projects,
         tags_map=tags_map,
-        page=page,
-        pages=pages,
-        total=total,
+        task_page=task_page,
+        task_pages=task_pages,
+        total_tasks=total_tasks,
+        project_page=project_page,
+        project_pages=project_pages,
+        total_projects=total_projects,
         per_page=per_page,
     )
 

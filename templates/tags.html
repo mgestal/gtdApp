@@ -93,13 +93,27 @@
       {% endfor %}
     </div>
 
-    <div class="pager" style="margin-top:12px; display:flex; gap:10px; align-items:center; justify-content:flex-end; flex-wrap:wrap;">
-      {% if page > 1 %}
-        <a class="btn btn-soft" href="{{ url_for('tags', page=page-1, q=qtxt, type=type_filter) }}">‹ Anterior</a>
-      {% endif %}
-      {% if page < pages %}
-        <a class="btn btn-soft" href="{{ url_for('tags', page=page+1, q=qtxt, type=type_filter) }}">Siguiente ›</a>
-      {% endif %}
+    <div class="pager" style="margin-top:12px; display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap;">
+      <div class="muted">
+        Mostrando {{ (page-1)*per_page + 1 if total>0 else 0 }}–{{ [page*per_page, total]|min }} de {{ total }}
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        {% if page > 1 %}
+          <a class="btn btn-soft" href="{{ url_for('tags', page=1, q=qtxt, type=type_filter) }}">« Primera</a>
+          <a class="btn btn-soft" href="{{ url_for('tags', page=page-1, q=qtxt, type=type_filter) }}">‹ Anterior</a>
+        {% else %}
+          <span class="btn btn-soft disabled">« Primera</span>
+          <span class="btn btn-soft disabled">‹ Anterior</span>
+        {% endif %}
+
+        {% if page < pages %}
+          <a class="btn btn-soft" href="{{ url_for('tags', page=page+1, q=qtxt, type=type_filter) }}">Siguiente ›</a>
+          <a class="btn btn-soft" href="{{ url_for('tags', page=pages, q=qtxt, type=type_filter) }}">Última »</a>
+        {% else %}
+          <span class="btn btn-soft disabled">Siguiente ›</span>
+          <span class="btn btn-soft disabled">Última »</span>
+        {% endif %}
+      </div>
     </div>
   </div>
 {% endblock %}

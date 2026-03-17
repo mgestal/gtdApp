@@ -69,9 +69,13 @@
           {% set sc = sub_counts.get(t.id, {'total':0, 'done':0}) %}
           <tr>
 			<td style="vertical-align:top; padding-top:6px;">
+			  {% if not project.archived %}
 			  <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}">
 				<button class="radio"></button>
 			  </form>
+			  {% else %}
+			    <span class="radio" style="opacity:0.3; cursor:default;"></span>
+			  {% endif %}
 			</td>
             <td>
               <div style="font-weight:600; margin-bottom:4px;">
@@ -103,9 +107,13 @@
 					{% for s in sub_map.get(t.id, []) %}
 					  <div class="subtask-item {% if s.completed_at %}row-done{% endif %}" style="display:flex; align-items:center; gap:6px; padding:4px 0;">
 
+						{% if not project.archived %}
 						<form method="post" action="{{ url_for('subtask_toggle', subtask_id=s.id) }}">
 						  <button class="radio subradio"></button>
 						</form>
+						{% else %}
+						  <span class="radio subradio" style="opacity:0.3; cursor:default;"></span>
+						{% endif %}
 
 						<span style="font-size:13px;">
 						  {{ s.title }}
@@ -120,12 +128,14 @@
               {% if t.due_date %}{{ t.due_date.strftime('%d-%m-%Y') }}{% else %}<span class="muted">—</span>{% endif %}
             </td>
             <td style="text-align:right;">
+              {% if not project.archived %}
               <div style="display:inline-flex; gap:5px;">
                 <a class="btn btn-soft" style="padding:5px 8px;" href="{{ url_for('task_edit', task_id=t.id, next=request.full_path) }}">✎</a>
                 <form method="post" action="{{ url_for('task_delete', task_id=t.id) }}" style="display:inline;">
                   <button class="btn btn-soft" style="padding:5px 8px;" onclick="return confirm('¿Borrar?');">🗑</button>
                 </form>
               </div>
+              {% endif %}
             </td>
           </tr>
         {% endfor %}
@@ -144,9 +154,13 @@
         {% for t in done_tasks %}
           <tr class="row-done">
 			<td style="vertical-align:top; padding-top:6px;">
+			  {% if not project.archived %}
 			  <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}">
 				<button class="radio"></button>
 			  </form>
+			  {% else %}
+			    <span class="radio" style="opacity:0.3; cursor:default;"></span>
+			  {% endif %}
 			</td>
             <td>
               <div style="text-decoration: line-through; opacity:0.7;">{{ t.title }}</div>
@@ -160,9 +174,11 @@
               {{ t.completed_at.strftime('%d-%m-%Y') if t.completed_at else '' }} {{ t.completed_at.strftime('%H:%M') }}
             </td>
             <td style="width:100px; text-align:right;">
+              {% if not project.archived %}
                 <form method="post" action="{{ url_for('task_delete', task_id=t.id) }}" style="display:inline;">
                     <button class="btn btn-soft" style="padding:5px 8px;" onclick="return confirm('¿Borrar?');">🗑</button>
                 </form>
+              {% endif %}
             </td>
           </tr>
         {% endfor %}

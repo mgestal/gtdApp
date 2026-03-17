@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="page-title">
+    <h1>Archivo 🗄️</h1>
+    <p class="subtitle">Tareas archivadas y proyectos archivados.</p>
+  </div>
+
+  <div class="card" style="margin-bottom:12px;">
+    <form method="get" class="form" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:0;">
+      <label class="label" style="margin:0;">Buscar por título</label>
+      <input class="input" type="text" name="q" value="{{ qtxt or '' }}" placeholder="Título de tarea o proyecto" style="flex:1; min-width:220px; margin:0;">
+      <button class="btn btn-primary" type="submit">Buscar</button>
+      {% if qtxt %}
+        <a class="btn btn-soft" href="{{ url_for('archive_view') }}">Limpiar</a>
+      {% endif %}
+    </form>
+  </div>
+
+  <div class="card" style="margin-bottom:12px;">
+    <div class="card-header">
+      <div class="card-title">Tareas archivadas</div>
+      <div class="muted">{{ total }} resultados</div>
+    </div>
+
+    {% if archived_tasks %}
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Tarea</th>
+            <th>Etiquetas</th>
+            <th style="width:170px;">Realizada</th>
+            <th>Ubicación</th>
+            <th style="width:110px; text-align:right;">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in archived_tasks %}
+            <tr>
+              <td style="font-weight:600;">{{ t.title }}</td>
+              <td>
+                <div style="display:flex; gap:4px; flex-wrap:wrap;">
+                  {% for tag in tags_map.get(t.id, []) %}
+                    <a class="tagchip taglink" style="margin:0;" href="{{ url_for('tag_detail', tag_id=tag.id) }}">@{{ tag.name }}</a>
+                  {% endfor %}
+                </div>
+              </td>
+              <td style="white-space:nowrap; font-size:13px;">
+                {% if t.completed_at %}
+                  {{ t.completed_at.strftime('%d-%m-%Y') }} {{ t.completed_at.strftime('%H:%M') }}
+                {% else %}
+                  <span class="muted">—</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if t.project_id %}
+                  <a href="{{ url_for('project_detail', project_id=t.project_id) }}">📁 {{ t.project_name }}</a>
+                {% elif t.folder_id %}
+                  <a href="{{ url_for('folder_detail', folder_id=t.folder_id) }}">🗂️ {{ t.folder_name }}</a>
+                {% else %}
+                  <span class="muted">Inbox</span>
+                {% endif %}
+              </td>
+              <td style="text-align:right;">
+                <form method="post" action="{{ url_for('task_unarchive', task_id=t.id) }}" style="display:inline;">
+                  <input type="hidden" name="next" value="{{ request.full_path }}">
+                  <button class="btn btn-soft" type="submit">Desarchivar</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      {% if pages > 1 %}
+      <div class="pager" style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-top:10px;">
+        <div class="muted">
+          Mostrando {{ (page-1)*per_page + 1 }}–{{ [page*per_page, total]|min }} de {{ total }} · página {{ page }} de {{ pages }}
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          {% if page > 1 %}
+            <a class="btn btn-soft" href="{{ url_for('archive_view', q=qtxt, page=1) }}">« Primera</a>
+            <a class="btn btn-soft" href="{{ url_for('archive_view', q=qtxt, page=page-1) }}">‹ Anterior</a>
+          {% else %}
+            <span class="btn btn-soft disabled">« Primera</span>
+            <span class="btn btn-soft disabled">‹ Anterior</span>
+          {% endif %}
+          {% if page < pages %}
+            <a class="btn btn-soft" href="{{ url_for('archive_view', q=qtxt, page=page+1) }}">Siguiente ›</a>
+            <a class="btn btn-soft" href="{{ url_for('archive_view', q=qtxt, page=pages) }}">Última »</a>
+          {% else %}
+            <span class="btn btn-soft disabled">Siguiente ›</span>
+            <span class="btn btn-soft disabled">Última »</span>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+    {% else %}
+      <div class="empty">No hay tareas archivadas.</div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">Proyectos archivados</div>
+    </div>
+
+    {% if archived_projects %}
+      <div class="list">
+        {% for p in archived_projects %}
+          <div class="list-row" style="align-items:flex-start; gap:8px;">
+            <div style="flex:1; min-width:0;">
+              <a href="{{ url_for('project_detail', project_id=p.id) }}" style="font-weight:700; text-decoration:none;">{{ p.name }}</a>
+              {% if p.description %}
+                <div class="muted" style="margin-top:3px;">{{ p.description }}</div>
+              {% endif %}
+              {% if p.folder_name %}
+                <div class="muted" style="margin-top:5px;">📂 {{ p.folder_name }}</div>
+              {% endif %}
+            </div>
+            <form method="post" action="{{ url_for('project_unarchive', project_id=p.id) }}" style="margin:0;">
+              <button class="btn btn-soft" type="submit">Desarchivar</button>
+            </form>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty">No hay proyectos archivados.</div>
+    {% endif %}
+  </div>
+{% endblock %}

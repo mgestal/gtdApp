@@ -94,6 +94,26 @@
             <div class="empty" style="margin-top:10px;">No hay copias todavía.</div>
           {% endif %}
         </div>
+
+        <div class="card" style="margin-top:20px;">
+          <div class="card-header">
+            <div class="card-title">Inicializar GTD</div>
+            <div class="card-sub">Crea las etiquetas/carpetas requeridas para review completo.</div>
+          </div>
+
+          <p>Esto se asegura de que existan:</p>
+          <ul>
+            <li>Etiquetas: <code>NextAction</code>, <code>EnSeguimiento</code>, <code>Agenda</code>, <code>EnEspera</code></li>
+            <li>Carpetas: <code>✅ Checklists</code>, <code>ADTV</code>, <code>🔜 EstaSemanaNo</code></li>
+          </ul>
+
+          <form method="post" class="form">
+            <input type="hidden" name="action" value="initialize_system">
+            <button class="btn btn-primary" type="submit" onclick="return confirm('¿Inicializar sistema GTD? Se crearán etiquetas/carpetas faltantes.');">
+              Inicializar sistema GTD
+            </button>
+          </form>
+        </div>
       </div>
         
 
@@ -174,6 +194,20 @@
 
             <div class="list-row" style="align-items:flex-start;">
               <div style="flex:1;">
+                <div style="font-weight:600; margin-bottom:4px;">Archivar tareas sin proyecto realizadas</div>
+                <div class="hint">Archiva tareas completadas hace más de 7 días y sin proyecto.</div>
+              </div>
+
+              <form method="post" class="form" style="margin:0;">
+                <input type="hidden" name="action" value="archive_completed_orphans">
+                <button class="btn btn-soft" type="submit" onclick="return confirm('¿Archivar tareas sin proyecto realizadas hace más de una semana?');">
+                  🗄️ Archivar
+                </button>
+              </form>
+            </div>
+
+            <div class="list-row" style="align-items:flex-start;">
+              <div style="flex:1;">
                 <div style="font-weight:600; margin-bottom:4px;">Borrar proyectos vacíos</div>
                 <div class="hint">Elimina proyectos que no tengan ninguna tarea asociada.</div>
               </div>
@@ -202,28 +236,6 @@
 
           </div>
         </div>
-
-        <div class="card" style="margin-top:20px;">
-          <div class="card-header">
-            <div class="card-title">Inicializar GTD</div>
-            <div class="card-sub">Crea las etiquetas/carpetas requeridas para review completo.</div>
-          </div>
-
-          <p>Esto se asegura de que existan:</p>
-          <ul>
-            <li>Etiquetas: <code>NextAction</code>, <code>EnSeguimiento</code>, <code>Agenda</code>, <code>EnEspera</code></li>
-            <li>Carpetas: <code>✅ Checklists</code>, <code>ADTV</code>, <code>🔜 EstaSemanaNo</code></li>
-          </ul>
-
-          <form method="post" class="form">
-            <input type="hidden" name="action" value="initialize_system">
-            <button class="btn btn-primary" type="submit" onclick="return confirm('¿Inicializar sistema GTD? Se crearán etiquetas/carpetas faltantes.');">
-              Inicializar sistema GTD
-            </button>
-          </form>
-        </div>
-
-
 
       </div>
     </div>

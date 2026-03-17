@@ -17,15 +17,15 @@
       "tag_detail_per_page": 10,
       "folders_per_page": 10,
       "filters_per_page": 10,
-      "projects_per_page": 15
+      "projects_per_page": 10
     }
   },
-
-    "security": {
-    "allowed_user_ids": [835990144, 1228759930],
+  "security": {
+    "allowed_user_ids": [
+      835990144,
+      1228759930
+    ],
     "allowed_group_ids": [],
     "reply_on_unauthorized": true
   }
-
-  
 }

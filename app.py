@@ -304,6 +304,14 @@ def ensure_schema_updates() -> None:
         "ALTER TABLE tasks "
         "ADD COLUMN IF NOT EXISTS due_time TIME NULL AFTER due_date"
     )
+    exec_sql(
+        "ALTER TABLE tasks "
+        "ADD COLUMN IF NOT EXISTS archived TINYINT(1) NOT NULL DEFAULT 0 AFTER recurrence_rule"
+    )
+    exec_sql(
+        "ALTER TABLE tasks "
+        "ADD INDEX IF NOT EXISTS idx_tasks_archived (archived)"
+    )
     commit()
     _schema_bootstrapped = True
 
@@ -1209,8 +1217,10 @@ def inject_sidebar_counts():
                 "SELECT COUNT(*) AS c "
                 "FROM tasks t "
                 "JOIN task_tags tt ON tt.task_id=t.id "
+                "LEFT JOIN projects p ON p.id=t.project_id "
                 "WHERE t.completed_at IS NULL "
-                "AND tt.tag_id=%s",
+                "AND tt.tag_id=%s "
+                "AND (t.project_id IS NULL OR p.archived = 0)",
                 (next_tag["id"],)
             ) or {}).get("c", 0))
         else:
@@ -1227,18 +1237,22 @@ def inject_sidebar_counts():
 
             "today": int((q1(
                 "SELECT COUNT(*) AS c "
-                "FROM tasks "
-                "WHERE completed_at IS NULL AND due_date=%s",
+                "FROM tasks t "
+                "LEFT JOIN projects p ON p.id=t.project_id "
+                "WHERE t.completed_at IS NULL AND t.due_date=%s "
+                "AND (t.project_id IS NULL OR p.archived = 0)",
                 (today_d,)
             ) or {}).get("c", 0)),
 
             "week": int((q1(
                 "SELECT COUNT(*) AS c "
-                "FROM tasks "
-                "WHERE completed_at IS NULL "
-                "AND due_date IS NOT NULL "
-                "AND due_date >= %s "
-                "AND due_date <= %s",
+                "FROM tasks t "
+                "LEFT JOIN projects p ON p.id=t.project_id "
+                "WHERE t.completed_at IS NULL "
+                "AND t.due_date IS NOT NULL "
+                "AND t.due_date >= %s "
+                "AND t.due_date <= %s "
+                "AND (t.project_id IS NULL OR p.archived = 0)",
                 (today_d, sunday_d)
             ) or {}).get("c", 0)),
 
@@ -1246,8 +1260,10 @@ def inject_sidebar_counts():
 
             "agenda": int((q1(
                 "SELECT COUNT(*) AS c "
-                "FROM tasks "
-                "WHERE completed_at IS NULL AND due_date IS NOT NULL"
+                "FROM tasks t "
+                "LEFT JOIN projects p ON p.id=t.project_id "
+                "WHERE t.completed_at IS NULL AND t.due_date IS NOT NULL "
+                "AND (t.project_id IS NULL OR p.archived = 0)"
             ) or {}).get("c", 0)),
 
             "projects": int((q1(
@@ -1337,7 +1353,10 @@ def proximo():
 
     # Total de tareas con fecha (si tu agenda incluye solo tareas con due_date)
     total_row = q1(
-        "SELECT COUNT(*) AS c FROM tasks WHERE due_date IS NOT NULL AND completed_at IS NULL"
+        "SELECT COUNT(*) AS c FROM tasks t "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+        "WHERE t.due_date IS NOT NULL AND t.completed_at IS NULL "
+        "AND (t.project_id IS NULL OR p.archived = 0)"
     )
     total = int(total_row["c"]) if total_row else 0
     pages = max(1, (total + per_page - 1) // per_page)
@@ -1351,6 +1370,7 @@ def proximo():
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "WHERE t.due_date IS NOT NULL "
         "AND t.completed_at IS NULL "
+        "AND (t.project_id IS NULL OR p.archived = 0) "
         "ORDER BY (t.completed_at IS NOT NULL) ASC, t.due_date ASC, (t.due_time IS NULL) ASC, t.due_time ASC, t.id DESC "
         "LIMIT %s OFFSET %s",
         (per_page, offset),
@@ -1381,6 +1401,7 @@ def today():
         "LEFT JOIN projects p ON p.id=t.project_id "
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "WHERE t.due_date=%s AND t.completed_at IS NULL "
+        "AND (t.project_id IS NULL OR p.archived = 0) "
         "ORDER BY t.id DESC",
         (today_d,)
     )
@@ -1393,6 +1414,7 @@ def today():
         "LEFT JOIN projects p ON p.id=t.project_id "
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "WHERE t.completed_at IS NOT NULL AND DATE(t.completed_at)=%s "
+        "AND (t.project_id IS NULL OR p.archived = 0) "
         "ORDER BY t.completed_at DESC, t.id DESC",
         (today_d,)
     )
@@ -1425,6 +1447,7 @@ def week():
         "WHERE t.due_date IS NOT NULL "
         "AND t.due_date >= %s "
         "AND t.due_date <= %s "
+        "AND (t.project_id IS NULL OR p.archived = 0) "
         "ORDER BY (t.completed_at IS NOT NULL) ASC, t.due_date ASC, t.id DESC",
         (monday_d, sunday_d)
     )
@@ -1505,6 +1528,7 @@ def calendar_view():
         "AND t.due_date >= %s "
         "AND t.due_date <= %s "
         "AND t.completed_at IS NULL "
+        "AND (t.project_id IS NULL OR p.archived = 0) "
         "ORDER BY t.due_date ASC, t.id DESC",
         (start_date, end_date),
     )
@@ -1520,6 +1544,7 @@ def calendar_view():
         "WHERE t.completed_at IS NOT NULL "
         "AND DATE(t.completed_at) >= %s "
         "AND DATE(t.completed_at) <= %s "
+        "AND (t.project_id IS NULL OR p.archived = 0) "
         "ORDER BY t.completed_at DESC, t.id DESC",
         (start_date, end_date),
     )
@@ -1578,10 +1603,10 @@ def calendar_view():
 @app.route("/projects")
 def projects():
     qtxt = (request.args.get("q") or "").strip()
-    status = (request.args.get("status") or "all").strip().lower()
+    status = (request.args.get("status") or "active").strip().lower()
 
-    if status not in ("all", "active", "archived"):
-        status = "all"
+    if status not in ("active", "archived"):
+        status = "active"
 
     per_page = cfg_int(["app", "pagination", "projects_per_page"], default=15, min_v=5, max_v=500)
 
@@ -1600,10 +1625,10 @@ def projects():
         like = f"%{qtxt.lower()}%"
         params.extend([like, like, like])
 
-    if status == "active":
-        where_parts.append("p.archived=0")
-    elif status == "archived":
+    if status == "archived":
         where_parts.append("p.archived=1")
+    else:
+        where_parts.append("p.archived=0")
 
     where_sql = ""
     if where_parts:
@@ -1633,15 +1658,11 @@ def projects():
         tuple(params + [per_page, offset]),
     )
 
-    active = [r for r in rows if int(r["archived"]) == 0]
-    archived = [r for r in rows if int(r["archived"]) == 1]
-
     folders = q("SELECT id, parent_id, name FROM folders ORDER BY name")
 
     return render_template(
         "projects.html",
-        active=active,
-        archived=archived,
+        rows=rows,
         folders=folders,
         qtxt=qtxt,
         status=status,
@@ -2508,7 +2529,7 @@ def task_delete(task_id: int):
 @app.route("/tasks/<int:task_id>/toggle", methods=["POST"])
 def task_toggle(task_id: int):
     task = q1(
-        "SELECT id, completed_at, due_date, recurrence_rule, project_id "
+        "SELECT id, completed_at, due_date, recurrence_rule, project_id, archived "
         "FROM tasks WHERE id=%s",
         (task_id,),
     )
@@ -2587,6 +2608,23 @@ def task_toggle(task_id: int):
         flash(f"No se pudo actualizar la tarea: {e}", "error")
 
     return redirect(request.referrer or url_for("home"))
+
+
+@app.route("/tasks/<int:task_id>/unarchive", methods=["POST"])
+def task_unarchive(task_id: int):
+    task = q1("SELECT id FROM tasks WHERE id=%s", (task_id,))
+    if not task:
+        abort(404)
+
+    try:
+        exec_sql("UPDATE tasks SET archived=0 WHERE id=%s", (task_id,))
+        commit()
+        flash("Tarea desarchivada.", "ok")
+    except Exception as e:
+        rollback()
+        flash(f"No se pudo desarchivar la tarea: {e}", "error")
+
+    return redirect(request.form.get("next") or request.referrer or url_for("archive_view"))
 
 
 # ---------------- Routes: projects / folders CRUD ----------------
@@ -2968,7 +3006,7 @@ def filter_run(filter_id: int):
         "LEFT JOIN projects p ON p.id=t.project_id "
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "LEFT JOIN folders pf ON pf.id=p.folder_id "
-        f"WHERE {where_sql}",
+        f"WHERE {where_sql} AND t.archived=0 AND (t.project_id IS NULL OR p.archived = 0)",
         tuple(params),
     )
     total = int(total_row["c"]) if total_row else 0
@@ -2983,7 +3021,7 @@ def filter_run(filter_id: int):
         "LEFT JOIN projects p ON p.id=t.project_id "
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "LEFT JOIN folders pf ON pf.id=p.folder_id "
-        f"WHERE {where_sql} "
+        f"WHERE {where_sql} AND t.archived=0 AND (t.project_id IS NULL OR p.archived = 0) "
         "ORDER BY (t.completed_at IS NOT NULL) ASC, (t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC "
         "LIMIT %s OFFSET %s"
     )
@@ -3290,6 +3328,39 @@ def admin():
 
             return redirect(url_for("admin"))
 
+        if action == "archive_completed_orphans":
+            if not admin_required():
+                flash("No autorizado.", "error")
+                return redirect(url_for("admin"))
+
+            try:
+                total_row = q1(
+                    "SELECT COUNT(*) AS c "
+                    "FROM tasks "
+                    "WHERE archived=0 "
+                    "AND project_id IS NULL "
+                    "AND completed_at IS NOT NULL "
+                    "AND completed_at < (NOW() - INTERVAL 7 DAY)"
+                )
+                total_to_archive = int(total_row["c"]) if total_row else 0
+
+                if total_to_archive > 0:
+                    exec_sql(
+                        "UPDATE tasks "
+                        "SET archived=1 "
+                        "WHERE archived=0 "
+                        "AND project_id IS NULL "
+                        "AND completed_at IS NOT NULL "
+                        "AND completed_at < (NOW() - INTERVAL 7 DAY)"
+                    )
+                commit()
+                flash(f"{total_to_archive} tareas archivadas.", "ok")
+            except Exception as e:
+                rollback()
+                flash(f"No se pudieron archivar las tareas: {e}", "error")
+
+            return redirect(url_for("admin"))
+
         if action == "test_db":
             ok = False
             err = ""
@@ -3343,6 +3414,84 @@ def admin():
         is_admin=admin_required(),
         env_pwd_set=env_pwd_set,
         backups=list_backups(),
+    )
+
+
+@app.route("/archive")
+def archive_view():
+    qtxt = (request.args.get("q") or "").strip()
+    per_page = cfg_int(["app", "pagination", "archive_per_page"], default=25, min_v=5, max_v=500)
+
+    try:
+        page = int(request.args.get("page", "1"))
+    except ValueError:
+        page = 1
+    page = max(page, 1)
+    offset = (page - 1) * per_page
+
+    params_tasks: List[Any] = []
+    where_tasks = ["t.archived=1"]
+    params_projects: List[Any] = []
+    where_projects = ["p.archived=1"]
+
+    if qtxt:
+        like = f"%{qtxt.lower()}%"
+        where_tasks.append("LOWER(t.title) LIKE %s")
+        where_projects.append("LOWER(p.name) LIKE %s")
+        params_tasks.append(like)
+        params_projects.append(like)
+
+    where_tasks_sql = " AND ".join(where_tasks)
+    where_projects_sql = " AND ".join(where_projects)
+
+    total_row = q1(
+        "SELECT COUNT(*) AS c "
+        "FROM tasks t "
+        "WHERE " + where_tasks_sql,
+        tuple(params_tasks),
+    )
+    total = int(total_row["c"]) if total_row else 0
+    pages = max(1, (total + per_page - 1) // per_page)
+
+    if page > pages:
+        page = pages
+        offset = (page - 1) * per_page
+
+    archived_tasks = q(
+        "SELECT t.id, t.title, t.completed_at, "
+        "p.id AS project_id, p.name AS project_name, "
+        "fd.id AS folder_id, fd.name AS folder_name "
+        "FROM tasks t "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+        "LEFT JOIN folders fd ON fd.id=COALESCE(t.folder_id, p.folder_id) "
+        "WHERE " + where_tasks_sql + " "
+        "ORDER BY t.completed_at DESC, t.id DESC "
+        "LIMIT %s OFFSET %s",
+        tuple(params_tasks + [per_page, offset]),
+    )
+
+    archived_projects = q(
+        "SELECT p.id, p.name, p.description, p.folder_id, f.name AS folder_name "
+        "FROM projects p "
+        "LEFT JOIN folders f ON f.id=p.folder_id "
+        "WHERE " + where_projects_sql + " "
+        "ORDER BY p.name ASC",
+        tuple(params_projects),
+    )
+
+    task_ids = [r["id"] for r in archived_tasks]
+    tags_map = load_tags_map(task_ids) if task_ids else {}
+
+    return render_template(
+        "archive.html",
+        qtxt=qtxt,
+        archived_tasks=archived_tasks,
+        archived_projects=archived_projects,
+        tags_map=tags_map,
+        page=page,
+        pages=pages,
+        total=total,
+        per_page=per_page,
     )
 
 # ---------------- Errors ----------------
@@ -3806,7 +3955,7 @@ def filter_run_expression():
         "LEFT JOIN projects p ON p.id=t.project_id "
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "LEFT JOIN folders pf ON pf.id=p.folder_id "
-        f"WHERE {where_sql}",
+        f"WHERE {where_sql} AND t.archived=0 AND (t.project_id IS NULL OR p.archived = 0)",
         tuple(params),
     )
 
@@ -3821,7 +3970,7 @@ def filter_run_expression():
         "LEFT JOIN projects p ON p.id=t.project_id "
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "LEFT JOIN folders pf ON pf.id=p.folder_id "
-        f"WHERE {where_sql} "
+        f"WHERE {where_sql} AND t.archived=0 AND (t.project_id IS NULL OR p.archived = 0) "
         "ORDER BY (t.completed_at IS NOT NULL) ASC, (t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC "
         "LIMIT %s OFFSET %s"
     )
@@ -3880,6 +4029,7 @@ def review():
         "WHERE t.completed_at IS NULL "
         "AND tg.name=%s "
         "AND (t.due_date IS NULL OR t.due_date >= CURDATE()) "
+        "AND (t.project_id IS NULL OR p.archived = 0) "
         "ORDER BY (t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC",
         ("NextAction",)
     ) if nextaction_exists else []
@@ -3897,6 +4047,7 @@ def review():
         "AND tg.name=%s "
         "AND t.due_date IS NOT NULL "
         "AND t.due_date < CURDATE() "
+        "AND (t.project_id IS NULL OR p.archived = 0) "
         "ORDER BY t.due_date ASC, t.id DESC",
         ("NextAction",)
     ) if nextaction_exists else []
@@ -3919,6 +4070,7 @@ def review():
         "AND t.due_date IS NOT NULL "
         "AND t.due_date >= CURDATE() "
         "AND t.due_date <= DATE_ADD(CURDATE(), INTERVAL 7 DAY) "
+        "AND (t.project_id IS NULL OR p.archived = 0) "
         "ORDER BY t.due_date ASC, t.id DESC",
         ("agenda",)
     ) if agenda_exists else []
@@ -3935,6 +4087,7 @@ def review():
         "WHERE t.completed_at IS NULL "
         "AND tg.name=%s "
         "AND t.due_date <= DATE_ADD(CURDATE(), INTERVAL 15 DAY) "
+        "AND (t.project_id IS NULL OR p.archived = 0) "
         "ORDER BY (t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC",
         ("EnSeguimiento",)
     ) if en_seguimiento_exists else []
@@ -3955,6 +4108,7 @@ def review():
         "AND tg.name=%s "
         "AND t.due_date IS NOT NULL "
         "AND t.due_date < CURDATE() "
+        "AND (t.project_id IS NULL OR p.archived = 0) "
         "ORDER BY t.due_date ASC, t.id DESC",
         ("agenda",)
     ) if agenda_exists else []
@@ -3973,6 +4127,7 @@ def review():
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "WHERE t.completed_at IS NULL "
         "AND tg.name=%s "
+        "AND (t.project_id IS NULL OR p.archived = 0) "
         "ORDER BY (t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC",
         ("EnEspera",)
     ) if en_espera_exists else []
@@ -4198,6 +4353,7 @@ def next_actions():
             "LEFT JOIN folders fd ON fd.id = COALESCE(t.folder_id, p.folder_id) "
             "WHERE tt.tag_id=%s "
             "AND t.completed_at IS NULL "
+            "AND (t.project_id IS NULL OR p.archived = 0) "
             "ORDER BY (t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC",
             (tag["id"],)
         )

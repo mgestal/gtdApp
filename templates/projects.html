@@ -5,7 +5,8 @@
     <p class="subtitle">Crear, mover de carpeta, archivar y desarchivar.</p>
   </div>
 
-  <div class="grid2">
+  <div class="grid2" style="margin-bottom:12px;">
+    <!-- Crear proyecto -->
     <div class="card">
       <div class="card-header">
         <div class="card-title">Crear proyecto</div>
@@ -30,44 +31,50 @@
       </form>
     </div>
 
-    <div class="card">
-      <div class="card-header">
-        <div class="card-title">Filtrar resultados</div>
+    <!-- Filtrar resultados + tabs -->
+    <div style="display:flex; flex-direction:column; gap:8px;">
+      <div class="card" style="padding:10px 14px;">
+        <form method="get" action="{{ url_for('projects') }}" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:0;">
+          <input type="hidden" name="status" value="{{ status }}">
+          <label class="label" style="margin:0; white-space:nowrap; font-size:13px;">🔍 Buscar</label>
+          <input
+            class="input"
+            type="text"
+            name="q"
+            value="{{ qtxt or '' }}"
+            placeholder="Nombre, descripción o carpeta..."
+            style="flex:1; min-width:140px; margin:0;"
+          >
+          <button class="btn btn-primary" type="submit" style="white-space:nowrap;">Buscar</button>
+          {% if qtxt %}
+            <a class="btn btn-soft" href="{{ url_for('projects', status=status) }}" style="white-space:nowrap;">Limpiar</a>
+          {% endif %}
+        </form>
       </div>
 
-      <form method="get" action="{{ url_for('projects') }}" class="form">
-        <label class="label">Buscar por nombre, descripción o carpeta</label>
-        <input
-          class="input"
-          type="text"
-          name="q"
-          value="{{ qtxt or '' }}"
-          placeholder="Ej: Web, Casa, Trabajo..."
-        >
-
-        <label class="label">Estado</label>
-        <select class="input" name="status">
-          <option value="all" {% if status == 'all' %}selected{% endif %}>Todos</option>
-          <option value="active" {% if status == 'active' %}selected{% endif %}>Solo activos</option>
-          <option value="archived" {% if status == 'archived' %}selected{% endif %}>Solo archivados</option>
-        </select>
-
-        <div style="display:flex; gap:10px; flex-wrap:wrap;">
-          <button class="btn btn-primary" type="submit">Filtrar</button>
-          {% if qtxt or status != 'all' %}
-            <a class="btn btn-soft" href="{{ url_for('projects') }}">Limpiar</a>
-          {% endif %}
-        </div>
-      </form>
+      <!-- Tabs Activos / Archivados -->
+      <div style="display:flex; gap:8px;">
+        <a class="btn {{ 'btn-primary' if status == 'active' else 'btn-soft' }}"
+           href="{{ url_for('projects', status='active', q=qtxt or None) }}"
+           style="flex:1; justify-content:center;">
+          Activos
+        </a>
+        <a class="btn {{ 'btn-primary' if status == 'archived' else 'btn-soft' }}"
+           href="{{ url_for('projects', status='archived', q=qtxt or None) }}"
+           style="flex:1; justify-content:center;">
+          Archivados
+        </a>
+      </div>
     </div>
   </div>
 
+  <!-- Paginación (arriba) -->
+  {% if total > 0 %}
   <div class="pager" style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:10px;">
     <div class="muted">
-      Mostrando {{ (page-1)*per_page + 1 if total>0 else 0 }}–{{ [page*per_page, total]|min }} de {{ total }}
+      Mostrando {{ (page-1)*per_page + 1 }}–{{ [page*per_page, total]|min }} de {{ total }}
       · página {{ page }} de {{ pages }}
     </div>
-
     <div style="display:flex; gap:8px; flex-wrap:wrap;">
       {% if page > 1 %}
         <a class="btn btn-soft" href="{{ url_for('projects', q=qtxt, status=status, page=1) }}">« Primera</a>
@@ -76,7 +83,6 @@
         <span class="btn btn-soft disabled">« Primera</span>
         <span class="btn btn-soft disabled">‹ Anterior</span>
       {% endif %}
-
       {% if page < pages %}
         <a class="btn btn-soft" href="{{ url_for('projects', q=qtxt, status=status, page=page+1) }}">Siguiente ›</a>
         <a class="btn btn-soft" href="{{ url_for('projects', q=qtxt, status=status, page=pages) }}">Última »</a>
@@ -86,49 +92,65 @@
       {% endif %}
     </div>
   </div>
+  {% endif %}
 
+  <!-- Lista de proyectos -->
   <div class="card">
     <div class="card-header">
-      <div class="card-title">Proyectos activos</div>
+      <div class="card-title">
+        {% if status == 'archived' %}Proyectos archivados{% else %}Proyectos activos{% endif %}
+      </div>
+      <div class="muted">{{ total }}</div>
     </div>
 
     <div class="list">
-      {% for p in active %}
+      {% for p in rows %}
         <div class="list-row">
           <div>
-            <a class="link" href="{{ url_for('project_detail', project_id=p.id) }}">{{ p.name }}</a>
+            <a class="link" href="{{ url_for('project_detail', project_id=p.id) }}"
+               {% if p.archived %}style="opacity:0.6;"{% endif %}>
+              {{ p.name }}
+            </a>
 
-            <div class="muted" style="font-size:12px;">
+            <div class="muted" style="font-size:12px; margin-top:2px;">
               {% if p.folder_name %}📁 {{ p.folder_name }}{% else %}Sin carpeta{% endif %}
             </div>
 
             {% if p.description %}
-              <div class="muted" style="font-size:12px; margin-top:4px;">
-                {{ p.description }}
-              </div>
+              <div class="muted" style="font-size:12px; margin-top:4px;">{{ p.description }}</div>
             {% endif %}
           </div>
 
           <div class="actions">
-            <a class="btn btn-soft" href="{{ url_for('project_edit', project_id=p.id) }}">✎</a>
-
-            <form method="post" action="{{ url_for('project_delete', project_id=p.id) }}">
-              <button
-                class="btn btn-soft"
-                type="submit"
-                onclick="return confirm('¿Borrar el proyecto {{ p.name|e }}? Las tareas también se eliminarán.');"
-              >🗑</button>
-            </form>
-
-            <form method="post" action="{{ url_for('project_archive', project_id=p.id) }}">
-              <button class="btn btn-soft" type="submit" onclick="return confirm('¿Archivar este proyecto?');">📦</button>
-            </form>
+            {% if p.archived %}
+              <a class="btn btn-soft" href="{{ url_for('project_edit', project_id=p.id) }}">✎</a>
+              <form method="post" action="{{ url_for('project_delete', project_id=p.id) }}" style="display:inline; margin:0;">
+                <button class="btn btn-soft" type="submit"
+                  onclick="return confirm('¿Borrar {{ p.name|e }}? Las tareas también se eliminarán.');">🗑</button>
+              </form>
+              <form method="post" action="{{ url_for('project_unarchive', project_id=p.id) }}" style="display:inline; margin:0;">
+                <button class="btn btn-soft" type="submit"
+                  onclick="return confirm('¿Desarchivar {{ p.name|e }}?');">📂 Desarchivar</button>
+              </form>
+            {% else %}
+              <a class="btn btn-soft" href="{{ url_for('project_edit', project_id=p.id) }}">✎</a>
+              <form method="post" action="{{ url_for('project_delete', project_id=p.id) }}" style="display:inline; margin:0;">
+                <button class="btn btn-soft" type="submit"
+                  onclick="return confirm('¿Borrar {{ p.name|e }}? Las tareas también se eliminarán.');">🗑</button>
+              </form>
+              <form method="post" action="{{ url_for('project_archive', project_id=p.id) }}" style="display:inline; margin:0;">
+                <button class="btn btn-soft" type="submit"
+                  onclick="return confirm('¿Archivar {{ p.name|e }}?');">📦</button>
+              </form>
+            {% endif %}
           </div>
         </div>
       {% else %}
         <div class="empty">
-          {% if qtxt or status != 'all' %}
-            No hay proyectos activos que coincidan con el filtro.
+          {% if qtxt %}
+            No hay proyectos que coincidan con "{{ qtxt }}".
+          {% elif status == 'archived' %}
+            No hay proyectos archivados.
           {% else %}
             No hay proyectos activos.
           {% endif %}
@@ -137,62 +159,19 @@
     </div>
   </div>
 
-  <div class="card">
-    <div class="card-header">
-      <div class="card-title">Proyectos archivados</div>
-    </div>
-
-    <div class="list">
-      {% for p in archived %}
-        <div class="list-row">
-          <div>
-            <span class="muted">{{ p.name }}</span>
-
-            <div class="muted" style="font-size:12px;">
-              {% if p.folder_name %}📁 {{ p.folder_name }}{% else %}Sin carpeta{% endif %}
-            </div>
-
-            {% if p.description %}
-              <div class="muted" style="font-size:12px; margin-top:4px;">
-                {{ p.description }}
-              </div>
-            {% endif %}
-          </div>
-
-          <div class="actions">
-            <form method="post" action="{{ url_for('project_unarchive', project_id=p.id) }}">
-              <button class="btn btn-soft" type="submit" onclick="return confirm('¿Desarchivar este proyecto?');">
-                Desarchivar
-              </button>
-            </form>
-          </div>
-        </div>
-      {% else %}
-        <div class="empty">
-          {% if qtxt or status != 'all' %}
-            No hay proyectos archivados que coincidan con el filtro.
-          {% else %}
-            No hay proyectos archivados.
-          {% endif %}
-        </div>
-      {% endfor %}
+  <!-- Paginación (abajo) -->
+  {% if pages > 1 %}
+  <div class="pager" style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-top:20px;">
+    <div class="muted">Página {{ page }} de {{ pages }}</div>
+    <div style="display:flex; gap:8px;">
+      {% if page > 1 %}
+        <a class="btn btn-soft" href="{{ url_for('projects', q=qtxt, status=status, page=page-1) }}">‹ Anterior</a>
+      {% endif %}
+      {% if page < pages %}
+        <a class="btn btn-soft" href="{{ url_for('projects', q=qtxt, status=status, page=page+1) }}">Siguiente ›</a>
+      {% endif %}
     </div>
   </div>
-
-  {% if total > 0 %}
-    <div class="pager" style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-top:20px;">
-      <div class="muted">
-        Página {{ page }} de {{ pages }}
-      </div>
-
-      <div style="display:flex; gap:8px;">
-        {% if page > 1 %}
-          <a class="btn btn-soft" href="{{ url_for('projects', q=qtxt, status=status, page=page-1) }}">‹ Anterior</a>
-        {% endif %}
-        {% if page < pages %}
-          <a class="btn btn-soft" href="{{ url_for('projects', q=qtxt, status=status, page=page+1) }}">Siguiente ›</a>
-        {% endif %}
-      </div>
-    </div>
   {% endif %}
+
 {% endblock %}

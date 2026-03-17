@@ -810,6 +810,14 @@ def compile_filter_to_sql(ast: Node) -> Tuple[str, List[Any]]:
                 prefix = prefix.lower()
                 val_str = (val or "").strip()
 
+                # Permite valores entre comillas en filtros tipo p:, f:, fr:, fa:, pf:
+                # Ejemplo: fa:"SomeTime"
+                if len(val_str) >= 2 and (
+                    (val_str[0] == '"' and val_str[-1] == '"')
+                    or (val_str[0] == "'" and val_str[-1] == "'")
+                ):
+                    val_str = val_str[1:-1].strip()
+
                 # -----------------------------
                 # NULL handling
                 # -----------------------------
@@ -852,7 +860,7 @@ def compile_filter_to_sql(ast: Node) -> Tuple[str, List[Any]]:
                     params.append(val_str)
 
                     return (
-                        "(t.folder_id IN ("
+                        "((t.folder_id IS NOT NULL) AND t.folder_id IN ("
                         "WITH RECURSIVE subfolders AS ("
                         " SELECT id FROM folders WHERE name=%s"
                         " UNION ALL"
@@ -878,7 +886,7 @@ def compile_filter_to_sql(ast: Node) -> Tuple[str, List[Any]]:
 
                     return (
                         "("
-                        "t.folder_id IN ("
+                        "((t.folder_id IS NOT NULL) AND t.folder_id IN ("
                         "WITH RECURSIVE subfolders AS ("
                         " SELECT id FROM folders WHERE name=%s"
                         " UNION ALL"
@@ -888,7 +896,7 @@ def compile_filter_to_sql(ast: Node) -> Tuple[str, List[Any]]:
                         "SELECT id FROM subfolders"
                         ") "
                         "OR "
-                        "p.folder_id IN ("
+                        "((p.folder_id IS NOT NULL) AND p.folder_id IN ("
                         "WITH RECURSIVE subfolders AS ("
                         " SELECT id FROM folders WHERE name=%s"
                         " UNION ALL"

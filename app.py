@@ -552,6 +552,7 @@ def tokenize_filter(expr: str):
     #   - operadores lógicos: &, |, !
     #   - agrupación: ( )
     #   - etiquetas: @NextAction
+    #   - comparadores de fecha: fecha<hoy, fecha <= 25-03-2026, due>=+7
     #   - prefijos como p:proyecto, f:carpeta, fr:carpeta-recursiva, fa:carpeta-anywhere pf:proyectORfolder
     #   - identificadores especiales: inbox, done
     tokens = []
@@ -592,6 +593,20 @@ def tokenize_filter(expr: str):
 
         if part.startswith("@"):
             tokens.append(("TAG",part[1:]))
+            continue
+
+        # Comparadores de fecha: fecha|due + operador + referencia
+        # Ejemplos válidos:
+        #   fecha < hoy
+        #   fecha<=25-03-2026
+        #   due>=+7
+        m_date = re.fullmatch(r"(?i)(fecha|due)\s*(<=|>=|=|<|>)\s*(.+)", part)
+        if m_date:
+            op = m_date.group(2)
+            ref = m_date.group(3).strip()
+            if not ref:
+                raise FilterParseError("Falta referencia en comparación de fecha.")
+            tokens.append(("DATECMP", f"{op} {ref}"))
             continue
 
         if ":" in part:
@@ -1282,7 +1297,12 @@ def home():
     )
 
 @app.route("/agenda")
-def agenda():
+def agenda_legacy():
+    return redirect(url_for("proximo"), code=301)
+
+
+@app.route("/proximo")
+def proximo():
 
     per_page = cfg_int(["app", "pagination", "agenda_per_page"], default=25, min_v=5, max_v=500)
 
@@ -1318,7 +1338,7 @@ def agenda():
     tags_map = load_tags_map([r["id"] for r in rows])
 
     return render_template(
-        "agenda.html",
+        "proximo.html",
         rows=rows,
         tags_map=tags_map,
         page=page,

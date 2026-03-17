@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% block content %}
   <div class="page-title">
-    <h1>Agenda 📅</h1>
-    <p class="subtitle">Tareas ordenadas por fecha de finalización.</p>
+    <h1>Próximo 📅</h1>
+  <p class="subtitle">Tareas ordenadas por fecha de finalización.</p>
   </div>
 
 <div class="pager" style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:10px;">
@@ -13,16 +13,16 @@
 
   <div style="display:flex; gap:8px; flex-wrap:wrap;">
     {% if page > 1 %}
-      <a class="btn btn-soft" href="{{ url_for('agenda', page=1) }}">« Primera</a>
-      <a class="btn btn-soft" href="{{ url_for('agenda', page=page-1) }}">‹ Anterior</a>
+      <a class="btn btn-soft" href="{{ url_for('proximo', page=1) }}">« Primera</a>
+      <a class="btn btn-soft" href="{{ url_for('proximo', page=page-1) }}">‹ Anterior</a>
     {% else %}
       <span class="btn btn-soft disabled">« Primera</span>
       <span class="btn btn-soft disabled">‹ Anterior</span>
     {% endif %}
 
     {% if page < pages %}
-      <a class="btn btn-soft" href="{{ url_for('agenda', page=page+1) }}">Siguiente ›</a>
-      <a class="btn btn-soft" href="{{ url_for('agenda', page=pages) }}">Última »</a>
+      <a class="btn btn-soft" href="{{ url_for('proximo', page=page+1) }}">Siguiente ›</a>
+      <a class="btn btn-soft" href="{{ url_for('proximo', page=pages) }}">Última »</a>
     {% else %}
       <span class="btn btn-soft disabled">Siguiente ›</span>
       <span class="btn btn-soft disabled">Última »</span>
@@ -57,7 +57,7 @@
 				  {{ t.title }}
 
 				  {% if t.notes %}
-          <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('agenda', page=page)) }}"
+          <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('proximo', page=page)) }}"
 					   title="{{ t.notes }}"
 					   style="text-decoration:none; font-size:0.9rem; opacity:.75;">
 					   📝
@@ -112,7 +112,7 @@
             </td>
 
             <td class="actions" style="text-align: right;">
-              <a class="btn btn-soft" href="{{ url_for('task_edit', task_id=t.id, next=url_for('agenda', page=page)) }}"> ✎ </a>
+              <a class="btn btn-soft" href="{{ url_for('task_edit', task_id=t.id, next=url_for('proximo', page=page)) }}"> ✎ </a>
               <form method="post" action="{{ url_for('task_delete', task_id=t.id) }}" style="display:inline;">
                 <button class="btn btn-soft" onclick="return confirm('¿Borrar esta tarea?');"> 🗑 </button>
               </form>
@@ -133,10 +133,10 @@
     </div>
     <div style="display:flex; gap:8px;">
       {% if page > 1 %}
-        <a class="btn btn-soft" href="{{ url_for('agenda', page=page-1) }}">‹ Anterior</a>
+        <a class="btn btn-soft" href="{{ url_for('proximo', page=page-1) }}">‹ Anterior</a>
       {% endif %}
       {% if page < pages %}
-        <a class="btn btn-soft" href="{{ url_for('agenda', page=page+1) }}">Siguiente ›</a>
+        <a class="btn btn-soft" href="{{ url_for('proximo', page=page+1) }}">Siguiente ›</a>
       {% endif %}
     </div>
   </div>

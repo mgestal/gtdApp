@@ -252,8 +252,8 @@
           </span>
         </a>
           
-        <a class="nav-item nav-item-count" href="{{ url_for('agenda') }}">
-          <span>[A] Agenda</span>
+        <a class="nav-item nav-item-count" href="{{ url_for('proximo') }}">
+          <span>[A] Próximo </span>
           <span class="nav-count">{{ sidebar_counts.agenda }}</span>
         </a>
 
@@ -660,7 +660,7 @@ document.addEventListener("keydown", function(e){
   }
 
   if(key === "a"){
-    window.location.href = "{{ url_for('agenda') }}";
+    window.location.href = "{{ url_for('proximo') }}";
   }
   
   if(key === "w"){

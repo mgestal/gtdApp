@@ -1,5 +1,23 @@
 {% extends "base.html" %}
 {% block content %}
+  <style>
+    @media (max-width: 980px) {
+      .proximo-card {
+        padding: 10px;
+      }
+
+      .proximo-table-wrap {
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .proximo-table-wrap .table {
+        min-width: 680px;
+      }
+    }
+  </style>
+
   <div class="page-title">
     <h1>Próximo 📅</h1>
   <p class="subtitle">Tareas ordenadas por fecha de finalización.</p>
@@ -30,8 +48,9 @@
   </div>
 </div>
 
-  <div class="card">
+  <div class="card proximo-card">
     {% if rows and rows|length > 0 %}
+      <div class="proximo-table-wrap">
       <table class="table">
         <thead>
           <tr>
@@ -121,6 +140,7 @@
         {% endfor %}
         </tbody>
       </table>
+      </div>
     {% else %}
       <div class="empty">No hay tareas con fecha.</div>
     {% endif %}

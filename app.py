@@ -1295,12 +1295,17 @@ def home():
         "ORDER BY archived ASC, name ASC"
     )
 
-    tags_map = load_tags_map([r["id"] for r in inbox])
+    inbox_ids = [r["id"] for r in inbox]
+    tags_map = load_tags_map(inbox_ids) if inbox_ids else {}
+    sub_counts = load_subtask_counts(subdb, inbox_ids)
+    sub_map = load_subtasks_map(subdb, inbox_ids)
 
     return render_template(
         "home.html",
         inbox=inbox,
         tags_map=tags_map,
+        sub_counts=sub_counts,
+        sub_map=sub_map,
         orphan_projects=orphan_projects
     )
 

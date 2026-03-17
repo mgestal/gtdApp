@@ -866,7 +866,7 @@ def compile_filter_to_sql(ast: Node) -> Tuple[str, List[Any]]:
                         " UNION ALL"
                         " SELECT f.id FROM folders f"
                         " JOIN subfolders sf ON f.parent_id = sf.id"
-                        ")"
+                        ") "
                         "SELECT id FROM subfolders"
                         "))"
                     )
@@ -894,7 +894,7 @@ def compile_filter_to_sql(ast: Node) -> Tuple[str, List[Any]]:
                         " JOIN subfolders sf ON f.parent_id = sf.id"
                         ") "
                         "SELECT id FROM subfolders"
-                        ") "
+                        ")) "
                         "OR "
                         "((p.folder_id IS NOT NULL) AND p.folder_id IN ("
                         "WITH RECURSIVE subfolders AS ("
@@ -904,7 +904,7 @@ def compile_filter_to_sql(ast: Node) -> Tuple[str, List[Any]]:
                         " JOIN subfolders sf ON f.parent_id = sf.id"
                         ") "
                         "SELECT id FROM subfolders"
-                        ")"
+                        "))"
                         ")"
                     )
 

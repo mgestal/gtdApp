@@ -3856,20 +3856,25 @@ def review():
 
     # 3) Agenda futura
     en_seguimiento_exists = tag_exists("EnSeguimiento")
+    agenda_exists = tag_exists("agenda")
 
     upcoming_7 = q(
         "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.name AS folder_name, fd.id AS folder_id "
         "FROM tasks t "
+        "JOIN task_tags tt ON tt.task_id=t.id "
+        "JOIN tags tg ON tg.id=tt.tag_id "
         "LEFT JOIN projects p ON p.id=t.project_id "
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "WHERE t.completed_at IS NULL "
+        "AND tg.name=%s "
         "AND t.due_date IS NOT NULL "
         "AND t.due_date >= CURDATE() "
         "AND t.due_date <= DATE_ADD(CURDATE(), INTERVAL 7 DAY) "
-        "ORDER BY t.due_date ASC, t.id DESC"
-    ) or []
+        "ORDER BY t.due_date ASC, t.id DESC",
+        ("agenda",)
+    ) if agenda_exists else []
 
     en_seguimiento_tasks = q(
         "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, "
@@ -3882,12 +3887,13 @@ def review():
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "WHERE t.completed_at IS NULL "
         "AND tg.name=%s "
+        "AND t.due_date <= DATE_ADD(CURDATE(), INTERVAL 15 DAY) "
         "ORDER BY (t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC",
         ("EnSeguimiento",)
     ) if en_seguimiento_exists else []
 
     # 4) Agenda pasada
-    agenda_exists = tag_exists("agenda")
+
 
     agenda_overdue = q(
         "SELECT t.id, t.title, t.due_date, t.notes, t.completed_at, t.recurrence_rule, "
@@ -3924,25 +3930,88 @@ def review():
         ("EnEspera",)
     ) if en_espera_exists else []
 
-    # 6) Proyectos
-    active_projects = q(
-        "SELECT p.id, p.name, p.description, p.archived, f.name AS folder_name "
-        "FROM projects p "
-        "LEFT JOIN folders f ON f.id=p.folder_id "
-        "WHERE p.archived=0 "
-        "ORDER BY p.name"
-    ) or []
+    # 6) Proyectos (excluyendo Sometime y sus subcarpetas)
+    def get_folder_tree_ids(parent_id, include_self=True):
+        """Obtiene recursivamente los IDs de una carpeta y sus descendientes"""
+        result = set()
+        if include_self:
+            result.add(parent_id)
+        children = q("SELECT id FROM folders WHERE parent_id=%s", (parent_id,))
+        for child in children:
+            result.add(child['id'])
+            result.update(get_folder_tree_ids(child['id'], include_self=False))
+        return result
 
-    empty_projects = q(
-        "SELECT p.id, p.name, p.description, p.archived, f.name AS folder_name "
-        "FROM projects p "
-        "LEFT JOIN folders f ON f.id=p.folder_id "
-        "LEFT JOIN tasks t ON t.project_id = p.id AND t.completed_at IS NULL "
-        "WHERE p.archived = 0 "
-        "GROUP BY p.id, p.name, p.description, p.archived, f.name "
-        "HAVING COUNT(t.id) = 0 "
-        "ORDER BY p.name"
-    ) or []
+    excluded_folder_ids = set()
+
+    sometime_folder = q1("SELECT id FROM folders WHERE name='Sometime'")
+    if sometime_folder:
+        excluded_folder_ids.update(get_folder_tree_ids(sometime_folder['id']))
+
+    agenda_folder = q1("SELECT id FROM folders WHERE name='🗃️ Agenda'")
+    if agenda_folder:
+        excluded_folder_ids.update(get_folder_tree_ids(agenda_folder['id']))
+
+    if excluded_folder_ids:
+        ids_placeholder = ','.join(str(fid) for fid in excluded_folder_ids)
+        active_projects = q(
+            f"SELECT p.id, p.name, p.description, p.archived, p.folder_id, f.name AS folder_name "
+            f"FROM projects p "
+            f"LEFT JOIN folders f ON f.id=p.folder_id "
+            f"WHERE p.archived=0 "
+            f"AND (p.folder_id IS NULL OR p.folder_id NOT IN ({ids_placeholder})) "
+            f"ORDER BY p.name"
+        ) or []
+    else:
+        active_projects = q(
+            "SELECT p.id, p.name, p.description, p.archived, p.folder_id, f.name AS folder_name "
+            "FROM projects p "
+            "LEFT JOIN folders f ON f.id=p.folder_id "
+            "WHERE p.archived=0 "
+            "ORDER BY p.name"
+        ) or []
+
+    if excluded_folder_ids:
+        ids_placeholder = ','.join(str(fid) for fid in excluded_folder_ids)
+        empty_projects = q(
+            f"SELECT p.id, p.name, p.description, p.archived, f.name AS folder_name "
+            f"FROM projects p "
+            f"LEFT JOIN folders f ON f.id=p.folder_id "
+            f"LEFT JOIN tasks t ON t.project_id = p.id AND t.completed_at IS NULL "
+            f"WHERE p.archived = 0 "
+            f"AND (p.folder_id IS NULL OR p.folder_id NOT IN ({ids_placeholder})) "
+            f"GROUP BY p.id, p.name, p.description, p.archived, f.name "
+            f"HAVING COUNT(t.id) = 0 "
+            f"ORDER BY p.name"
+        ) or []
+    else:
+        empty_projects = q(
+            "SELECT p.id, p.name, p.description, p.archived, f.name AS folder_name "
+            "FROM projects p "
+            "LEFT JOIN folders f ON f.id=p.folder_id "
+            "LEFT JOIN tasks t ON t.project_id = p.id AND t.completed_at IS NULL "
+            "WHERE p.archived = 0 "
+            "GROUP BY p.id, p.name, p.description, p.archived, f.name "
+            "HAVING COUNT(t.id) = 0 "
+            "ORDER BY p.name"
+        ) or []
+
+    rutinas_root = q1("SELECT id FROM folders WHERE name=%s", ("♲ Rutinas",))
+    if not rutinas_root:
+        rutinas_root = q1("SELECT id FROM folders WHERE LOWER(name)=LOWER(%s)", ("Rutinas",))
+
+    rutinas_folder_ids = set()
+    if rutinas_root and rutinas_root.get("id") is not None:
+        rutinas_folder_ids = get_folder_tree_ids(int(rutinas_root["id"]))
+
+    active_projects_rutinas = [
+        p for p in active_projects
+        if p.get("folder_id") is not None and int(p.get("folder_id")) in rutinas_folder_ids
+    ]
+    active_projects_other = [
+        p for p in active_projects
+        if p.get("folder_id") is None or int(p.get("folder_id")) not in rutinas_folder_ids
+    ]
 
     # 7) ADTV / SomeTime
     adtv_folder_exists = folder_exists("ADTV")
@@ -3968,19 +4037,37 @@ def review():
 
     # 8) Checklists
     checklists_folder_exists = folder_exists("✅ Checklists")
+    checklist_tasks = []
+    checklist_projects = []
 
-    checklist_tasks = q(
-        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, "
-        "p.name AS project_name, p.id AS project_id, "
-        "fd.name AS folder_name, fd.id AS folder_id "
-        "FROM tasks t "
-        "LEFT JOIN projects p ON p.id=t.project_id "
-        "LEFT JOIN folders fd ON fd.id = COALESCE(t.folder_id, p.folder_id) "
-        "WHERE t.completed_at IS NULL "
-        "AND fd.name=%s "
-        "ORDER BY t.id DESC",
-        ("✅ Checklists",)
-    ) if checklists_folder_exists else []
+    if checklists_folder_exists:
+        checklists_folder = q1("SELECT id FROM folders WHERE name='✅ Checklists'")
+        if checklists_folder:
+            checklists_folder_id = checklists_folder['id']
+            # Tareas directas en la carpeta (sin proyecto)
+            checklist_tasks = q(
+                "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, "
+                "p.name AS project_name, p.id AS project_id, "
+                "f.name AS folder_name, f.id AS folder_id "
+                "FROM tasks t "
+                "LEFT JOIN projects p ON p.id=t.project_id "
+                "LEFT JOIN folders f ON f.id=t.folder_id "
+                "WHERE t.completed_at IS NULL "
+                "AND t.folder_id=%s "
+                "AND t.project_id IS NULL "
+                "ORDER BY t.id DESC",
+                (checklists_folder_id,)
+            ) or []
+            # Proyectos en la carpeta
+            checklist_projects = q(
+                "SELECT p.id, p.name, p.description, p.archived, f.name AS folder_name "
+                "FROM projects p "
+                "LEFT JOIN folders f ON f.id=p.folder_id "
+                "WHERE p.archived=0 "
+                "AND p.folder_id=%s "
+                "ORDER BY p.name",
+                (checklists_folder_id,)
+            ) or []
 
     # Tags map de todas las listas de tareas
     all_task_ids = []
@@ -4012,6 +4099,8 @@ def review():
         en_espera_exists=en_espera_exists,
         en_espera_tasks=en_espera_tasks,
         active_projects=active_projects,
+        active_projects_rutinas=active_projects_rutinas,
+        active_projects_other=active_projects_other,
         empty_projects=empty_projects,
         adtv_folder_exists=adtv_folder_exists,
         adtv_projects=adtv_projects,
@@ -4019,6 +4108,7 @@ def review():
         esta_semana_no_projects=esta_semana_no_projects,
         checklists_folder_exists=checklists_folder_exists,
         checklist_tasks=checklist_tasks,
+        checklist_projects=checklist_projects,
         tags_map=tags_map,
     )
     

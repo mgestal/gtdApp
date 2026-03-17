@@ -5,36 +5,44 @@
     <p class="subtitle">Crear, renombrar, mover y borrar (solo si están vacías).</p>
   </div>
 
- <div class="card">
-    <div class="card-header"><div class="card-title">Crear carpeta</div></div>
+  <div class="grid2">
+    <div class="card">
+      <div class="card-header"><div class="card-title">Crear carpeta</div></div>
 
-    <form method="post" action="{{ url_for('folder_create') }}" class="form">
-      <label class="label">Nombre</label>
-      <input class="input" name="name" required>
+      <form method="post" action="{{ url_for('folder_create') }}" class="form">
+        <label class="label">Nombre</label>
+        <input class="input" name="name" required>
 
-      <label class="label">Padre</label>
-      <select class="input" name="parent_id">
-        <option value="">(raíz)</option>
-        {# Para el selector usamos la lista mostrada; si quieres TODAS las carpetas siempre,
-           habría que pasar otra variable desde backend #}
-        {% for f in rows %}
-          <option value="{{ f.id }}">{{ f.name }}</option>
-        {% endfor %}
-      </select>
+        <label class="label">Padre</label>
+        <select class="input" name="parent_id">
+          <option value="">(raíz)</option>
+          {# Para el selector usamos la lista mostrada; si quieres TODAS las carpetas siempre,
+             habría que pasar otra variable desde backend #}
+          {% for f in rows %}
+            <option value="{{ f.id }}">{{ f.name }}</option>
+          {% endfor %}
+        </select>
 
-      <button class="btn btn-primary" type="submit">Crear</button>
-    </form>
-  </div>
-  
-  <form method="get" class="form" style="margin-bottom:12px;">
-    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-      <input class="input" name="q" value="{{ qtxt }}" placeholder="Filtrar carpetas (ej: arp)">
-      <button class="btn btn-soft" type="submit">Aplicar filtro</button>
-      {% if qtxt %}
-        <a class="btn btn-soft" href="{{ url_for('folders') }}">Quitar filtro</a>
-      {% endif %}
+        <button class="btn btn-primary" type="submit">Crear</button>
+      </form>
     </div>
-  </form>
+
+    <div class="card">
+      <div class="card-header"><div class="card-title">Filtrar resultados</div></div>
+
+      <form method="get" class="form">
+        <label class="label">Buscar carpetas</label>
+        <input class="input" name="q" value="{{ qtxt }}" placeholder="Ej: Trabajo, Casa, Archivo...">
+
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <button class="btn btn-primary" type="submit">Aplicar filtro</button>
+          {% if qtxt %}
+            <a class="btn btn-soft" href="{{ url_for('folders') }}">Quitar filtro</a>
+          {% endif %}
+        </div>
+      </form>
+    </div>
+  </div>
 
   <div class="muted" style="font-size:12px; margin-bottom:10px;">
     {% if qtxt %}

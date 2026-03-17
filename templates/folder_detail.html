@@ -43,12 +43,12 @@
           <input type="hidden" name="folder_id" value="{{ folder.id }}">
           <input type="hidden" name="next" value="{{ url_for('folder_detail', folder_id=folder.id) }}">
           <div style="display:flex; gap:10px; align-items:center;">
-            <div class="quick-input-wrap" style="flex:1;">
-			   <input class="input" name="quick" placeholder="Ej: Tarea @tag #proy *hoy" required>
-			</div>
+            <input class="input" name="quick" placeholder="Ej: Tarea @tag #proy *hoy h:hh:mm]" required style="flex:1;">
+            <button class="btn btn-primary" type="submit">Añadir</button>
           </div>
         </form>
       </div>
+
     </div>
   </div>
 

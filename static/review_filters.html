@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Review semanal: filtros aplicados</title>
+  <style>
+    :root {
+      --bg: #f6f4f2;
+      --card: #ffffff;
+      --text: #2b2b2b;
+      --muted: #6e6a66;
+      --border: #dfd8d2;
+      --accent: #8a5c3a;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Noto Sans", sans-serif;
+      color: var(--text);
+      background: linear-gradient(180deg, #fbfaf9, var(--bg));
+      line-height: 1.45;
+    }
+
+    .wrap {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 24px 16px 40px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 28px;
+    }
+
+    .lead {
+      margin: 0 0 18px;
+      color: var(--muted);
+    }
+
+    .note {
+      background: #fff6ed;
+      border: 1px solid #efd8c4;
+      border-radius: 12px;
+      padding: 10px 12px;
+      margin-bottom: 18px;
+      font-size: 14px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+
+    h2 {
+      margin: 0 0 8px;
+      font-size: 18px;
+      color: var(--accent);
+    }
+
+    ul {
+      margin: 0;
+      padding-left: 18px;
+    }
+
+    li { margin: 4px 0; }
+
+    code {
+      background: #f3efec;
+      padding: 1px 5px;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <h1>Review semanal: filtros aplicados</h1>
+    <p class="lead">Referencia estática de los criterios que usa la vista <b>Review</b> para construir cada card/subcard.</p>
+
+    <div class="note">
+      Todos los bloques de tareas trabajan sobre tareas abiertas: <code>completed_at IS NULL</code>.
+    </div>
+
+    <section class="card">
+      <h2>1) Procesar inbox</h2>
+      <ul>
+        <li>Solo tareas sin proyecto y sin carpeta.</li>
+        <li>Filtro: <code>project_id IS NULL AND folder_id IS NULL</code>.</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>2) Revisar NextActions</h2>
+      <ul>
+        <li>No vencidas: etiqueta <code>NextAction</code> y fecha vacía o fecha hoy/futuro.</li>
+        <li>Vencidas: etiqueta <code>NextAction</code> y fecha menor que hoy.</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>3) Revisar agenda (eventos futuros)</h2>
+      <ul>
+        <li>Próximos 7 días: etiqueta <code>agenda</code>, con fecha entre hoy y hoy+7.</li>
+        <li>@EnSeguimiento 15 días: etiqueta <code>EnSeguimiento</code> y fecha menor o igual a hoy+15.</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>4) Revisar agenda (eventos pasados)</h2>
+      <ul>
+        <li>Etiqueta <code>agenda</code> y fecha menor que hoy.</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>5) Revisar EnEspera</h2>
+      <ul>
+        <li>Etiqueta <code>EnEspera</code>.</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>6) Revisar Proyectos</h2>
+      <ul>
+        <li>Base: proyectos activos (<code>archived=0</code>).</li>
+        <li>Excluye carpetas y subcarpetas de <code>Sometime</code> y <code>🗃️ Agenda</code>.</li>
+        <li>Subcard Resto: proyectos fuera del árbol de <code>♲ Rutinas</code>.</li>
+        <li>Subcard Rutinas: proyectos dentro de <code>♲ Rutinas</code> y sus subcarpetas.</li>
+        <li>Subcard Sin acciones: proyectos activos filtrados con 0 tareas abiertas.</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>7) Revisión ADTV / SomeTime</h2>
+      <ul>
+        <li>Subcard ADTV: proyectos activos en carpeta exacta <code>ADTV</code>.</li>
+        <li>Subcard EstaSemanaNo: proyectos activos en carpeta exacta <code>🔜 EstaSemanaNo</code>.</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>8) Revisar listas de comprobación</h2>
+      <ul>
+        <li>Carpeta objetivo: <code>✅ Checklists</code>.</li>
+        <li>Tareas: solo tareas directas de la carpeta, sin proyecto.</li>
+        <li>Proyectos: proyectos activos dentro de esa carpeta.</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>9) Brainstorming</h2>
+      <ul>
+        <li>No aplica filtro de lectura: es una entrada rápida para crear tareas.</li>
+      </ul>
+    </section>
+  </main>
+</body>
+</html>

@@ -59,8 +59,9 @@
           <tr>
             <th style="width:42px;"></th> {# Columna para el radio button #}
             <th>Tarea</th>
-            <th style="width:180px;">Ubicación</th>
             <th style="width:110px;">Fecha</th>
+            <th style="width:180px;">Ubicación</th>
+
           </tr>
         </thead>
         <tbody>
@@ -90,6 +91,9 @@
 				
 				</a>
               </td>
+              <td style="font-size: 0.9rem;">
+                {{ t.due_date.strftime('%d-%m-%Y') }}
+              </td>
               <td style="font-size: 0.8rem;">
                 {% if t.folder_name %}
                   <a href="{{ url_for('folder_detail', folder_id=t.folder_id) }}">📂 {{ t.folder_name }}</a>
@@ -107,9 +111,7 @@
                   <span class="muted">Inbox</span>
                 {% endif %}
               </td>
-              <td style="font-size: 0.9rem;">
-                {{ t.due_date.strftime('%d-%m-%Y') }}
-              </td>
+ 
             </tr>
           {% endfor %}
         </tbody>

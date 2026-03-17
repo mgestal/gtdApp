@@ -2581,7 +2581,7 @@ def project_create():
 
     if not name:
         flash("El nombre del proyecto es obligatorio.", "error")
-        return redirect(url_for("projects"))
+        return redirect(request.referrer or url_for("projects"))
 
     try:
         exec_sql(
@@ -2594,7 +2594,7 @@ def project_create():
         rollback()
         flash(f"No se pudo crear el proyecto: {e}", "error")
 
-    return redirect(url_for("projects"))
+    return redirect(request.referrer or url_for("projects"))
 
 @app.route("/projects/<int:project_id>/archive", methods=["POST"])
 def project_archive(project_id: int):

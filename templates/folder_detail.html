@@ -36,6 +36,20 @@
 
       <div class="card" style="padding:12px;">
         <div class="card-header" style="margin-bottom:8px;">
+          <div class="card-title">Crear proyecto</div>
+        </div>
+
+        <form method="post" action="{{ url_for('project_create') }}" class="form" style="gap:8px;">
+          <input type="hidden" name="folder_id" value="{{ folder.id }}">
+          <div style="display:flex; gap:10px; align-items:center;">
+            <input class="input" name="name" placeholder="Nombre del proyecto" required>
+            <button class="btn btn-primary" type="submit">Crear</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="card" style="padding:12px;">
+        <div class="card-header" style="margin-bottom:8px;">
           <div class="card-title">Añadir tarea rápida</div>
         </div>
 

@@ -2531,6 +2531,11 @@ def task_toggle(task_id: int):
                     "UPDATE tasks SET last_completed_at=%s, due_date=%s, completed_at=NULL WHERE id=%s",
                     (now, next_due, task_id),
                 )
+                # Resetear todas las subtareas para el nuevo ciclo
+                exec_sql(
+                    "UPDATE subtasks SET completed_at=NULL WHERE task_id=%s",
+                    (task_id,),
+                )
 
             else:
                 # CASO 2: tarea no recurrente

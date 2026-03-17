@@ -117,7 +117,8 @@
               <th>Título</th>
               <th style="width:130px;">Ubicación</th>
               <th style="width:110px;">Fecha</th>
-              <th style="width:90px;"></th>
+              <th style="width:80px;">Hora</th>
+              <th style="width:120px;"></th>
             </tr>
           </thead>
           <tbody>
@@ -162,15 +163,30 @@
                   {% if t.project_id and t.project_name %}<a href="{{ url_for('project_detail', project_id=t.project_id) }}" style="text-decoration:none;">💼 {{ t.project_name }}</a>{% endif %}
                 </td>
                 <td>
-                  {% if t.completed_at %}
-                    {{ t.completed_at.strftime('%H:%M') }}
-                  {% elif t.due_date %}
+                  {% if t.due_date %}
                     {{ t.due_date.strftime('%d-%m-%Y') }}
                   {% else %}
-                    &nbsp;
+                    <span class="muted">—</span>
                   {% endif %}
                 </td>
-                <td><a class="btn btn-soft" href="{{ url_for('task_edit', task_id=t.id) }}">✎</a></td>
+                <td>
+                  {% if t.due_time %}
+                    {% if t.due_time.strftime is defined %}
+                      {{ t.due_time.strftime('%H:%M') }}
+                    {% else %}
+                      {% set ts = t.due_time|string %}
+                      {{ ts[:5] }}
+                    {% endif %}
+                  {% else %}
+                    <span class="muted">—</span>
+                  {% endif %}
+                </td>
+                <td class="actions" style="text-align:right;">
+                  <a class="btn btn-soft" href="{{ url_for('task_edit', task_id=t.id) }}">✎</a>
+                  <form method="post" action="{{ url_for('task_delete', task_id=t.id) }}" style="display:inline; margin:0;">
+                    <button class="btn btn-soft" onclick="return confirm('¿Borrar esta tarea?');">🗑</button>
+                  </form>
+                </td>
               </tr>
             {% endfor %}
           </tbody>

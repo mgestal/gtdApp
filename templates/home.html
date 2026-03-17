@@ -105,7 +105,7 @@
 
               {% if sc.total > 0 %}
                 <div class="muted" style="font-size:12px; margin-top:5px;">
-                  <button type="button" class="subtask-toggle" onclick="toggleSubtasks({{ t.id }});">
+                  <button type="button" class="subtask-toggle js-subtasks-toggle" data-task-id="{{ t.id }}">
                     <span id="subtasks-icon-{{ t.id }}">▸</span> Subtareas: {{ sc.done }}/{{ sc.total }}
                   </button>
                 </div>
@@ -225,6 +225,14 @@
       icon.textContent = '▸';
     }
   }
+
+  document.addEventListener('click', (ev) => {
+    const btn = ev.target.closest('.js-subtasks-toggle');
+    if(!btn) return;
+    const taskId = btn.getAttribute('data-task-id');
+    if(!taskId) return;
+    toggleSubtasks(taskId);
+  });
 </script>
 
 {% endblock %}

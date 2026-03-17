@@ -419,7 +419,16 @@ def extract_due_date_from_quick(raw_text: str) -> Tuple[Optional[date], str]:
         cleaned = re.sub(r"\s+", " ", cleaned)
         return due_date, cleaned
 
-    # 2) Si no hay *, buscar fecha "bare" (sin prefijo)
+    # 2) Buscar palabras clave de fecha sin prefijo: hoy, mañana
+    m = re.search(r'(?<!\w)(hoy|mañana)(?!\w)', s, re.IGNORECASE)
+    if m:
+        token = m.group(1).lower()
+        due_date = parse_due_token(token)
+        cleaned = (s[:m.start()] + " " + s[m.end():]).strip()
+        cleaned = re.sub(r"\s+", " ", cleaned)
+        return due_date, cleaned
+
+    # 3) Si no hay *, buscar fecha "bare" (sin prefijo)
     m = DATE_BARE_RE.search(s)
     if m:
         token = m.group(1)

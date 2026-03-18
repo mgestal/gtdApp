@@ -146,6 +146,31 @@
     {% endif %}
   </div>
 
+
+{% if not project.archived %}
+  <div class="card" style="margin-top:14px;">
+    <form method="post" action="{{ url_for('task_create') }}" class="form">
+      <input type="hidden" name="project_id" value="{{ project.id }}">
+<div style="display:flex; gap:10px; align-items:flex-start;">
+  <div class="quick-input-wrap" style="flex:1;">
+    <input
+      class="input"
+      name="quick"
+      placeholder="Nueva tarea @etiqueta *18-03 cada semana..."
+      autocomplete="off"
+      required
+    >
+  </div>
+  <button class="btn btn-primary">Añadir</button>
+</div>
+      <div class="hint" style="margin-top:8px;">
+        Sintaxis: nombre + [@etiquetas] + [ [*]dd-mm-[aaaa] | *hoy | *mañana | *+nDias ] [h:HH:MM] [#proyecto]  [cada {día|semana|mes|año}]
+      </div>
+    </form>
+  </div>
+{% endif %}
+
+
   <div class="card" style="margin-top:14px;">
     <div class="card-header"><div class="card-title">Completadas</div></div>
     {% if done_tasks %}
@@ -188,30 +213,6 @@
       <div class="empty">No hay tareas completadas.</div>
     {% endif %}
   </div>
-
-{% if not project.archived %}
-  <div class="card" style="margin-top:14px;">
-    <form method="post" action="{{ url_for('task_create') }}" class="form">
-      <input type="hidden" name="project_id" value="{{ project.id }}">
-<div style="display:flex; gap:10px; align-items:flex-start;">
-  <div class="quick-input-wrap" style="flex:1;">
-    <input
-      class="input"
-      name="quick"
-      placeholder="Nueva tarea @etiqueta *18-03 cada semana..."
-      autocomplete="off"
-      required
-    >
-  </div>
-  <button class="btn btn-primary">Añadir</button>
-</div>
-      <div class="hint" style="margin-top:8px;">
-        Sintaxis: nombre + [@etiquetas] + [ [*]dd-mm-[aaaa] | *hoy | *mañana | *+nDias ] [h:HH:MM] [#proyecto]  [cada {día|semana|mes|año}]
-      </div>
-    </form>
-  </div>
-{% endif %}
-
 
   <script>
     function toggleProjActions(e){

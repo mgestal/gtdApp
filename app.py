@@ -528,12 +528,13 @@ def find_project_by_name_active(project_name: str) -> Optional[int]:
     return int(row["id"]) if row else None
 
 def parse_tags_csv(tags_csv: str) -> List[str]:
-    # Se aceptan etiquetas separadas por comas con prefijo @ (p.e. "@NextAction, @Casa").
+    # Se aceptan etiquetas separadas por comas o espacios, con o sin prefijo @.
+    # Ejemplos: "@NextAction, @Casa" | "@NextAction @Casa" | "next casa".
     s = (tags_csv or "").strip()
     if not s:
         return []
 
-    parts = [p.strip() for p in s.split(",") if p.strip()]
+    parts = [p.strip() for p in re.split(r"[\s,]+", s) if p.strip()]
     tags = []
 
     for part in parts:

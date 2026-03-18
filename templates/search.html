@@ -1,45 +1,90 @@
 {% extends "base.html" %}
 {% block content %}
+<style>
+  .search-type-bar{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    margin-top:8px;
+  }
+  .search-type-bar .btn{
+    padding:6px 10px;
+  }
+  @media (max-width: 640px) {
+    .search-type-bar .btn{
+      flex: 1 1 calc(50% - 8px);
+      text-align:center;
+    }
+    .search-table th:nth-child(3),
+    .search-table td:nth-child(3),
+    .search-table th:nth-child(4),
+    .search-table td:nth-child(4) {
+      display: none;
+    }
+    .search-table th:nth-child(1),
+    .search-table td:nth-child(1) {
+      width: 36px !important;
+    }
+    .search-table th:last-child,
+    .search-table td:last-child {
+      width: auto !important;
+    }
+  }
+</style>
+
   <div class="page-title">
-    <h1>Buscar 🕵🏻</h1> 
-    <p class="subtitle">Por título/notas (FullText en MariaDB).</p>
+    <h1>Buscar 🕵🏻</h1>
+    <p class="subtitle">Multibúsqueda: tareas, filtros, proyectos, carpetas y etiquetas.</p>
   </div>
 
 <form method="get" action="{{ url_for('search') }}" class="form">
-  <label class="label">Consulta</label>
   <div style="display:flex; gap:10px;">
-    <input class="input" name="q" value="{{ qtxt }}" placeholder="Palabra(s) clave">
-    <button class="btn btn-primary">Buscar</button>
+    <input class="input" name="q" value="{{ qtxt }}" placeholder="Palabra(s) clave" style="flex:1; min-width:0;">
+    <input type="hidden" id="searchTypeInput" name="type" value="{{ search_type or 'tasks' }}">
+    <button class="btn btn-primary" style="white-space:nowrap;">🔍 Buscar</button>
+  </div>
+  <div class="search-type-bar">
+    <button type="submit" class="btn {% if (search_type or 'tasks') == 'tasks' %}btn-primary{% else %}btn-soft{% endif %}" onclick="document.getElementById('searchTypeInput').value='tasks'">Tareas</button>
+    <button type="submit" class="btn {% if search_type == 'filters' %}btn-primary{% else %}btn-soft{% endif %}" onclick="document.getElementById('searchTypeInput').value='filters'">Filtros</button>
+    <button type="submit" class="btn {% if search_type == 'tags' %}btn-primary{% else %}btn-soft{% endif %}" onclick="document.getElementById('searchTypeInput').value='tags'">Etiquetas</button>
+    <button type="submit" class="btn {% if search_type == 'projects' %}btn-primary{% else %}btn-soft{% endif %}" onclick="document.getElementById('searchTypeInput').value='projects'">Proyectos</button>
+    <button type="submit" class="btn {% if search_type == 'folders' %}btn-primary{% else %}btn-soft{% endif %}" onclick="document.getElementById('searchTypeInput').value='folders'">Carpetas</button>
   </div>
 </form>
 
+{% if qtxt %}
 <br/>
-
-{% if qtxt and total > 0 %}
-  <div class="pager" style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin:15px 0 10px 0;">
-    <div class="muted" style="font-size: 13px;">
-      Mostrando {{ (page-1)*per_page + 1 }}–{{ [page*per_page, total]|min }} de {{ total }}
-    </div>
-
-    <div style="display:flex; gap:6px;">
-      {% if page > 1 %}
-        <a class="btn btn-soft" style="padding:5px 10px; font-size:12px;" href="{{ url_for('search', q=qtxt, page=1) }}">«</a>
-        <a class="btn btn-soft" style="padding:5px 10px; font-size:12px;" href="{{ url_for('search', q=qtxt, page=page-1) }}">‹</a>
+<div class="card">
+  <div class="pager" style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:10px;">
+    <div class="muted" style="font-size:13px;">
+      {% if total > 0 %}
+        Mostrando {{ (page-1)*per_page + 1 }}–{{ [page*per_page, total]|min }} de {{ total }}
+      {% else %}
+        Sin resultados para «{{ qtxt }}»
       {% endif %}
-
+    </div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      {% if page > 1 %}
+        <a class="btn btn-soft" href="{{ url_for('search', q=qtxt, type=search_type, page=1) }}">« Primera</a>
+        <a class="btn btn-soft" href="{{ url_for('search', q=qtxt, type=search_type, page=page-1) }}">‹ Anterior</a>
+      {% else %}
+        <span class="btn btn-soft disabled">« Primera</span>
+        <span class="btn btn-soft disabled">‹ Anterior</span>
+      {% endif %}
       {% if page < pages %}
-        <a class="btn btn-soft" style="padding:5px 10px; font-size:12px;" href="{{ url_for('search', q=qtxt, page=page+1) }}">›</a>
-        <a class="btn btn-soft" style="padding:5px 10px; font-size:12px;" href="{{ url_for('search', q=qtxt, page=pages) }}">»</a>
+        <a class="btn btn-soft" href="{{ url_for('search', q=qtxt, type=search_type, page=page+1) }}">Siguiente ›</a>
+        <a class="btn btn-soft" href="{{ url_for('search', q=qtxt, type=search_type, page=pages) }}">Última »</a>
+      {% else %}
+        <span class="btn btn-soft disabled">Siguiente ›</span>
+        <span class="btn btn-soft disabled">Última »</span>
       {% endif %}
     </div>
   </div>
-{% endif %}
 
-
-
-    {% if qtxt and rows and rows|length > 0 %}
-	  <div class="card">
-      <table class="table">
+  {% if rows %}
+    {% if search_type == 'tasks' %}
+    <div style="overflow-x:auto; -webkit-overflow-scrolling:touch;">
+      <table class="table search-table">
         <thead>
           <tr>
             <th style="width:40px;"></th>
@@ -59,19 +104,15 @@
             </td>
 
             <td>
-              <div style="font-weight:600; margin-bottom:4px;">
-                            		<div style="font-weight:600; display:flex; align-items:center; gap:6px;">
-							{{ t.title }} {% if t.notes %}
-							<a href="{{ url_for('task_edit', task_id=t.id, next=url_for('next_actions')) }}"
-							title="{{ t.notes }}"
-							style="text-decoration:none; font-size:0.9rem; opacity:.75;">
-							📝
-							</a>
-							             {% endif %}
-						</div>
+              <div style="font-weight:600; display:flex; align-items:center; gap:6px;">
+                {{ t.title }}
+                {% if t.notes %}
+                  <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('search', q=qtxt, type=search_type, page=page)) }}"
+                     title="{{ t.notes }}"
+                     style="text-decoration:none; font-size:0.9rem; opacity:.75;">📝</a>
+                {% endif %}
               </div>
-              
-              <div style="display:flex; flex-wrap:wrap; gap:4px;">
+              <div style="display:flex; flex-wrap:wrap; gap:4px; margin-top:3px;">
                 {% if t.recurrence_rule %}<span class="pill" style="font-size:10px;">⟲ periódica</span>{% endif %}
                 {% for tag in tags_map.get(t.id, []) %}
                   <a class="tagchip taglink" style="margin:0; font-size:9px;" href="{{ url_for('tag_detail', tag_id=tag.id) }}">@{{ tag.name }}</a>
@@ -95,8 +136,9 @@
 
             <td style="text-align:right;">
               <div style="display:inline-flex; gap:5px;">
-                <a class="btn btn-soft" style="padding:5px 8px;" href="{{ url_for('task_edit', task_id=t.id) }}">✎</a>
+                <a class="btn btn-soft" style="padding:5px 8px;" href="{{ url_for('task_edit', task_id=t.id, next=url_for('search', q=qtxt, type=search_type, page=page)) }}">✎</a>
                 <form method="post" action="{{ url_for('task_delete', task_id=t.id) }}" style="display:inline;">
+                  <input type="hidden" name="next" value="{{ url_for('search', q=qtxt, type=search_type, page=page) }}">
                   <button class="btn btn-soft" style="padding:5px 8px;" onclick="return confirm('¿Borrar?');">🗑</button>
                 </form>
               </div>
@@ -105,12 +147,100 @@
         {% endfor %}
         </tbody>
       </table>
-	</div>
-    {% elif qtxt %}
-       <div class="card">Sin resultados para "{{ qtxt }}"</div>
-    {% else %}
-     
+    </div>
+    {% elif search_type == 'projects' %}
+      <div class="list" style="margin-top:10px;">
+        {% for p in rows %}
+          <div class="list-row">
+            <div>
+              <a class="link" href="{{ url_for('project_detail', project_id=p.id) }}">💼 {{ p.name }}</a>
+              {% if p.archived %}<span class="pill" style="margin-left:8px; font-size:10px;">archivado</span>{% endif %}
+              {% if p.description %}
+                <div class="muted" style="margin-top:4px; font-size:12px;">{{ p.description }}</div>
+              {% endif %}
+              <div class="muted" style="margin-top:4px; font-size:12px;">
+                {% if p.folder_id %}<a class="link" href="{{ url_for('folder_detail', folder_id=p.folder_id) }}">📂 {{ p.folder_name }}</a>{% else %}📥 Sin carpeta{% endif %}
+                · {{ p.pending }} pendientes
+              </div>
+            </div>
+            <div class="actions">
+              <a class="btn btn-soft" href="{{ url_for('project_edit', project_id=p.id) }}">✎</a>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% elif search_type == 'folders' %}
+      <div class="list" style="margin-top:10px;">
+        {% for f in rows %}
+          <div class="list-row">
+            <div>
+              <a class="link" href="{{ url_for('folder_detail', folder_id=f.id) }}">📂 {{ f.name }}</a>
+              <div class="muted" style="margin-top:4px; font-size:12px;">
+                {% if f.parent_id %}<a class="link" href="{{ url_for('folder_detail', folder_id=f.parent_id) }}">Padre: {{ f.parent_name }}</a>{% else %}Raíz{% endif %}
+                · {{ f.project_count }} proyectos activos
+              </div>
+            </div>
+            <div class="actions">
+              <a class="btn btn-soft" href="{{ url_for('folder_move', folder_id=f.id) }}">Mover</a>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% elif search_type == 'tags' %}
+      <div class="list" style="margin-top:10px;">
+        {% for tg in rows %}
+          <div class="list-row">
+            <div>
+              <a class="tagchip taglink" href="{{ url_for('tag_detail', tag_id=tg.id) }}">@{{ tg.name }}</a>
+              {% if tg.type %}<span class="muted" style="margin-left:8px;">({{ tg.type }})</span>{% endif %}
+            </div>
+            <div class="muted">{{ tg.task_count }} tareas</div>
+          </div>
+        {% endfor %}
+      </div>
+    {% elif search_type == 'filters' %}
+      <div class="list" style="margin-top:10px;">
+        {% for f in rows %}
+          <div class="list-row">
+            <div>
+              <a class="link" href="{{ url_for('filter_run', filter_id=f.id) }}">🔎 {{ f.name }}</a>
+              <div class="muted" style="margin-top:4px; font-size:12px;">{{ f.expression }}</div>
+            </div>
+            <div class="actions">
+              <a class="btn btn-soft" href="{{ url_for('filter_edit', filter_id=f.id) }}">✎</a>
+              <a class="btn btn-soft" href="{{ url_for('filter_run_expression', filter_id=f.id) }}">▶</a>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
     {% endif %}
+
+    <div class="pager" style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-top:12px;">
+      <div class="muted" style="font-size:13px;">
+        Mostrando {{ (page-1)*per_page + 1 }}–{{ [page*per_page, total]|min }} de {{ total }}
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        {% if page > 1 %}
+          <a class="btn btn-soft" href="{{ url_for('search', q=qtxt, type=search_type, page=1) }}">« Primera</a>
+          <a class="btn btn-soft" href="{{ url_for('search', q=qtxt, type=search_type, page=page-1) }}">‹ Anterior</a>
+        {% else %}
+          <span class="btn btn-soft disabled">« Primera</span>
+          <span class="btn btn-soft disabled">‹ Anterior</span>
+        {% endif %}
+        {% if page < pages %}
+          <a class="btn btn-soft" href="{{ url_for('search', q=qtxt, type=search_type, page=page+1) }}">Siguiente ›</a>
+          <a class="btn btn-soft" href="{{ url_for('search', q=qtxt, type=search_type, page=pages) }}">Última »</a>
+        {% else %}
+          <span class="btn btn-soft disabled">Siguiente ›</span>
+          <span class="btn btn-soft disabled">Última »</span>
+        {% endif %}
+      </div>
+    </div>
+  {% else %}
+    <div class="empty">Sin resultados para «{{ qtxt }}»</div>
+  {% endif %}
+</div>
+{% endif %}
 
 {% endblock %}
 

@@ -277,9 +277,11 @@
           <span>[C] Carpetas</span>
         </a>
 
-        <a class="nav-item" href="{{ url_for('search') }}">
-          <span>[Q] Buscar</span>
-        </a>
+        <form method="get" action="{{ url_for('search') }}" style="display:flex; gap:6px; margin:4px 0;">
+          <input type="hidden" name="type" value="tasks">
+          <input class="input sidebar-search-input" name="q" placeholder="🔍 Buscar…" style="flex:1; min-width:0; padding:5px 8px; font-size:13px;">
+          <button class="btn btn-primary" type="submit" style="padding:5px 10px; font-size:13px; white-space:nowrap;">🔍</button>
+        </form>
       </nav>
       
       <hr/>
@@ -649,7 +651,8 @@ document.addEventListener("keydown", function(e){
   }
   
   if(key === "q"){
-    window.location.href = "{{ url_for('search') }}";
+    var si = document.querySelector('.sidebar-search-input');
+    if(si){ si.focus(); si.select(); }
   }
 
   if(key === "t"){

@@ -1130,6 +1130,9 @@ def load_folder_tree(include_archived: bool = False) -> List[Dict[str, Any]]:
 @app.route("/search")
 def search():
     qtxt = (request.args.get("q") or "").strip()
+    search_type = request.args.get("type", "tasks")
+    if search_type not in ("tasks", "projects", "folders", "tags", "filters"):
+        search_type = "tasks"
 
     per_page = cfg_int(["app", "pagination", "search_per_page"], default=25, min_v=5, max_v=500)
 
@@ -1143,36 +1146,115 @@ def search():
     total = 0
     pages = 1
     rows = []
+    tags_map = {}
 
     if qtxt:
-        # total resultados (para paginar)
-        total_row = q1(
-            "SELECT COUNT(*) AS c "
-            "FROM tasks t "
-            "WHERE MATCH(t.title, t.notes) AGAINST(%s IN BOOLEAN MODE)",
-            (qtxt + "*",),
-        )
-        total = int(total_row["c"]) if total_row else 0
-        pages = max(1, (total + per_page - 1) // per_page)
+        like = f"%{qtxt.lower()}%"
 
-        rows = q(
-            "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, "
-            "p.name AS project_name, p.id AS project_id, "
-            "fd.id AS folder_id, fd.name AS folder_name "
-            "FROM tasks t "
-            "LEFT JOIN projects p ON p.id=t.project_id "
-            "LEFT JOIN folders fd ON fd.id = COALESCE(t.folder_id, p.folder_id) "
-            "WHERE MATCH(t.title, t.notes) AGAINST(%s IN BOOLEAN MODE) "
-            "ORDER BY (t.completed_at IS NOT NULL) ASC, "
-            "(t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC "
-            "LIMIT %s OFFSET %s",
-            (qtxt + "*", per_page, offset),
-        )
+        if search_type == "tasks":
+            total_row = q1(
+                "SELECT COUNT(*) AS c FROM tasks t "
+                "WHERE MATCH(t.title, t.notes) AGAINST(%s IN BOOLEAN MODE)",
+                (qtxt + "*",),
+            )
+            total = int(total_row["c"]) if total_row else 0
+            pages = max(1, (total + per_page - 1) // per_page)
+            page = min(page, pages)
+            offset = (page - 1) * per_page
+            rows = q(
+                "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, "
+                "p.name AS project_name, p.id AS project_id, "
+                "fd.id AS folder_id, fd.name AS folder_name "
+                "FROM tasks t "
+                "LEFT JOIN projects p ON p.id=t.project_id "
+                "LEFT JOIN folders fd ON fd.id = COALESCE(t.folder_id, p.folder_id) "
+                "WHERE MATCH(t.title, t.notes) AGAINST(%s IN BOOLEAN MODE) "
+                "ORDER BY (t.completed_at IS NOT NULL) ASC, "
+                "(t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC "
+                "LIMIT %s OFFSET %s",
+                (qtxt + "*", per_page, offset),
+            )
+            tags_map = load_tags_map([r["id"] for r in rows]) if rows else {}
 
-    tags_map = load_tags_map([r["id"] for r in rows]) if rows else {}
+        elif search_type == "projects":
+            total_row = q1(
+                "SELECT COUNT(*) AS c FROM projects WHERE LOWER(name) LIKE %s OR LOWER(description) LIKE %s",
+                (like, like),
+            )
+            total = int(total_row["c"]) if total_row else 0
+            pages = max(1, (total + per_page - 1) // per_page)
+            page = min(page, pages)
+            offset = (page - 1) * per_page
+            rows = q(
+                "SELECT p.id, p.name, p.description, p.archived, "
+                "f.name AS folder_name, f.id AS folder_id, "
+                "(SELECT COUNT(*) FROM tasks t WHERE t.project_id=p.id AND t.completed_at IS NULL) AS pending "
+                "FROM projects p LEFT JOIN folders f ON f.id=p.folder_id "
+                "WHERE LOWER(p.name) LIKE %s OR LOWER(p.description) LIKE %s "
+                "ORDER BY p.archived ASC, p.name ASC "
+                "LIMIT %s OFFSET %s",
+                (like, like, per_page, offset),
+            )
+
+        elif search_type == "folders":
+            total_row = q1(
+                "SELECT COUNT(*) AS c FROM folders WHERE LOWER(name) LIKE %s",
+                (like,),
+            )
+            total = int(total_row["c"]) if total_row else 0
+            pages = max(1, (total + per_page - 1) // per_page)
+            page = min(page, pages)
+            offset = (page - 1) * per_page
+            rows = q(
+                "SELECT f.id, f.name, p.name AS parent_name, p.id AS parent_id, "
+                "(SELECT COUNT(*) FROM projects pr WHERE pr.folder_id=f.id AND pr.archived=0) AS project_count "
+                "FROM folders f LEFT JOIN folders p ON p.id=f.parent_id "
+                "WHERE LOWER(f.name) LIKE %s "
+                "ORDER BY f.name ASC "
+                "LIMIT %s OFFSET %s",
+                (like, per_page, offset),
+            )
+
+        elif search_type == "tags":
+            total_row = q1(
+                "SELECT COUNT(*) AS c FROM tags WHERE LOWER(name) LIKE %s",
+                (like,),
+            )
+            total = int(total_row["c"]) if total_row else 0
+            pages = max(1, (total + per_page - 1) // per_page)
+            page = min(page, pages)
+            offset = (page - 1) * per_page
+            rows = q(
+                "SELECT tg.id, tg.name, tg.type, "
+                "(SELECT COUNT(*) FROM task_tags tt WHERE tt.tag_id=tg.id) AS task_count "
+                "FROM tags tg "
+                "WHERE LOWER(tg.name) LIKE %s "
+                "ORDER BY tg.name ASC "
+                "LIMIT %s OFFSET %s",
+                (like, per_page, offset),
+            )
+
+        elif search_type == "filters":
+            total_row = q1(
+                "SELECT COUNT(*) AS c FROM filters WHERE LOWER(name) LIKE %s OR LOWER(expression) LIKE %s",
+                (like, like),
+            )
+            total = int(total_row["c"]) if total_row else 0
+            pages = max(1, (total + per_page - 1) // per_page)
+            page = min(page, pages)
+            offset = (page - 1) * per_page
+            rows = q(
+                "SELECT id, name, expression FROM filters "
+                "WHERE LOWER(name) LIKE %s OR LOWER(expression) LIKE %s "
+                "ORDER BY name ASC "
+                "LIMIT %s OFFSET %s",
+                (like, like, per_page, offset),
+            )
+
     return render_template(
         "search.html",
         qtxt=qtxt,
+        search_type=search_type,
         rows=rows,
         tags_map=tags_map,
         page=page,
@@ -4593,7 +4675,17 @@ def gmail_import_to_inbox():
 
     except Exception as e:
         rollback()
-        flash(f"No se pudieron importar los correos: {e}", "error")
+        err = str(e)
+        if "disabled_client" in err:
+            flash(
+                "OAuth de Google deshabilitado (disabled_client). "
+                "Activa el OAuth Client ID en Google Cloud Console o crea uno nuevo, "
+                "descarga de nuevo el JSON y reemplaza instance/gmail_credentials.json. "
+                "Después borra instance/gmail_token.json e intenta importar otra vez.",
+                "error",
+            )
+        else:
+            flash(f"No se pudieron importar los correos: {e}", "error")
 
     return redirect(next_url)
 

@@ -2663,24 +2663,22 @@ def task_toggle(task_id: int):
 
             else:
                 # CASO 2: tarea no recurrente
-                next_tag = q1("SELECT id FROM tags WHERE name=%s", ("NextAction",))
-                next_tag_id = int(next_tag["id"]) if next_tag else None
+                has_nextaction = q1(
+                    "SELECT 1 AS ok "
+                    "FROM task_tags tt "
+                    "JOIN tags tg ON tg.id=tt.tag_id "
+                    "WHERE tt.task_id=%s AND LOWER(tg.name)=LOWER(%s) "
+                    "LIMIT 1",
+                    (task_id, "NextAction"),
+                ) is not None
 
-                has_nextaction = False
-                if next_tag_id:
-                    row = q1(
-                        "SELECT 1 AS ok "
-                        "FROM task_tags "
-                        "WHERE task_id=%s AND tag_id=%s",
-                        (task_id, next_tag_id),
-                    )
-                    has_nextaction = row is not None
-
-                # Si tenía NextAction, quitársela antes de completar
+                # Si tenía NextAction, quitársela antes de completar (en cualquier variante de mayúsculas/minúsculas)
                 if has_nextaction:
                     exec_sql(
-                        "DELETE FROM task_tags WHERE task_id=%s AND tag_id=%s",
-                        (task_id, next_tag_id),
+                        "DELETE tt FROM task_tags tt "
+                        "JOIN tags tg ON tg.id=tt.tag_id "
+                        "WHERE tt.task_id=%s AND LOWER(tg.name)=LOWER(%s)",
+                        (task_id, "NextAction"),
                     )
 
                 # Marcar como hecha
@@ -2692,6 +2690,7 @@ def task_toggle(task_id: int):
                         "SELECT id "
                         "FROM tasks "
                         "WHERE project_id=%s "
+                        "AND archived=0 "
                         "AND completed_at IS NULL "
                         "AND id<>%s "
                         "ORDER BY (due_date IS NULL) ASC, due_date ASC, id ASC "
@@ -2699,10 +2698,24 @@ def task_toggle(task_id: int):
                         (task["project_id"], task_id),
                     )
                     if next_task:
-                        exec_sql(
-                            "INSERT IGNORE INTO task_tags(task_id, tag_id) VALUES(%s,%s)",
-                            (next_task["id"], next_tag_id),
-                        )
+                        next_has_nextaction = q1(
+                            "SELECT 1 AS ok "
+                            "FROM task_tags tt "
+                            "JOIN tags tg ON tg.id=tt.tag_id "
+                            "WHERE tt.task_id=%s AND LOWER(tg.name)=LOWER(%s) "
+                            "LIMIT 1",
+                            (next_task["id"], "NextAction"),
+                        ) is not None
+                        if not next_has_nextaction:
+                            next_tag = q1(
+                                "SELECT id FROM tags WHERE LOWER(name)=LOWER(%s) ORDER BY id ASC LIMIT 1",
+                                ("NextAction",),
+                            )
+                            next_tag_id = int(next_tag["id"]) if next_tag else get_or_create_tag("NextAction")
+                            exec_sql(
+                                "INSERT IGNORE INTO task_tags(task_id, tag_id) VALUES(%s,%s)",
+                                (next_task["id"], next_tag_id),
+                            )
 
         commit()
 

@@ -165,6 +165,10 @@
             </div>
             <div class="actions">
               <a class="btn btn-soft" href="{{ url_for('project_edit', project_id=p.id) }}">✎</a>
+              <form method="post" action="{{ url_for('project_delete', project_id=p.id) }}" style="display:inline;">
+                <input type="hidden" name="next" value="{{ url_for('search', q=qtxt, type=search_type, page=page) }}">
+                <button class="btn btn-soft" type="submit" onclick="return confirm('¿Borrar el proyecto {{ p.name }}?');">🗑</button>
+              </form>
             </div>
           </div>
         {% endfor %}
@@ -208,7 +212,10 @@
             </div>
             <div class="actions">
               <a class="btn btn-soft" href="{{ url_for('filter_edit', filter_id=f.id) }}">✎</a>
-              <a class="btn btn-soft" href="{{ url_for('filter_run_expression', filter_id=f.id) }}">▶</a>
+              <form method="post" action="{{ url_for('filter_delete', filter_id=f.id) }}" style="display:inline;">
+                <input type="hidden" name="next" value="{{ url_for('search', q=qtxt, type=search_type, page=page) }}">
+                <button class="btn btn-soft" type="submit" onclick="return confirm('¿Borrar el filtro {{ f.name }}?');">🗑</button>
+              </form>
             </div>
           </div>
         {% endfor %}

@@ -5,6 +5,43 @@
     <p class="subtitle">Tareas asignadas a la carpeta y proyectos contenidos.</p>
   </div>
 
+  <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px; align-items:center;">
+    <div class="dropdown" id="folderActions">
+      <button type="button" class="btn btn-soft" onclick="toggleFolderActions(event)">
+        Acciones ▾
+      </button>
+      <div class="dropdown-menu" id="folderActionsMenu" style="display:none;">
+        <button type="button" class="dropdown-item" onclick="openFolderRenameModal()">Editar carpeta</button>
+        <a class="dropdown-item" href="{{ url_for('folder_move', folder_id=folder.id) }}">Mover carpeta</a>
+        <form method="post" action="{{ url_for('folder_delete', folder_id=folder.id) }}">
+          <button class="dropdown-item danger" onclick="return confirm('¿Borrar carpeta? Solo funciona si está vacía.');">Borrar carpeta</button>
+        </form>
+        <div class="dropdown-sep"></div>
+        <form method="post" action="{{ url_for('folder_purge_tasks', folder_id=folder.id) }}">
+          <button class="dropdown-item danger" onclick="return confirm('¿Vaciar tareas de la carpeta? Se borrarán solo las tareas NO asignadas a proyectos.');">Vaciar tareas…</button>
+        </form>
+        <form method="post" action="{{ url_for('folder_purge_all', folder_id=folder.id) }}">
+          <button class="dropdown-item danger" onclick="return confirm('¿Vaciar todo? Se borrarán tareas de la carpeta y proyectos contenidos.');">Vaciar todo…</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div id="folderRenameModal" class="modal" style="display:none;">
+    <div class="modal-backdrop" onclick="closeFolderRenameModal()"></div>
+    <div class="modal-panel">
+      <div class="modal-title">Editar carpeta</div>
+      <form method="post" action="{{ url_for('folder_rename', folder_id=folder.id) }}" class="form" style="margin-top:12px;">
+        <label class="label">Nombre</label>
+        <input class="input" name="name" value="{{ folder.name }}" required>
+        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:14px;">
+          <button type="button" class="btn btn-soft" onclick="closeFolderRenameModal()">Cancelar</button>
+          <button class="btn btn-primary" type="submit">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <div class="grid2">
     <div class="card">
       <div class="card-header"><div class="card-title">Proyectos en esta carpeta 📜</div></div>
@@ -171,6 +208,34 @@
   </div>
 
   <script>
+    function toggleFolderActions(e){
+      e.stopPropagation();
+      const menu = document.getElementById('folderActionsMenu');
+      if (!menu) return;
+      menu.style.display = (menu.style.display === 'block') ? 'none' : 'block';
+    }
+
+    document.addEventListener('click', function(ev){
+      const wrap = document.getElementById('folderActions');
+      const menu = document.getElementById('folderActionsMenu');
+      if (!wrap || !menu) return;
+      if (!wrap.contains(ev.target)) {
+        menu.style.display = 'none';
+      }
+    });
+
+    function openFolderRenameModal(){
+      const menu = document.getElementById('folderActionsMenu');
+      if (menu) menu.style.display = 'none';
+      const modal = document.getElementById('folderRenameModal');
+      if (modal) modal.style.display = 'block';
+    }
+
+    function closeFolderRenameModal(){
+      const modal = document.getElementById('folderRenameModal');
+      if (modal) modal.style.display = 'none';
+    }
+
     function toggleSubtasks(taskId){
       const el = document.getElementById('subtasks-' + taskId);
       const icon = document.getElementById('subtasks-icon-' + taskId);

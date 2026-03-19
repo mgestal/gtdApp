@@ -3011,6 +3011,104 @@ def folder_delete(folder_id: int):
         flash(f"No se pudo borrar la carpeta: {e}", "error")
 
     return redirect(url_for("folders"))
+
+
+@app.route("/folders/<int:folder_id>/purge_tasks", methods=["POST"])
+def folder_purge_tasks(folder_id: int):
+    folder = q1("SELECT id, name FROM folders WHERE id=%s", (folder_id,))
+    if not folder:
+        abort(404)
+
+    try:
+        total_row = q1(
+            "SELECT COUNT(*) AS c FROM tasks WHERE folder_id=%s AND project_id IS NULL",
+            (folder_id,),
+        )
+        total_to_delete = int(total_row["c"]) if total_row else 0
+
+        if total_to_delete > 0:
+            exec_sql(
+                "DELETE tt FROM task_tags tt "
+                "JOIN tasks t ON t.id=tt.task_id "
+                "WHERE t.folder_id=%s AND t.project_id IS NULL",
+                (folder_id,),
+            )
+            exec_sql(
+                "DELETE st FROM subtasks st "
+                "JOIN tasks t ON t.id=st.task_id "
+                "WHERE t.folder_id=%s AND t.project_id IS NULL",
+                (folder_id,),
+            )
+            exec_sql(
+                "DELETE FROM tasks WHERE folder_id=%s AND project_id IS NULL",
+                (folder_id,),
+            )
+
+        commit()
+        flash(f"{total_to_delete} tareas de carpeta borradas.", "ok")
+    except Exception as e:
+        rollback()
+        flash(f"No se pudieron vaciar las tareas de la carpeta: {e}", "error")
+
+    return redirect(url_for("folder_detail", folder_id=folder_id))
+
+
+@app.route("/folders/<int:folder_id>/purge_all", methods=["POST"])
+def folder_purge_all(folder_id: int):
+    folder = q1("SELECT id, name FROM folders WHERE id=%s", (folder_id,))
+    if not folder:
+        abort(404)
+
+    try:
+        projects_row = q1(
+            "SELECT COUNT(*) AS c FROM projects WHERE folder_id=%s",
+            (folder_id,),
+        )
+        tasks_row = q1(
+            "SELECT COUNT(*) AS c "
+            "FROM tasks t "
+            "WHERE (t.folder_id=%s AND t.project_id IS NULL) "
+            "OR t.project_id IN (SELECT p.id FROM projects p WHERE p.folder_id=%s)",
+            (folder_id, folder_id),
+        )
+        total_projects = int(projects_row["c"]) if projects_row else 0
+        total_tasks = int(tasks_row["c"]) if tasks_row else 0
+
+        if total_tasks > 0:
+            exec_sql(
+                "DELETE tt FROM task_tags tt "
+                "JOIN tasks t ON t.id=tt.task_id "
+                "WHERE (t.folder_id=%s AND t.project_id IS NULL) "
+                "OR t.project_id IN (SELECT p.id FROM projects p WHERE p.folder_id=%s)",
+                (folder_id, folder_id),
+            )
+            exec_sql(
+                "DELETE st FROM subtasks st "
+                "JOIN tasks t ON t.id=st.task_id "
+                "WHERE (t.folder_id=%s AND t.project_id IS NULL) "
+                "OR t.project_id IN (SELECT p.id FROM projects p WHERE p.folder_id=%s)",
+                (folder_id, folder_id),
+            )
+            exec_sql(
+                "DELETE FROM tasks "
+                "WHERE (folder_id=%s AND project_id IS NULL) "
+                "OR project_id IN (SELECT p.id FROM projects p WHERE p.folder_id=%s)",
+                (folder_id, folder_id),
+            )
+
+        if total_projects > 0:
+            exec_sql("DELETE FROM projects WHERE folder_id=%s", (folder_id,))
+
+        commit()
+        flash(
+            f"Carpeta vaciada: {total_tasks} tareas y {total_projects} proyectos borrados.",
+            "ok",
+        )
+    except Exception as e:
+        rollback()
+        flash(f"No se pudo vaciar la carpeta: {e}", "error")
+
+    return redirect(url_for("folder_detail", folder_id=folder_id))
     
     
 # ---------------- Filters ----------------

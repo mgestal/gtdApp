@@ -23,13 +23,34 @@
     </div>
 
     {% if archived_tasks %}
+      <div class="pager" style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:10px;">
+        <div class="muted">
+          Mostrando {{ (task_page-1)*per_page + 1 }}–{{ [task_page*per_page, total_tasks]|min }} de {{ total_tasks }} · página {{ task_page }} de {{ task_pages }}
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          {% if task_page > 1 %}
+            <a class="btn btn-soft" href="{{ url_for('archive_view', q=qtxt, task_page=1, project_page=project_page) }}">« Primera</a>
+            <a class="btn btn-soft" href="{{ url_for('archive_view', q=qtxt, task_page=task_page-1, project_page=project_page) }}">‹ Anterior</a>
+          {% else %}
+            <span class="btn btn-soft disabled">« Primera</span>
+            <span class="btn btn-soft disabled">‹ Anterior</span>
+          {% endif %}
+          {% if task_page < task_pages %}
+            <a class="btn btn-soft" href="{{ url_for('archive_view', q=qtxt, task_page=task_page+1, project_page=project_page) }}">Siguiente ›</a>
+            <a class="btn btn-soft" href="{{ url_for('archive_view', q=qtxt, task_page=task_pages, project_page=project_page) }}">Última »</a>
+          {% else %}
+            <span class="btn btn-soft disabled">Siguiente ›</span>
+            <span class="btn btn-soft disabled">Última »</span>
+          {% endif %}
+        </div>
+      </div>
+
       <table class="table">
         <thead>
           <tr>
             <th>Tarea</th>
-            <th>Etiquetas</th>
-            <th style="width:170px;">Archivada</th>
-            <th style="width:170px;">Realizada</th>
+            <th style="width:120px;">Archivada</th>
+            <th style="width:120px;">Realizada</th>
             <th>Ubicación</th>
             <th style="width:110px; text-align:right;">Acciones</th>
           </tr>
@@ -38,23 +59,18 @@
           {% for t in archived_tasks %}
             <tr>
               <td style="font-weight:600;">{{ t.title }}</td>
-              <td>
-                <div style="display:flex; gap:4px; flex-wrap:wrap;">
-                  {% for tag in tags_map.get(t.id, []) %}
-                    <a class="tagchip taglink" style="margin:0;" href="{{ url_for('tag_detail', tag_id=tag.id) }}">@{{ tag.name }}</a>
-                  {% endfor %}
-                </div>
-              </td>
-              <td style="white-space:nowrap; font-size:13px;">
+              <td style="font-size:13px; line-height:1.2; white-space:nowrap;">
                 {% if t.archived_at %}
-                  {{ t.archived_at.strftime('%d-%m-%Y') }} {{ t.archived_at.strftime('%H:%M') }}
+                  <div>{{ t.archived_at.strftime('%d-%m-%Y') }}</div>
+                  <div class="muted">{{ t.archived_at.strftime('%H:%M') }}</div>
                 {% else %}
                   <span class="muted">—</span>
                 {% endif %}
               </td>
-              <td style="white-space:nowrap; font-size:13px;">
+              <td style="font-size:13px; line-height:1.2; white-space:nowrap;">
                 {% if t.completed_at %}
-                  {{ t.completed_at.strftime('%d-%m-%Y') }} {{ t.completed_at.strftime('%H:%M') }}
+                  <div>{{ t.completed_at.strftime('%d-%m-%Y') }}</div>
+                  <div class="muted">{{ t.completed_at.strftime('%H:%M') }}</div>
                 {% else %}
                   <span class="muted">—</span>
                 {% endif %}
@@ -84,28 +100,6 @@
           {% endfor %}
         </tbody>
       </table>
-
-      <div class="pager" style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-top:10px;">
-        <div class="muted">
-          Mostrando {{ (task_page-1)*per_page + 1 }}–{{ [task_page*per_page, total_tasks]|min }} de {{ total_tasks }} · página {{ task_page }} de {{ task_pages }}
-        </div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap;">
-          {% if task_page > 1 %}
-            <a class="btn btn-soft" href="{{ url_for('archive_view', q=qtxt, task_page=1, project_page=project_page) }}">« Primera</a>
-            <a class="btn btn-soft" href="{{ url_for('archive_view', q=qtxt, task_page=task_page-1, project_page=project_page) }}">‹ Anterior</a>
-          {% else %}
-            <span class="btn btn-soft disabled">« Primera</span>
-            <span class="btn btn-soft disabled">‹ Anterior</span>
-          {% endif %}
-          {% if task_page < task_pages %}
-            <a class="btn btn-soft" href="{{ url_for('archive_view', q=qtxt, task_page=task_page+1, project_page=project_page) }}">Siguiente ›</a>
-            <a class="btn btn-soft" href="{{ url_for('archive_view', q=qtxt, task_page=task_pages, project_page=project_page) }}">Última »</a>
-          {% else %}
-            <span class="btn btn-soft disabled">Siguiente ›</span>
-            <span class="btn btn-soft disabled">Última »</span>
-          {% endif %}
-        </div>
-      </div>
     {% else %}
       <div class="empty">No hay tareas archivadas.</div>
     {% endif %}

@@ -35,3 +35,4 @@ backups/
 
 
 static/emojis.txt
+instance/gmail_token.json

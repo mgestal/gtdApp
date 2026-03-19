@@ -198,12 +198,61 @@
                 <div class="hint">Archiva tareas completadas hace más de 7 días y sin proyecto.</div>
               </div>
 
-              <form method="post" class="form" style="margin:0;">
-                <input type="hidden" name="action" value="archive_completed_orphans">
-                <button class="btn btn-soft" type="submit" onclick="return confirm('¿Archivar tareas sin proyecto realizadas hace más de una semana?');">
-                  🗄️ Archivar
-                </button>
-              </form>
+              <button class="btn btn-soft" type="button" onclick="document.getElementById('archiveOrphansDialog').showModal();">
+                🗄️ Archivar
+              </button>
+
+              <dialog id="archiveOrphansDialog" style="max-width:900px; width:min(96vw,900px); border:1px solid var(--border); border-radius:12px; padding:0;">
+                <div style="padding:14px 14px 10px 14px; border-bottom:1px solid var(--border);">
+                  <div style="font-weight:700;">Confirmar archivado</div>
+                  <div class="hint" style="margin-top:4px;">Se archivarán {{ archive_orphans_preview|length }} tareas (máx. 200 mostradas).</div>
+                </div>
+
+                <div style="padding:12px 14px; max-height:55vh; overflow:auto;">
+                  {% if archive_orphans_preview %}
+                    <table class="table">
+                      <thead>
+                        <tr>
+                          <th>Título</th>
+                          <th style="width:140px;">Fecha</th>
+                          <th style="width:180px;">Ubicación</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {% for t in archive_orphans_preview %}
+                          <tr>
+                            <td>{{ t.title }}</td>
+                            <td>
+                              {% if t.completed_at %}
+                                {{ t.completed_at.strftime('%d-%m-%Y %H:%M') }}
+                              {% else %}
+                                <span class="muted">—</span>
+                              {% endif %}
+                            </td>
+                            <td>
+                              {% if t.folder_name %}
+                                📂 {{ t.folder_name }}
+                              {% else %}
+                                📥 Inbox
+                              {% endif %}
+                            </td>
+                          </tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  {% else %}
+                    <div class="empty" style="margin:0;">No hay tareas candidatas para archivar.</div>
+                  {% endif %}
+                </div>
+
+                <div style="padding:10px 14px 14px 14px; border-top:1px solid var(--border); display:flex; justify-content:flex-end; gap:8px;">
+                  <button class="btn btn-soft" type="button" onclick="document.getElementById('archiveOrphansDialog').close();">Cancelar</button>
+                  <form method="post" class="form" style="margin:0;">
+                    <input type="hidden" name="action" value="archive_completed_orphans">
+                    <button class="btn btn-primary" type="submit">Confirmar archivado</button>
+                  </form>
+                </div>
+              </dialog>
             </div>
 
             <div class="list-row" style="align-items:flex-start;">

@@ -3524,6 +3524,20 @@ def admin():
             return redirect(url_for("admin"))
 
     cfg = load_config()
+    archive_orphans_preview = []
+
+    if admin_required():
+        archive_orphans_preview = q(
+            "SELECT t.id, t.title, t.completed_at, f.name AS folder_name "
+            "FROM tasks t "
+            "LEFT JOIN folders f ON f.id=t.folder_id "
+            "WHERE t.archived=0 "
+            "AND t.project_id IS NULL "
+            "AND t.completed_at IS NOT NULL "
+            "AND t.completed_at < (NOW() - INTERVAL 7 DAY) "
+            "ORDER BY t.completed_at ASC, t.id ASC "
+            "LIMIT 200"
+        )
     
     return render_template(
         "admin.html",
@@ -3531,6 +3545,7 @@ def admin():
         is_admin=admin_required(),
         env_pwd_set=env_pwd_set,
         backups=list_backups(),
+        archive_orphans_preview=archive_orphans_preview,
     )
 
 

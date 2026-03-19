@@ -11,7 +11,7 @@
       <button type="button" class="btn btn-soft" onclick="toggleProjActions(event)">
         Acciones ▾
       </button>
-      <div class="dropdown-menu" id="projActionsMenu" style="display:none;">
+      <div class="dropdown-menu" id="projActionsMenu" style="display:none; left:0; right:auto;">
         <a class="dropdown-item" href="{{ url_for('project_edit', project_id=project.id) }}">Editar proyecto</a>
         {% if not project.archived %}
           <form method="post" action="{{ url_for('project_archive', project_id=project.id) }}">

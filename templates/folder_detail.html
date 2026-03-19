@@ -10,7 +10,7 @@
       <button type="button" class="btn btn-soft" onclick="toggleFolderActions(event)">
         Acciones ▾
       </button>
-      <div class="dropdown-menu" id="folderActionsMenu" style="display:none;">
+      <div class="dropdown-menu" id="folderActionsMenu" style="display:none; left:0; right:auto;">
         <button type="button" class="dropdown-item" onclick="openFolderRenameModal()">Editar carpeta</button>
         <a class="dropdown-item" href="{{ url_for('folder_move', folder_id=folder.id) }}">Mover carpeta</a>
         <form method="post" action="{{ url_for('folder_delete', folder_id=folder.id) }}">
@@ -18,10 +18,10 @@
         </form>
         <div class="dropdown-sep"></div>
         <form method="post" action="{{ url_for('folder_purge_tasks', folder_id=folder.id) }}">
-          <button class="dropdown-item danger" onclick="return confirm('¿Vaciar tareas de la carpeta? Se borrarán solo las tareas NO asignadas a proyectos.');">Vaciar tareas…</button>
+          <button class="dropdown-item danger" onclick="return confirm('¿Vaciar tareas de la carpeta? Se borrarán solo las tareas NO asignadas a proyectos.');">Borrar sólo tareas</button>
         </form>
         <form method="post" action="{{ url_for('folder_purge_all', folder_id=folder.id) }}">
-          <button class="dropdown-item danger" onclick="return confirm('¿Vaciar todo? Se borrarán tareas de la carpeta y proyectos contenidos.');">Vaciar todo…</button>
+          <button class="dropdown-item danger" onclick="return confirm('¿Vaciar todo? Se borrarán tareas de la carpeta y proyectos contenidos.');">Borrar todo</button>
         </form>
       </div>
     </div>

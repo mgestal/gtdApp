@@ -1476,12 +1476,17 @@ def proximo():
     )
     
     
-    tags_map = load_tags_map([r["id"] for r in rows])
+    task_ids = [r["id"] for r in rows]
+    tags_map = load_tags_map(task_ids) if task_ids else {}
+    sub_counts = load_subtask_counts(subdb, task_ids)
+    sub_map = load_subtasks_map(subdb, task_ids)
 
     return render_template(
         "proximo.html",
         rows=rows,
         tags_map=tags_map,
+        sub_counts=sub_counts,
+        sub_map=sub_map,
         page=page,
         pages=pages,
         total=total,
@@ -1551,7 +1556,10 @@ def week():
         (monday_d, sunday_d)
     )
 
-    tags_map = load_tags_map([r["id"] for r in rows]) if rows else {}
+    task_ids = [r["id"] for r in rows]
+    tags_map = load_tags_map(task_ids) if task_ids else {}
+    sub_counts = load_subtask_counts(subdb, task_ids)
+    sub_map = load_subtasks_map(subdb, task_ids)
 
     return render_template(
         "week.html",
@@ -2067,7 +2075,10 @@ def tag_detail(tag_id: int):
         (tag_id, per_page, offset),
     )
 
-    tags_map = load_tags_map([r["id"] for r in rows]) if rows else {}
+    task_ids = [r["id"] for r in rows]
+    tags_map = load_tags_map(task_ids) if task_ids else {}
+    sub_counts = load_subtask_counts(subdb, task_ids)
+    sub_map = load_subtasks_map(subdb, task_ids)
 
     return render_template(
         "tag_detail.html",
@@ -3242,7 +3253,10 @@ def filter_run(filter_id: int):
     )
 
     rows = q(sql, tuple(params) + (per_page, offset))
-    tags_map = load_tags_map([r["id"] for r in rows]) if rows else {}
+    task_ids = [r["id"] for r in rows]
+    tags_map = load_tags_map(task_ids) if task_ids else {}
+    sub_counts = load_subtask_counts(subdb, task_ids)
+    sub_map = load_subtasks_map(subdb, task_ids)
 
     return render_template(
         "filter_detail.html",
@@ -4231,7 +4245,10 @@ def filter_run_expression():
 
     rows = q(sql, tuple(params) + (per_page, offset))
 
-    tags_map = load_tags_map([r["id"] for r in rows]) if rows else {}
+    task_ids = [r["id"] for r in rows]
+    tags_map = load_tags_map(task_ids) if task_ids else {}
+    sub_counts = load_subtask_counts(subdb, task_ids)
+    sub_map = load_subtasks_map(subdb, task_ids)
 
     return render_template(
         "filter_expression.html",
@@ -4612,12 +4629,17 @@ def next_actions():
             (tag["id"],)
         )
 
-    tags_map = load_tags_map([r["id"] for r in rows]) if rows else {}
+    task_ids = [r["id"] for r in rows]
+    tags_map = load_tags_map(task_ids) if task_ids else {}
+    sub_counts = load_subtask_counts(subdb, task_ids)
+    sub_map = load_subtasks_map(subdb, task_ids)
 
     return render_template(
         "next.html",
         rows=rows,
         tags_map=tags_map,
+        sub_counts=sub_counts,
+        sub_map=sub_map,
     )
     
   

@@ -92,6 +92,34 @@
                   <a class="taglink" href="{{ url_for('tag_detail', tag_id=tag.id) }}" style="margin-right: 5px;">@{{ tag.name }}</a>
                 {% endfor %}
               </div>
+
+              {% set sc = sub_counts.get(t.id) if sub_counts is defined else None %}
+              {% set st_total = sc.total if sc and sc.total is defined else (sc['total'] if sc and sc['total'] is defined else 0) %}
+              {% set st_done = sc.done if sc and sc.done is defined else (sc['done'] if sc and sc['done'] is defined else 0) %}
+
+              {% if st_total > 0 %}
+                <div class="muted" style="font-size:12px; margin-top:5px;">
+                  <button type="button" class="subtask-toggle" onclick="toggleSubtasks({{ t.id }});">
+                    <span id="subtasks-icon-{{ t.id }}">▸</span> Subtareas: {{ st_done }}/{{ st_total }}
+                  </button>
+                </div>
+
+                <div id="subtasks-{{ t.id }}" style="display:none; margin-top:8px; padding-left:12px;">
+                  {% for s in sub_map.get(t.id, []) %}
+                    <div class="subtask-item {% if s.completed_at %}row-done{% endif %}" style="display:flex; align-items:center; gap:6px; padding:4px 0;">
+
+                      <form method="post" action="{{ url_for('subtask_toggle', subtask_id=s.id) }}">
+                        <button class="radio subradio"></button>
+                      </form>
+
+                      <span style="font-size:13px;">
+                        {{ s.title }}
+                      </span>
+
+                    </div>
+                  {% endfor %}
+                </div>
+              {% endif %}
             </td>
 
             <td style="font-size: 0.85rem;">
@@ -161,5 +189,16 @@
     </div>
   </div>
   {% endif %}
+
+  <script>
+    function toggleSubtasks(taskId){
+      const el = document.getElementById('subtasks-' + taskId);
+      const icon = document.getElementById('subtasks-icon-' + taskId);
+      if (!el) return;
+      const isHidden = (el.style.display === 'none' || !el.style.display);
+      el.style.display = isHidden ? 'block' : 'none';
+      if (icon) icon.textContent = isHidden ? '▾' : '▸';
+    }
+  </script>
 
 {% endblock %}

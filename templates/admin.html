@@ -286,6 +286,87 @@
           </div>
         </div>
 
+        <div class="card" style="margin-top:20px;">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Sincronización Google Calendar</div>
+              <div class="card-sub">Bidireccional con resolución manual de conflictos</div>
+            </div>
+          </div>
+
+          <div class="list" style="gap:12px;">
+            {% if calendar_sync_last_info %}
+              <div class="list-row" style="align-items:flex-start;">
+                <div style="flex:1; border:1px solid var(--border); border-radius:12px; padding:10px 12px; background:{% if calendar_sync_last_level == 'error' %}#fff3f2{% else %}#eef8f1{% endif %}; color:var(--text);">
+                  <div style="font-weight:600; margin-bottom:4px;">Resultado última sincronización</div>
+                  <div class="hint" style="margin:0; color:inherit;">{{ calendar_sync_last_info }}</div>
+                </div>
+              </div>
+            {% endif %}
+
+            <div class="list-row" style="align-items:flex-start;">
+              <div style="flex:1;">
+                <div class="hint">
+                  Estados: pending_push={{ calendar_sync_stats.pending_push }}, pending_delete={{ calendar_sync_stats.pending_delete }}, conflict={{ calendar_sync_stats.conflict }}, error={{ calendar_sync_stats.error }}
+                </div>
+              </div>
+              <form method="post" class="form" style="margin:0;">
+                <input type="hidden" name="action" value="sync_calendar_now">
+                <button class="btn btn-primary" type="submit">Sincronizar ahora</button>
+              </form>
+            </div>
+
+            <div class="list-row" style="align-items:flex-start;">
+              <div style="flex:1; min-width:0;">
+                <div style="font-weight:600; margin-bottom:4px;">Conflictos</div>
+                {% if calendar_conflicts and calendar_conflicts|length > 0 %}
+                  <table class="table">
+                    <thead>
+                      <tr>
+                        <th>Tarea</th>
+                        <th style="width:120px;">Fecha</th>
+                        <th style="width:90px;">Hora</th>
+                        <th style="width:120px;">Conflicto</th>
+                        <th style="width:220px;">Resolver</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for t in calendar_conflicts %}
+                        <tr>
+                          <td>
+                            <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('admin')) }}">{{ t.title }}</a>
+                          </td>
+                          <td>{% if t.due_date %}{{ t.due_date.strftime('%d-%m-%Y') }}{% else %}<span class="muted">—</span>{% endif %}</td>
+                          <td>{% if t.due_time_text %}{{ t.due_time_text }}{% elif t.due_time and t.due_time.strftime is defined %}{{ t.due_time.strftime('%H:%M') }}{% else %}<span class="muted">—</span>{% endif %}</td>
+                          <td>{% if t.calendar_conflict_at %}{{ t.calendar_conflict_at.strftime('%d-%m %H:%M') }}{% else %}<span class="muted">—</span>{% endif %}</td>
+                          <td>
+                            <div style="display:inline-flex; gap:6px; flex-wrap:wrap;">
+                              <form method="post" class="form" style="margin:0;">
+                                <input type="hidden" name="action" value="resolve_calendar_conflict">
+                                <input type="hidden" name="task_id" value="{{ t.id }}">
+                                <input type="hidden" name="resolution" value="keep_google">
+                                <button class="btn btn-soft" type="submit">Usar Google</button>
+                              </form>
+                              <form method="post" class="form" style="margin:0;">
+                                <input type="hidden" name="action" value="resolve_calendar_conflict">
+                                <input type="hidden" name="task_id" value="{{ t.id }}">
+                                <input type="hidden" name="resolution" value="keep_gtd">
+                                <button class="btn btn-soft" type="submit">Usar GTD</button>
+                              </form>
+                            </div>
+                          </td>
+                        </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                {% else %}
+                  <div class="empty" style="margin:0;">No hay conflictos de sincronización.</div>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
   {% endif %}

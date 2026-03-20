@@ -10,6 +10,9 @@
   "app": {
     "timezone": "Europe/Madrid",
     "title": "GTD App",
+    "calendar_sync": {
+      "calendar_id": "mgestal@gmail.com"
+    },
     "pagination": {
       "agenda_per_page": 15,
       "search_per_page": 20,

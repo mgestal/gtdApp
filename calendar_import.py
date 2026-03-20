@@ -14,8 +14,13 @@ from googleapiclient.discovery import build
 
 SCOPES = [
     "https://www.googleapis.com/auth/gmail.readonly",
-    "https://www.googleapis.com/auth/calendar.readonly",
+    "https://www.googleapis.com/auth/calendar",
 ]
+
+# Los scopes mínimos requeridos para la app
+REQUIRED_SCOPES = {
+    "https://www.googleapis.com/auth/calendar",  # Para sincronización bidireccional
+}
 
 
 def build_google_service(
@@ -33,12 +38,19 @@ def build_google_service(
         creds = Credentials.from_authorized_user_file(str(token_path), SCOPES)
 
     if creds and creds.valid:
-        return build(api_name, api_version, credentials=creds)
+        # Verifica que tenga los scopes mínimos requeridos
+        authorized = set(creds.scopes) if creds.scopes else set()
+        if REQUIRED_SCOPES.issubset(authorized):
+            return build(api_name, api_version, credentials=creds)
+        # Si no tiene los scopes requeridos, continúa con refresh/reauth
 
     if creds and creds.expired and creds.refresh_token:
         creds.refresh(Request())
         token_path.write_text(creds.to_json(), encoding="utf-8")
         return build(api_name, api_version, credentials=creds)
+
+    if os.environ.get("GTD_NON_INTERACTIVE_OAUTH", "0") == "1":
+        raise RuntimeError("OAuth interactivo requerido, pero está deshabilitado en modo no interactivo")
 
     flow = InstalledAppFlow.from_client_secrets_file(str(credentials_path), SCOPES)
 

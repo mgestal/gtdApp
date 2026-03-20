@@ -5,6 +5,7 @@ import json
 import os
 import re
 import calendar
+import hashlib
 import pymysql
 
 
@@ -54,6 +55,9 @@ DEFAULT_CONFIG = {
     "app": {
         "timezone": "Europe/Madrid",
         "title": "GTD App",
+        "calendar_sync": {
+            "calendar_id": "mgestal@gmail.com",
+        },
     },
 }
 
@@ -242,6 +246,535 @@ def calendar_event_already_imported(event_id: str) -> bool:
     return row is not None
 
 
+DEFAULT_CAL_SYNC_CALENDAR_ID = "mgestal@gmail.com"
+CAL_SYNC_TIMEZONE = "Europe/Madrid"
+CAL_SYNC_DEFAULT_DURATION_MINUTES = 30
+CAL_SYNC_COOLDOWN_SECONDS = 120
+CAL_SYNC_AUTO_ENABLED = False
+_calendar_last_auto_sync: Optional[datetime] = None
+
+
+def calendar_sync_calendar_id() -> str:
+    try:
+        cfg = load_config()
+        value = (((cfg.get("app") or {}).get("calendar_sync") or {}).get("calendar_id") or "").strip()
+        if value:
+            return value
+    except Exception:
+        pass
+    return DEFAULT_CAL_SYNC_CALENDAR_ID
+
+
+def _parse_google_dt(raw: Optional[str]) -> Optional[datetime]:
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00")).replace(tzinfo=None)
+    except Exception:
+        return None
+
+
+def _calendar_sync_service():
+    creds_path = google_credentials_path()
+    token_path = google_token_path()
+    if not creds_path.exists() or not token_path.exists():
+        return None
+
+    prev = os.environ.get("GTD_NON_INTERACTIVE_OAUTH")
+    os.environ["GTD_NON_INTERACTIVE_OAUTH"] = "1"
+    try:
+        return build_google_service(
+            creds_path,
+            token_path,
+            api_name="calendar",
+            api_version="v3",
+        )
+    except Exception:
+        return None
+    finally:
+        if prev is None:
+            os.environ.pop("GTD_NON_INTERACTIVE_OAUTH", None)
+        else:
+            os.environ["GTD_NON_INTERACTIVE_OAUTH"] = prev
+
+
+def _task_calendar_row(task_id: int) -> Optional[Dict[str, Any]]:
+    return q1(
+        "SELECT id, title, notes, due_date, due_time, recurrence_rule, completed_at, archived, "
+        "google_event_id, google_calendar_id, google_event_etag, "
+        "calendar_sync_state, calendar_sync_error, calendar_last_synced_hash, "
+        "calendar_last_synced_at, calendar_local_changed_at, calendar_remote_updated_at "
+        "FROM tasks WHERE id=%s",
+        (task_id,),
+    )
+
+
+def _task_calendar_hash(row: Dict[str, Any]) -> str:
+    payload = {
+        "title": row.get("title") or "",
+        "notes": row.get("notes") or "",
+        "due_date": str(row.get("due_date") or ""),
+        "due_time": str(row.get("due_time") or ""),
+        "completed_at": str(row.get("completed_at") or ""),
+        "archived": int(row.get("archived") or 0),
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def _task_has_calendar_datetime(row: Dict[str, Any]) -> bool:
+    return bool(row.get("due_date") or row.get("due_time"))
+
+
+def _task_to_gcal_event(row: Dict[str, Any]) -> Dict[str, Any]:
+    tz = ZoneInfo(CAL_SYNC_TIMEZONE)
+    now_local = datetime.now(tz)
+    due_date = row.get("due_date")
+    due_time = row.get("due_time")
+
+    # MySQL TIME puede llegar como datetime.timedelta (según driver/configuración).
+    if isinstance(due_time, timedelta):
+        total_seconds = int(due_time.total_seconds())
+        total_seconds = total_seconds % (24 * 3600)
+        hh = total_seconds // 3600
+        mm = (total_seconds % 3600) // 60
+        ss = total_seconds % 60
+        due_time = time(hour=hh, minute=mm, second=ss)
+
+    if not due_date and due_time:
+        due_date = now_local.date()
+
+    event: Dict[str, Any] = {
+        "summary": (row.get("title") or "(sin título)").strip(),
+        "description": (row.get("notes") or "").strip() or None,
+    }
+
+    if due_date and due_time:
+        start_local = datetime.combine(due_date, due_time, tzinfo=tz)
+        end_local = start_local + timedelta(minutes=CAL_SYNC_DEFAULT_DURATION_MINUTES)
+        event["start"] = {"dateTime": start_local.isoformat(), "timeZone": CAL_SYNC_TIMEZONE}
+        event["end"] = {"dateTime": end_local.isoformat(), "timeZone": CAL_SYNC_TIMEZONE}
+    elif due_date:
+        next_day = due_date + timedelta(days=1)
+        event["start"] = {"date": due_date.isoformat()}
+        event["end"] = {"date": next_day.isoformat()}
+    else:
+        # Fallback para tareas nuevas sin fecha/hora: evento de día completo hoy.
+        fallback_date = now_local.date()
+        next_day = fallback_date + timedelta(days=1)
+        event["start"] = {"date": fallback_date.isoformat()}
+        event["end"] = {"date": next_day.isoformat()}
+
+    desc = event.get("description") or ""
+    marker = f"\n\n[GTD_TASK_ID={row['id']}]"
+    event["description"] = (desc + marker).strip()
+    return event
+
+
+def _google_event_to_task_fields(ev: Dict[str, Any]) -> Dict[str, Any]:
+    summary = (ev.get("summary") or "").strip()
+    description = (ev.get("description") or "").strip() or None
+
+    start = ev.get("start") or {}
+    due_date = None
+    due_time = None
+
+    if start.get("date"):
+        due_date = datetime.strptime(start.get("date"), "%Y-%m-%d").date()
+        due_time = None
+    elif start.get("dateTime"):
+        tz = ZoneInfo(CAL_SYNC_TIMEZONE)
+        dt = datetime.fromisoformat(start.get("dateTime").replace("Z", "+00:00")).astimezone(tz)
+        due_date = dt.date()
+        due_time = dt.timetz().replace(tzinfo=None)
+
+    return {
+        "title": summary,
+        "notes": description,
+        "due_date": due_date,
+        "due_time": due_time,
+        "google_event_etag": ev.get("etag"),
+        "calendar_remote_updated_at": _parse_google_dt(ev.get("updated")),
+    }
+
+
+def _mark_task_calendar_dirty(task_id: int, force_push_if_empty: bool = False) -> None:
+    row = _task_calendar_row(task_id)
+    if not row:
+        return
+
+    has_when = _task_has_calendar_datetime(row)
+    has_remote = bool(row.get("google_event_id"))
+    archived = int(row.get("archived") or 0) == 1
+
+    if archived:
+        state = "pending_delete" if has_remote else "none"
+    elif not has_when:
+        state = "pending_push" if (has_remote or force_push_if_empty) else "none"
+    else:
+        state = "pending_push"
+
+    exec_sql(
+        "UPDATE tasks "
+        "SET calendar_local_changed_at=NOW(), calendar_sync_state=%s "
+        "WHERE id=%s",
+        (state, task_id),
+    )
+
+
+def _sync_task_push(task_id: int, service=None) -> bool:
+    row = _task_calendar_row(task_id)
+    if not row:
+        return True
+
+    if row.get("calendar_sync_state") == "conflict":
+        return False
+
+    own_service = False
+    if service is None:
+        service = _calendar_sync_service()
+        own_service = True
+
+    if service is None:
+        exec_sql(
+            "UPDATE tasks SET calendar_sync_error=%s, calendar_sync_state='error' WHERE id=%s",
+            ("No hay servicio de Google Calendar disponible", task_id),
+        )
+        return False
+
+    try:
+        calendar_id = row.get("google_calendar_id") or calendar_sync_calendar_id()
+        event_id = row.get("google_event_id")
+        body = _task_to_gcal_event(row)
+
+        if int(row.get("archived") or 0) == 1:
+            if event_id:
+                service.events().delete(calendarId=calendar_id, eventId=event_id).execute()
+            exec_sql(
+                "UPDATE tasks "
+                "SET google_event_id=NULL, google_event_etag=NULL, google_calendar_id=%s, "
+                "calendar_sync_state='none', calendar_sync_error=NULL, "
+                "calendar_last_synced_hash=%s, calendar_last_synced_at=NOW(), calendar_local_changed_at=NULL "
+                "WHERE id=%s",
+                (calendar_id, _task_calendar_hash(row), task_id),
+            )
+            return True
+
+        if not body:
+            return True
+
+        if event_id:
+            ev = service.events().update(calendarId=calendar_id, eventId=event_id, body=body).execute()
+        else:
+            ev = service.events().insert(calendarId=calendar_id, body=body).execute()
+
+        new_hash = _task_calendar_hash(row)
+        exec_sql(
+            "UPDATE tasks "
+            "SET google_event_id=%s, google_calendar_id=%s, google_event_etag=%s, "
+            "calendar_remote_updated_at=%s, calendar_sync_state='synced', calendar_sync_error=NULL, "
+            "calendar_last_synced_hash=%s, calendar_last_synced_at=NOW(), calendar_local_changed_at=NULL "
+            "WHERE id=%s",
+            (
+                ev.get("id"),
+                calendar_id,
+                ev.get("etag"),
+                _parse_google_dt(ev.get("updated")),
+                new_hash,
+                task_id,
+            ),
+        )
+        return True
+    except Exception as e:
+        exec_sql(
+            "UPDATE tasks SET calendar_sync_error=%s, calendar_sync_state='error' WHERE id=%s",
+            (str(e), task_id),
+        )
+        return False
+    finally:
+        if own_service:
+            pass
+
+
+def run_calendar_push_sync(limit: int = 100, service=None) -> Dict[str, int]:
+    rows = q(
+        "SELECT id FROM tasks "
+        "WHERE calendar_sync_state IN ('pending_push','pending_delete','error') "
+        "ORDER BY id ASC LIMIT %s",
+        (limit,),
+    )
+    ok = 0
+    fail = 0
+    for r in rows:
+        if _sync_task_push(int(r["id"]), service=service):
+            ok += 1
+        else:
+            fail += 1
+    return {"ok": ok, "fail": fail, "total": len(rows)}
+
+
+def _apply_google_to_task(task_id: int, ev: Dict[str, Any]) -> None:
+    fields = _google_event_to_task_fields(ev)
+    exec_sql(
+        "UPDATE tasks "
+        "SET title=%s, notes=%s, due_date=%s, due_time=%s, "
+        "google_event_etag=%s, calendar_remote_updated_at=%s, "
+        "calendar_sync_state='synced', calendar_sync_error=NULL, "
+        "calendar_last_synced_at=NOW(), calendar_local_changed_at=NULL "
+        "WHERE id=%s",
+        (
+            fields["title"],
+            fields["notes"],
+            fields["due_date"],
+            fields["due_time"],
+            fields["google_event_etag"],
+            fields["calendar_remote_updated_at"],
+            task_id,
+        ),
+    )
+    row = _task_calendar_row(task_id)
+    if row:
+        exec_sql(
+            "UPDATE tasks SET calendar_last_synced_hash=%s WHERE id=%s",
+            (_task_calendar_hash(row), task_id),
+        )
+
+
+def _register_calendar_conflict(task_id: int, ev: Dict[str, Any]) -> None:
+    exec_sql(
+        "UPDATE tasks "
+        "SET calendar_sync_state='conflict', calendar_conflict_payload=%s, calendar_conflict_at=NOW(), calendar_sync_error=NULL "
+        "WHERE id=%s",
+        (json.dumps(ev, ensure_ascii=False), task_id),
+    )
+
+
+def run_calendar_pull_sync(
+    force: bool = False,
+    service=None,
+    max_pages: Optional[int] = None,
+    time_budget_seconds: Optional[int] = None,
+) -> Dict[str, int]:
+    global _calendar_last_auto_sync
+
+    if not force and _calendar_last_auto_sync is not None:
+        elapsed = (datetime.now() - _calendar_last_auto_sync).total_seconds()
+        if elapsed < CAL_SYNC_COOLDOWN_SECONDS:
+            return {"updated": 0, "conflicts": 0, "archived": 0, "seen": 0, "skipped": 1}
+
+    own_service = False
+    if service is None:
+        service = _calendar_sync_service()
+        own_service = True
+
+    if service is None:
+        return {"updated": 0, "conflicts": 0, "archived": 0, "seen": 0, "skipped": 0}
+
+    # En sync manual (force=True) evitamos paginar todo el calendario:
+    # leemos directamente los eventos vinculados en GTD por google_event_id.
+    if force:
+        updated = 0
+        conflicts = 0
+        archived = 0
+        seen = 0
+
+        linked_rows = q(
+            "SELECT id, google_event_id, calendar_last_synced_at, calendar_local_changed_at "
+            "FROM tasks "
+            "WHERE google_event_id IS NOT NULL "
+            "ORDER BY id ASC LIMIT 1000"
+        )
+
+        for row in linked_rows:
+            task_id = int(row["id"])
+            eid = row.get("google_event_id")
+            if not eid:
+                continue
+
+            seen += 1
+            try:
+                ev = service.events().get(
+                    calendarId=calendar_sync_calendar_id(),
+                    eventId=eid,
+                ).execute()
+            except Exception as e:
+                msg = str(e)
+                msg_low = msg.lower()
+                if "404" in msg_low or "not found" in msg_low or "410" in msg_low or "gone" in msg_low:
+                    exec_sql(
+                        "UPDATE tasks "
+                        "SET archived=1, archived_at=NOW(), "
+                        "google_event_id=NULL, google_event_etag=NULL, calendar_sync_state='remote_deleted', "
+                        "calendar_sync_error='Evento borrado en Google Calendar' "
+                        "WHERE id=%s",
+                        (task_id,),
+                    )
+                    archived += 1
+                else:
+                    exec_sql(
+                        "UPDATE tasks SET calendar_sync_state='error', calendar_sync_error=%s WHERE id=%s",
+                        (msg[:1000], task_id),
+                    )
+                continue
+
+            if ev.get("status") == "cancelled":
+                exec_sql(
+                    "UPDATE tasks "
+                    "SET archived=1, archived_at=NOW(), "
+                    "google_event_id=NULL, google_event_etag=NULL, calendar_sync_state='remote_deleted', "
+                    "calendar_sync_error='Evento borrado en Google Calendar' "
+                    "WHERE id=%s",
+                    (task_id,),
+                )
+                archived += 1
+                continue
+
+            local_changed = False
+            if row.get("calendar_local_changed_at"):
+                if not row.get("calendar_last_synced_at"):
+                    local_changed = True
+                else:
+                    local_changed = row["calendar_local_changed_at"] > row["calendar_last_synced_at"]
+
+            if local_changed:
+                _register_calendar_conflict(task_id, ev)
+                conflicts += 1
+                continue
+
+            _apply_google_to_task(task_id, ev)
+            updated += 1
+
+        _calendar_last_auto_sync = datetime.now()
+        return {
+            "updated": updated,
+            "conflicts": conflicts,
+            "archived": archived,
+            "seen": seen,
+            "skipped": 0,
+            "pages": 0,
+            "truncated": 0,
+        }
+
+    updated = 0
+    conflicts = 0
+    archived = 0
+    seen = 0
+    pages = 0
+    truncated = 0
+    started_at = datetime.now()
+
+    cfg = load_config()
+    cal_cfg = cfg.setdefault("app", {}).setdefault("calendar_sync", {})
+    updated_min = cal_cfg.get("last_pull_utc")
+
+    page_token = None
+    last_updated_seen = updated_min
+
+    while True:
+        if max_pages is not None and pages >= max_pages:
+            truncated = 1
+            break
+        if time_budget_seconds is not None:
+            elapsed = (datetime.now() - started_at).total_seconds()
+            if elapsed >= time_budget_seconds:
+                truncated = 1
+                break
+
+        params = {
+            "calendarId": calendar_sync_calendar_id(),
+            "showDeleted": True,
+            "singleEvents": True,
+            "maxResults": 250,
+        }
+        if updated_min:
+            params["updatedMin"] = updated_min
+        if page_token:
+            params["pageToken"] = page_token
+
+        resp = service.events().list(**params).execute()
+        pages += 1
+        events = resp.get("items", [])
+
+        for ev in events:
+            seen += 1
+            eid = ev.get("id")
+            if not eid:
+                continue
+
+            row = q1(
+                "SELECT id, recurrence_rule, calendar_sync_state, calendar_last_synced_at, calendar_local_changed_at "
+                "FROM tasks WHERE google_event_id=%s",
+                (eid,),
+            )
+            if not row:
+                continue
+
+            task_id = int(row["id"])
+            if ev.get("updated") and (not last_updated_seen or ev.get("updated") > last_updated_seen):
+                last_updated_seen = ev.get("updated")
+
+            if ev.get("status") == "cancelled":
+                exec_sql(
+                    "UPDATE tasks "
+                    "SET archived=1, archived_at=NOW(), "
+                    "google_event_id=NULL, google_event_etag=NULL, calendar_sync_state='remote_deleted', "
+                    "calendar_sync_error='Evento borrado en Google Calendar' "
+                    "WHERE id=%s",
+                    (task_id,),
+                )
+                archived += 1
+                continue
+
+            local_changed = False
+            if row.get("calendar_local_changed_at"):
+                if not row.get("calendar_last_synced_at"):
+                    local_changed = True
+                else:
+                    local_changed = row["calendar_local_changed_at"] > row["calendar_last_synced_at"]
+
+            if local_changed:
+                _register_calendar_conflict(task_id, ev)
+                conflicts += 1
+                continue
+
+            _apply_google_to_task(task_id, ev)
+            updated += 1
+
+        page_token = resp.get("nextPageToken")
+        if not page_token:
+            break
+
+    if last_updated_seen:
+        cal_cfg["last_pull_utc"] = last_updated_seen
+        save_config(cfg)
+
+    _calendar_last_auto_sync = datetime.now()
+    return {
+        "updated": updated,
+        "conflicts": conflicts,
+        "archived": archived,
+        "seen": seen,
+        "skipped": 0,
+        "pages": pages,
+        "truncated": truncated,
+    }
+
+
+def maybe_run_calendar_autosync() -> None:
+    if not CAL_SYNC_AUTO_ENABLED:
+        return
+
+    try:
+        pull_res = run_calendar_pull_sync(force=False)
+        if pull_res.get("skipped"):
+            return
+        service = _calendar_sync_service()
+        if service is None:
+            return
+        run_calendar_push_sync(limit=50, service=service)
+        commit()
+    except Exception:
+        rollback()
+
 
 
 # -----------------------------------------------
@@ -266,6 +799,7 @@ def get_db_conn():
 def _before():
     g.cfg = load_config()
     ensure_schema_updates()
+    maybe_run_calendar_autosync()
 
 @app.teardown_request
 def _teardown(exc):
@@ -328,6 +862,61 @@ def ensure_schema_updates() -> None:
         "ALTER TABLE projects "
         "ADD INDEX IF NOT EXISTS idx_projects_archived_at (archived_at)"
     )
+
+    # Calendar sync metadata (bidireccional)
+    exec_sql(
+        "ALTER TABLE tasks "
+        "ADD COLUMN IF NOT EXISTS google_calendar_id VARCHAR(255) NULL AFTER archived_at"
+    )
+    exec_sql(
+        "ALTER TABLE tasks "
+        "ADD COLUMN IF NOT EXISTS google_event_id VARCHAR(255) NULL AFTER google_calendar_id"
+    )
+    exec_sql(
+        "ALTER TABLE tasks "
+        "ADD COLUMN IF NOT EXISTS google_event_etag VARCHAR(255) NULL AFTER google_event_id"
+    )
+    exec_sql(
+        "ALTER TABLE tasks "
+        "ADD COLUMN IF NOT EXISTS calendar_sync_state VARCHAR(40) NOT NULL DEFAULT 'none' AFTER google_event_etag"
+    )
+    exec_sql(
+        "ALTER TABLE tasks "
+        "ADD COLUMN IF NOT EXISTS calendar_sync_error TEXT NULL AFTER calendar_sync_state"
+    )
+    exec_sql(
+        "ALTER TABLE tasks "
+        "ADD COLUMN IF NOT EXISTS calendar_last_synced_hash CHAR(64) NULL AFTER calendar_sync_error"
+    )
+    exec_sql(
+        "ALTER TABLE tasks "
+        "ADD COLUMN IF NOT EXISTS calendar_last_synced_at DATETIME NULL AFTER calendar_last_synced_hash"
+    )
+    exec_sql(
+        "ALTER TABLE tasks "
+        "ADD COLUMN IF NOT EXISTS calendar_local_changed_at DATETIME NULL AFTER calendar_last_synced_at"
+    )
+    exec_sql(
+        "ALTER TABLE tasks "
+        "ADD COLUMN IF NOT EXISTS calendar_remote_updated_at DATETIME NULL AFTER calendar_local_changed_at"
+    )
+    exec_sql(
+        "ALTER TABLE tasks "
+        "ADD COLUMN IF NOT EXISTS calendar_conflict_payload LONGTEXT NULL AFTER calendar_remote_updated_at"
+    )
+    exec_sql(
+        "ALTER TABLE tasks "
+        "ADD COLUMN IF NOT EXISTS calendar_conflict_at DATETIME NULL AFTER calendar_conflict_payload"
+    )
+    exec_sql(
+        "ALTER TABLE tasks "
+        "ADD INDEX IF NOT EXISTS idx_tasks_google_event_id (google_event_id)"
+    )
+    exec_sql(
+        "ALTER TABLE tasks "
+        "ADD INDEX IF NOT EXISTS idx_tasks_calendar_sync_state (calendar_sync_state)"
+    )
+
     commit()
     _schema_bootstrapped = True
 
@@ -1439,7 +2028,7 @@ def home():
     inbox = q(
         "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule "
         "FROM tasks t "
-        "WHERE t.project_id IS NULL AND t.folder_id IS NULL "
+        "WHERE t.project_id IS NULL AND t.folder_id IS NULL AND t.archived=0 "
         "ORDER BY (t.due_date IS NULL), t.due_date ASC, t.id DESC "
         "LIMIT 200"
     )
@@ -2336,6 +2925,7 @@ def task_create():
                 (task_id, tag_id),
             )
 
+        _mark_task_calendar_dirty(task_id, force_push_if_empty=True)
         commit()
 
         if project_name and project_id and not project_sel and not folder_sel:
@@ -2444,6 +3034,7 @@ def task_quick_add():
                 (task_id, tag_id),
             )
 
+        _mark_task_calendar_dirty(task_id, force_push_if_empty=True)
         commit()
         flash("Tarea creada.", "ok")
 
@@ -2644,6 +3235,7 @@ def task_edit(task_id: int):
                     (task_id, tid),
                 )
 
+            _mark_task_calendar_dirty(task_id)
             commit()
             flash("Tarea actualizada.", "ok")
             return redirect(next_url)
@@ -2668,11 +3260,24 @@ def task_edit(task_id: int):
 
 @app.route("/tasks/<int:task_id>/delete", methods=["POST"])
 def task_delete(task_id: int):
-    task = q1("SELECT id FROM tasks WHERE id=%s", (task_id,))
+    task = q1("SELECT id, google_event_id, google_calendar_id FROM tasks WHERE id=%s", (task_id,))
     if not task:
         abort(404)
 
     try:
+        # Si estaba vinculada a Calendar, intentamos borrar el evento remoto (best effort).
+        event_id = task.get("google_event_id")
+        if event_id:
+            try:
+                service = _calendar_sync_service()
+                if service is not None:
+                    service.events().delete(
+                        calendarId=(task.get("google_calendar_id") or calendar_sync_calendar_id()),
+                        eventId=event_id,
+                    ).execute()
+            except Exception:
+                pass
+
         # Borra primero dependencias conocidas (si no existen tablas, fallará y lo verás claro en el log)
         exec_sql("DELETE FROM task_tags WHERE task_id=%s", (task_id,))
         exec_sql("DELETE FROM subtasks WHERE task_id=%s", (task_id,))  # <- clave si hay subtareas
@@ -2784,6 +3389,7 @@ def task_toggle(task_id: int):
                                 (next_task["id"], next_tag_id),
                             )
 
+        _mark_task_calendar_dirty(task_id)
         commit()
 
     except Exception as e:
@@ -2801,6 +3407,7 @@ def task_unarchive(task_id: int):
 
     try:
         exec_sql("UPDATE tasks SET archived=0, archived_at=NULL WHERE id=%s", (task_id,))
+        _mark_task_calendar_dirty(task_id)
         commit()
         flash("Tarea desarchivada.", "ok")
     except Exception as e:
@@ -3695,6 +4302,88 @@ def admin():
 
             return redirect(url_for("admin"))
 
+        if action == "sync_calendar_now":
+            try:
+                service = _calendar_sync_service()
+                if service is None:
+                    session["calendar_sync_last_info"] = "No hay credenciales de Google Calendar disponibles."
+                    session["calendar_sync_last_level"] = "error"
+                    return redirect(url_for("admin"))
+
+                pull_res = run_calendar_pull_sync(
+                    force=True,
+                    service=service,
+                    max_pages=4,
+                    time_budget_seconds=12,
+                )
+                push_res = run_calendar_push_sync(limit=500, service=service)
+                commit()
+                partial = " (parcial por límite de tiempo/páginas)" if pull_res.get("truncated") else ""
+                session["calendar_sync_last_info"] = (
+                    "Sync Calendar completada: "
+                    f"pull(updated={pull_res['updated']}, conflicts={pull_res['conflicts']}, archived={pull_res['archived']}) "
+                    f"push(ok={push_res['ok']}, fail={push_res['fail']}).{partial}"
+                )
+                session["calendar_sync_last_level"] = "ok"
+            except Exception as e:
+                rollback()
+                session["calendar_sync_last_info"] = f"No se pudo sincronizar con Google Calendar: {e}"
+                session["calendar_sync_last_level"] = "error"
+            return redirect(url_for("admin"))
+
+        if action == "resolve_calendar_conflict":
+            task_id_raw = (request.form.get("task_id") or "").strip()
+            resolution = (request.form.get("resolution") or "").strip()
+
+            try:
+                task_id = int(task_id_raw)
+            except Exception:
+                flash("task_id inválido.", "error")
+                return redirect(url_for("admin"))
+
+            task = q1(
+                "SELECT id, calendar_conflict_payload FROM tasks WHERE id=%s",
+                (task_id,),
+            )
+            if not task:
+                flash("Tarea no encontrada.", "error")
+                return redirect(url_for("admin"))
+
+            try:
+                if resolution == "keep_google":
+                    payload = task.get("calendar_conflict_payload")
+                    if not payload:
+                        flash("No hay payload de conflicto en la tarea.", "error")
+                        return redirect(url_for("admin"))
+                    ev = json.loads(payload)
+                    _apply_google_to_task(task_id, ev)
+                    exec_sql(
+                        "UPDATE tasks "
+                        "SET calendar_sync_state='synced', calendar_conflict_payload=NULL, calendar_conflict_at=NULL "
+                        "WHERE id=%s",
+                        (task_id,),
+                    )
+                elif resolution == "keep_gtd":
+                    exec_sql(
+                        "UPDATE tasks "
+                        "SET calendar_sync_state='pending_push', calendar_conflict_payload=NULL, calendar_conflict_at=NULL, calendar_local_changed_at=NOW() "
+                        "WHERE id=%s",
+                        (task_id,),
+                    )
+                    service = _calendar_sync_service()
+                    _sync_task_push(task_id, service=service)
+                else:
+                    flash("Resolución de conflicto inválida.", "error")
+                    return redirect(url_for("admin"))
+
+                commit()
+                flash("Conflicto resuelto.", "ok")
+            except Exception as e:
+                rollback()
+                flash(f"No se pudo resolver el conflicto: {e}", "error")
+
+            return redirect(url_for("admin"))
+
         if action == "test_db":
             ok = False
             err = ""
@@ -3742,6 +4431,13 @@ def admin():
 
     cfg = load_config()
     archive_orphans_preview = []
+    calendar_conflicts = []
+    calendar_sync_stats = {
+        "pending_push": 0,
+        "pending_delete": 0,
+        "conflict": 0,
+        "error": 0,
+    }
 
     if admin_required():
         archive_orphans_preview = q(
@@ -3755,7 +4451,29 @@ def admin():
             "ORDER BY t.completed_at ASC, t.id ASC "
             "LIMIT 200"
         )
-    
+
+        calendar_conflicts = q(
+            "SELECT id, title, due_date, due_time, TIME_FORMAT(due_time, '%%H:%%i') AS due_time_text, calendar_conflict_at "
+            "FROM tasks "
+            "WHERE calendar_sync_state='conflict' "
+            "ORDER BY calendar_conflict_at DESC, id DESC "
+            "LIMIT 200"
+        )
+
+        stats_rows = q(
+            "SELECT calendar_sync_state, COUNT(*) AS c "
+            "FROM tasks "
+            "WHERE calendar_sync_state IN ('pending_push','pending_delete','conflict','error') "
+            "GROUP BY calendar_sync_state"
+        )
+        for r in stats_rows:
+            st = r.get("calendar_sync_state")
+            if st in calendar_sync_stats:
+                calendar_sync_stats[st] = int(r.get("c") or 0)
+
+    calendar_sync_last_info = session.pop("calendar_sync_last_info", None)
+    calendar_sync_last_level = session.pop("calendar_sync_last_level", "ok")
+
     return render_template(
         "admin.html",
         cfg=cfg,
@@ -3763,6 +4481,10 @@ def admin():
         env_pwd_set=env_pwd_set,
         backups=list_backups(),
         archive_orphans_preview=archive_orphans_preview,
+        calendar_conflicts=calendar_conflicts,
+        calendar_sync_stats=calendar_sync_stats,
+        calendar_sync_last_info=calendar_sync_last_info,
+        calendar_sync_last_level=calendar_sync_last_level,
     )
 
 
@@ -4385,6 +5107,7 @@ def review():
         "LEFT JOIN projects p ON p.id=t.project_id "
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "WHERE t.completed_at IS NULL "
+        "AND t.archived = 0 "
         "AND t.project_id IS NULL "
         "AND t.folder_id IS NULL "
         "ORDER BY t.id DESC"
@@ -4967,7 +5690,8 @@ def calendar_import_to_inbox():
 
         import_mode = (request.form.get("import_mode") or "event_date").strip()
         range_value = (request.form.get("range_value") or "today").strip()
-        calendar_id = (request.form.get("calendar_id") or "primary").strip()
+        # Calendario objetivo compartido definido en configuración.
+        calendar_id = calendar_sync_calendar_id()
 
         if import_mode == "created_date":
             events = list_recent_events_by_created(
@@ -5002,15 +5726,26 @@ def calendar_import_to_inbox():
                 skipped += 1
                 continue
 
-            payload = event_to_task_payload(ev)
+            payload = _google_event_to_task_fields(ev)
+            payload["google_event_id"] = ev.get("id")
+            payload["google_calendar_id"] = calendar_id
 
             task_id = exec_sql(
-                "INSERT INTO tasks(title, notes, project_id, folder_id, due_date, recurrence_rule) "
-                "VALUES(%s,%s,NULL,NULL,%s,NULL)",
+                "INSERT INTO tasks("
+                "title, notes, project_id, folder_id, due_date, due_time, recurrence_rule, "
+                "google_event_id, google_calendar_id, google_event_etag, "
+                "calendar_remote_updated_at, calendar_sync_state, calendar_last_synced_at"
+                ") "
+                "VALUES(%s,%s,NULL,NULL,%s,%s,NULL,%s,%s,%s,%s,'synced',NOW())",
                 (
                     payload["title"],
                     payload["notes"],
                     payload["due_date"],
+                    payload["due_time"],
+                    payload["google_event_id"],
+                    payload["google_calendar_id"],
+                    payload.get("google_event_etag"),
+                    payload.get("calendar_remote_updated_at"),
                 ),
             )
 

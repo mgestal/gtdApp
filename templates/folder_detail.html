@@ -150,7 +150,7 @@
               </div>
               
               <div style="display:flex; flex-wrap:wrap; gap:4px;">
-                {% if t.recurrence_rule %}<span class="pill" style="font-size:10px;">⟲ periódica</span>{% endif %}
+                {% if t.recurrence_rule %}<a class="pill taglink" style="font-size:10px;" href="{{ url_for('task_periodic_history', task_id=t.id, next=request.full_path) }}">⟲ periódica</a>{% endif %}
                 {% for tag in tags_map.get(t.id, []) %}
                   <a class="tagchip taglink" style="margin:0; font-size:9px;" href="{{ url_for('tag_detail', tag_id=tag.id) }}">@{{ tag.name }}</a>
                 {% endfor %}

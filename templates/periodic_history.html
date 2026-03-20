@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="page-title">
+    <h1>⟲ Histórico @{{ tag.name }}</h1>
+    <p class="subtitle">Ejecuciones pasadas y siguiente prevista de tareas periódicas.</p>
+  </div>
+
+  <div class="card" style="margin-bottom:12px;">
+    <a class="btn btn-soft" href="{{ url_for('tag_detail', tag_id=tag.id) }}">← Volver a etiqueta</a>
+  </div>
+
+  {% if total > 0 %}
+    <div class="pager" style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:10px;">
+      <div class="muted">
+        Mostrando {{ (page-1)*per_page + 1 }}–{{ [page*per_page, total]|min }} de {{ total }} · página {{ page }} de {{ pages }}
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        {% if page > 1 %}
+          <a class="btn btn-soft" href="{{ url_for('periodic_history', tag_id=tag.id, page=1) }}">« Primera</a>
+          <a class="btn btn-soft" href="{{ url_for('periodic_history', tag_id=tag.id, page=page-1) }}">‹ Anterior</a>
+        {% else %}
+          <span class="btn btn-soft disabled">« Primera</span>
+          <span class="btn btn-soft disabled">‹ Anterior</span>
+        {% endif %}
+
+        {% if page < pages %}
+          <a class="btn btn-soft" href="{{ url_for('periodic_history', tag_id=tag.id, page=page+1) }}">Siguiente ›</a>
+          <a class="btn btn-soft" href="{{ url_for('periodic_history', tag_id=tag.id, page=pages) }}">Última »</a>
+        {% else %}
+          <span class="btn btn-soft disabled">Siguiente ›</span>
+          <span class="btn btn-soft disabled">Última »</span>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+
+  <div class="card">
+    {% if rows and rows|length > 0 %}
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Tarea</th>
+            <th style="width:170px;">Siguiente prevista</th>
+            <th style="width:180px;">Última ejecución</th>
+            <th>Histórico</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in rows %}
+            {% set runs = runs_map.get(t.id, []) %}
+            <tr>
+              <td>
+                <div style="font-weight:600;">{{ t.title }}</div>
+                <div class="muted" style="margin-top:4px; font-size:12px;">
+                  {% if t.project_id %}
+                    <a href="{{ url_for('project_detail', project_id=t.project_id) }}">💼 {{ t.project_name }}</a>
+                  {% elif t.folder_id %}
+                    <a href="{{ url_for('folder_detail', folder_id=t.folder_id) }}">📂 {{ t.folder_name }}</a>
+                  {% else %}
+                    Inbox
+                  {% endif %}
+                </div>
+              </td>
+
+              <td style="white-space:nowrap; font-size:13px; line-height:1.2;">
+                {% if t.due_date %}
+                  <div>{{ t.due_date.strftime('%d-%m-%Y') }}</div>
+                  <div class="muted">
+                    {% if t.due_time and t.due_time.strftime is defined %}
+                      {{ t.due_time.strftime('%H:%M') }}
+                    {% elif t.due_time %}
+                      {{ (t.due_time|string)[:5] }}
+                    {% else %}
+                      Sin hora
+                    {% endif %}
+                  </div>
+                {% else %}
+                  <span class="muted">Sin fecha</span>
+                {% endif %}
+              </td>
+
+              <td style="white-space:nowrap; font-size:13px; line-height:1.2;">
+                {% if runs and runs[0].executed_at %}
+                  <div>{{ runs[0].executed_at.strftime('%d-%m-%Y') }}</div>
+                  <div class="muted">{{ runs[0].executed_at.strftime('%H:%M') }}</div>
+                {% else %}
+                  <span class="muted">Sin ejecuciones</span>
+                {% endif %}
+              </td>
+
+              <td>
+                {% if runs %}
+                  <div class="list" style="gap:6px;">
+                    {% for r in runs[:8] %}
+                      <div class="muted" style="font-size:12px;">
+                        {{ r.executed_at.strftime('%d-%m-%Y %H:%M') if r.executed_at else '—' }}
+                        {% if r.previous_due_date or r.next_due_date %}
+                          · {{ r.previous_due_date.strftime('%d-%m-%Y') if r.previous_due_date else '—' }} → {{ r.next_due_date.strftime('%d-%m-%Y') if r.next_due_date else '—' }}
+                        {% endif %}
+                      </div>
+                    {% endfor %}
+                    {% if runs|length > 8 %}
+                      <div class="muted" style="font-size:12px;">... y {{ runs|length - 8 }} ejecuciones más</div>
+                    {% endif %}
+                  </div>
+                {% else %}
+                  <span class="muted">Sin histórico</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="empty">No hay tareas periódicas en esta etiqueta.</div>
+    {% endif %}
+  </div>
+{% endblock %}

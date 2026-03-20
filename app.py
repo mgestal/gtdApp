@@ -6,6 +6,7 @@ import os
 import re
 import calendar
 import hashlib
+import unicodedata
 import pymysql
 
 
@@ -917,6 +918,21 @@ def ensure_schema_updates() -> None:
         "ADD INDEX IF NOT EXISTS idx_tasks_calendar_sync_state (calendar_sync_state)"
     )
 
+    exec_sql(
+        "CREATE TABLE IF NOT EXISTS recurring_task_runs ("
+        "id INT AUTO_INCREMENT PRIMARY KEY, "
+        "task_id INT NOT NULL, "
+        "executed_at DATETIME NOT NULL, "
+        "previous_due_date DATE NULL, "
+        "next_due_date DATE NULL, "
+        "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, "
+        "INDEX idx_recurring_task_runs_task (task_id), "
+        "INDEX idx_recurring_task_runs_executed_at (executed_at), "
+        "CONSTRAINT fk_recurring_task_runs_task "
+        "FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE ON UPDATE CASCADE"
+        ")"
+    )
+
     commit()
     _schema_bootstrapped = True
 
@@ -958,6 +974,17 @@ PROJ_RE = re.compile(r"#([A-Za-z0-9_\-áéíóúÁÉÍÓÚñÑ][A-Za-z0-9_\- á�
 
 def normalize_name(s: str) -> str:
     return (s or "").strip()
+
+
+def normalize_tag_key(tag_name: str) -> str:
+    raw = (tag_name or "").strip().lower().lstrip("@")
+    normalized = unicodedata.normalize("NFD", raw)
+    return "".join(ch for ch in normalized if unicodedata.category(ch) != "Mn")
+
+
+def is_periodic_tag_name(tag_name: str) -> bool:
+    key = normalize_tag_key(tag_name)
+    return key in {"periodica", "periodicas"}
     
     
 DATE_TOKEN_RE = re.compile(
@@ -2734,8 +2761,165 @@ def tag_detail(tag_id: int):
         pages=pages,
         total=total,
         per_page=per_page,
+        periodic_tag=is_periodic_tag_name(tag.get("name") or ""),
+        periodic_history_url=url_for("periodic_history", tag_id=tag_id),
     )
-    
+
+
+@app.route("/periodic/history")
+def periodic_history():
+    try:
+        tag_id = int(request.args.get("tag_id", "0"))
+    except ValueError:
+        tag_id = 0
+
+    tag = None
+    if tag_id > 0:
+        tag = q1("SELECT id, name FROM tags WHERE id=%s", (tag_id,))
+
+    if not tag:
+        # Acceso directo sin id: usa la primera etiqueta periódica disponible.
+        tag = q1(
+            "SELECT id, name FROM tags "
+            "WHERE LOWER(name) IN (%s, %s, %s, %s) "
+            "ORDER BY id ASC "
+            "LIMIT 1",
+            ("periodica", "periódica", "periodicas", "periódicas"),
+        )
+
+    if not tag:
+        abort(404)
+
+    tag_id = int(tag["id"])
+
+    per_page = cfg_int(["app", "pagination", "tag_detail_per_page"], default=25, min_v=5, max_v=500)
+    try:
+        page = int(request.args.get("page", "1"))
+    except ValueError:
+        page = 1
+    page = max(page, 1)
+    offset = (page - 1) * per_page
+
+    total_row = q1(
+        "SELECT COUNT(*) AS c "
+        "FROM task_tags tt "
+        "JOIN tasks t ON t.id=tt.task_id "
+        "WHERE tt.tag_id=%s "
+        "AND t.recurrence_rule IS NOT NULL "
+        "AND TRIM(t.recurrence_rule) <> ''",
+        (tag_id,),
+    )
+    total = int(total_row["c"]) if total_row else 0
+    pages = max(1, (total + per_page - 1) // per_page)
+
+    if page > pages:
+        page = pages
+        offset = (page - 1) * per_page
+
+    rows = q(
+        "SELECT t.id, t.title, t.due_date, t.due_time, t.recurrence_rule, "
+        "p.id AS project_id, p.name AS project_name, "
+        "fd.id AS folder_id, fd.name AS folder_name "
+        "FROM task_tags tt "
+        "JOIN tasks t ON t.id=tt.task_id "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+        "LEFT JOIN folders fd ON fd.id=COALESCE(t.folder_id, p.folder_id) "
+        "WHERE tt.tag_id=%s "
+        "AND t.recurrence_rule IS NOT NULL "
+        "AND TRIM(t.recurrence_rule) <> '' "
+        "ORDER BY (t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC "
+        "LIMIT %s OFFSET %s",
+        (tag_id, per_page, offset),
+    )
+
+    task_ids = [int(r["id"]) for r in rows]
+    runs_map: Dict[int, List[Dict[str, Any]]] = {}
+
+    if task_ids:
+        placeholders = ",".join(["%s"] * len(task_ids))
+        run_rows = q(
+            f"SELECT task_id, executed_at, previous_due_date, next_due_date "
+            f"FROM recurring_task_runs "
+            f"WHERE task_id IN ({placeholders}) "
+            f"ORDER BY executed_at DESC",
+            tuple(task_ids),
+        )
+        for rr in run_rows:
+            tid = int(rr["task_id"])
+            runs_map.setdefault(tid, []).append(rr)
+
+    return render_template(
+        "periodic_history.html",
+        tag=tag,
+        rows=rows,
+        runs_map=runs_map,
+        page=page,
+        pages=pages,
+        total=total,
+        per_page=per_page,
+    )
+
+
+@app.route("/tasks/<int:task_id>/periodic-history")
+def task_periodic_history(task_id: int):
+    task = q1(
+        "SELECT t.id, t.title, t.due_date, t.due_time, t.recurrence_rule, "
+        "p.id AS project_id, p.name AS project_name, "
+        "fd.id AS folder_id, fd.name AS folder_name "
+        "FROM tasks t "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+        "LEFT JOIN folders fd ON fd.id=COALESCE(t.folder_id, p.folder_id) "
+        "WHERE t.id=%s",
+        (task_id,),
+    )
+    if not task:
+        abort(404)
+
+    if not (task.get("recurrence_rule") and str(task.get("recurrence_rule")).strip()):
+        flash("La tarea no es periódica.", "error")
+        return redirect(safe_next_url(request.args.get("next"), "home"))
+
+    per_page = 20
+    try:
+        page = int(request.args.get("page", "1"))
+    except ValueError:
+        page = 1
+    page = max(page, 1)
+    offset = (page - 1) * per_page
+
+    total_row = q1(
+        "SELECT COUNT(*) AS c FROM recurring_task_runs WHERE task_id=%s",
+        (task_id,),
+    )
+    total = int(total_row["c"]) if total_row else 0
+    pages = max(1, (total + per_page - 1) // per_page)
+
+    if page > pages:
+        page = pages
+        offset = (page - 1) * per_page
+
+    runs = q(
+        "SELECT executed_at, previous_due_date, next_due_date "
+        "FROM recurring_task_runs "
+        "WHERE task_id=%s "
+        "ORDER BY executed_at DESC "
+        "LIMIT %s OFFSET %s",
+        (task_id, per_page, offset),
+    )
+
+    next_url = safe_next_url(request.args.get("next"), "home")
+
+    return render_template(
+        "task_periodic_history.html",
+        task=task,
+        runs=runs,
+        page=page,
+        pages=pages,
+        total=total,
+        per_page=per_page,
+        next_url=next_url,
+    )
+
 
 from datetime import date, timedelta
 
@@ -3357,10 +3541,16 @@ def task_toggle(task_id: int):
             # CASO 1: tarea recurrente -> comportamiento actual, sin tocar NextAction
             if task.get("recurrence_rule") and task.get("due_date"):
                 rule = parse_rrule(task["recurrence_rule"])
+                previous_due = task["due_date"]
                 next_due = next_due_date(task["due_date"], rule)
                 exec_sql(
                     "UPDATE tasks SET last_completed_at=%s, due_date=%s, completed_at=NULL WHERE id=%s",
                     (now, next_due, task_id),
+                )
+                exec_sql(
+                    "INSERT INTO recurring_task_runs(task_id, executed_at, previous_due_date, next_due_date) "
+                    "VALUES(%s, %s, %s, %s)",
+                    (task_id, now, previous_due, next_due),
                 )
                 # Resetear todas las subtareas para el nuevo ciclo
                 exec_sql(

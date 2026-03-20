@@ -124,7 +124,7 @@
             </td>
             <td>
               {% if t.recurrence_rule %}
-                <span class="pill">⟲ periodica</span>
+                <a class="pill taglink" href="{{ url_for('task_periodic_history', task_id=t.id, next=request.full_path) }}">⟲ periodica</a>
               {% endif %}
               {% for tag in tags_map.get(t.id, []) %}
                 <a class="tagchip taglink" href="{{ url_for('tag_detail', tag_id=tag.id) }}">@{{ tag.name }}</a>

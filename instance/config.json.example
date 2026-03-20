@@ -16,6 +16,7 @@
     "pagination": {
       "agenda_per_page": 15,
       "search_per_page": 20,
+      "nextactions_per_page": 25,
       "tags_per_page": 10,
       "tag_detail_per_page": 10,
       "folders_per_page": 10,

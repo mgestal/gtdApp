@@ -4459,6 +4459,7 @@ def admin():
             pag["folders_per_page"] = _int_field("folders_per_page", pag.get("folders_per_page", 10), 5, 200)
             pag["filters_per_page"] = _int_field("filters_per_page", pag.get("filters_per_page", 15), 5, 500)
             pag["projects_per_page"] = _int_field("projects_per_page", pag.get("projects_per_page", 15), 5, 500)
+            pag["nextactions_per_page"] = _int_field("nextactions_per_page", pag.get("nextactions_per_page", 25), 5, 500)
             # Archivo: claves separadas para tareas y proyectos (manteniendo compatibilidad con archive_per_page).
             legacy_archive = _int_field("archive_per_page", pag.get("archive_per_page", 25), 5, 500)
             pag["archive_tasks_per_page"] = _int_field(
@@ -5498,12 +5499,39 @@ def review():
     
 @app.route("/next")
 def next_actions():
+    per_page = cfg_int(["app", "pagination", "nextactions_per_page"], default=25, min_v=5, max_v=500)
+
+    try:
+        page = int(request.args.get("page", "1"))
+    except ValueError:
+        page = 1
+    page = max(page, 1)
 
     tag = q1("SELECT id FROM tags WHERE name='NextAction'")
 
     if not tag:
         rows = []
+        total = 0
+        pages = 1
     else:
+        total_row = q1(
+            "SELECT COUNT(*) AS c "
+            "FROM tasks t "
+            "JOIN task_tags tt ON tt.task_id=t.id "
+            "LEFT JOIN projects p ON p.id=t.project_id "
+            "WHERE tt.tag_id=%s "
+            "AND t.completed_at IS NULL "
+            "AND (t.project_id IS NULL OR p.archived = 0)",
+            (tag["id"],)
+        )
+        total = int(total_row["c"]) if total_row else 0
+        pages = max(1, (total + per_page - 1) // per_page)
+
+        if page > pages:
+            page = pages
+
+        offset = (page - 1) * per_page
+
         rows = q(
             "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, "
             "p.name AS project_name, p.id AS project_id, "
@@ -5515,8 +5543,9 @@ def next_actions():
             "WHERE tt.tag_id=%s "
             "AND t.completed_at IS NULL "
             "AND (t.project_id IS NULL OR p.archived = 0) "
-            "ORDER BY (t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC",
-            (tag["id"],)
+            "ORDER BY (t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC "
+            "LIMIT %s OFFSET %s",
+            (tag["id"], per_page, offset)
         )
 
     task_ids = [r["id"] for r in rows]
@@ -5530,6 +5559,10 @@ def next_actions():
         tags_map=tags_map,
         sub_counts=sub_counts,
         sub_map=sub_map,
+        page=page,
+        pages=pages,
+        total=total,
+        per_page=per_page,
     )
     
   

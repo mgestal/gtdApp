@@ -6,6 +6,30 @@
   <p class="subtitle">Tareas etiquetadas con @NextAction.</p>
 </div>
 
+<div class="pager" style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:10px;">
+  <div class="muted">
+    Mostrando {{ (page-1)*per_page + 1 if total>0 else 0 }}–{{ [page*per_page, total]|min }} de {{ total }}
+    · página {{ page }} de {{ pages }}
+  </div>
+  <div style="display:flex; gap:8px; flex-wrap:wrap;">
+    {% if page > 1 %}
+      <a class="btn btn-soft" href="{{ url_for('next_actions', page=1) }}">« Primera</a>
+      <a class="btn btn-soft" href="{{ url_for('next_actions', page=page-1) }}">‹ Anterior</a>
+    {% else %}
+      <span class="btn btn-soft disabled">« Primera</span>
+      <span class="btn btn-soft disabled">‹ Anterior</span>
+    {% endif %}
+
+    {% if page < pages %}
+      <a class="btn btn-soft" href="{{ url_for('next_actions', page=page+1) }}">Siguiente ›</a>
+      <a class="btn btn-soft" href="{{ url_for('next_actions', page=pages) }}">Última »</a>
+    {% else %}
+      <span class="btn btn-soft disabled">Siguiente ›</span>
+      <span class="btn btn-soft disabled">Última »</span>
+    {% endif %}
+  </div>
+</div>
+
 <div class="card">
 
   {% if rows and rows|length > 0 %}
@@ -26,7 +50,7 @@
         <tr class="{% if t.completed_at %}row-done{% endif %}">
           <td>
             <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}">
-              <input type="hidden" name="next" value="{{ url_for('next_actions') }}">
+              <input type="hidden" name="next" value="{{ url_for('next_actions', page=page) }}">
               <button class="radio" aria-label="toggle" title="Marcar / desmarcar"></button>
             </form>
           </td>
@@ -36,7 +60,7 @@
               {{ t.title }}
 
               {% if t.notes %}
-                <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('next_actions')) }}"
+                <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('next_actions', page=page)) }}"
                    title="{{ t.notes }}"
                    style="text-decoration:none; font-size:0.9rem; opacity:.75;">
                    📝
@@ -107,9 +131,9 @@
           </td>
 
           <td class="actions" style="text-align:right;">
-            <a class="btn btn-soft" href="{{ url_for('task_edit', task_id=t.id, next=url_for('next_actions')) }}">✎</a>
+            <a class="btn btn-soft" href="{{ url_for('task_edit', task_id=t.id, next=url_for('next_actions', page=page)) }}">✎</a>
             <form method="post" action="{{ url_for('task_delete', task_id=t.id) }}" style="display:inline;">
-              <input type="hidden" name="next" value="{{ url_for('next_actions') }}">
+              <input type="hidden" name="next" value="{{ url_for('next_actions', page=page) }}">
               <button class="btn btn-soft" onclick="return confirm('¿Borrar esta tarea?');">🗑</button>
             </form>
           </td>

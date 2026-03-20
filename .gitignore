@@ -15,8 +15,14 @@ Thumbs.db
 
 # Flask instance folder (config sensible)
 instance/config.json
+instance/config.docker.json
 instance/gmail_credentials.json
 instance/gmail_token.json
+instance/gmail_token.json-old
+instance/telegram_chat.json
+
+# Apache config (datos del servidor)
+webconfig/
 
 # Tokens
 .token-gtdapp
@@ -35,4 +41,3 @@ backups/
 
 
 static/emojis.txt
-instance/gmail_token.json

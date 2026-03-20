@@ -1,9 +1,9 @@
 {
   "db": {
-    "host": "mysql",
+    "host": "127.0.0.1",
     "port": 3306,
     "user": "gtd",
-    "password": "gtd_password",
+    "password": "YOUR_DB_PASSWORD",
     "database": "gtd",
     "charset": "utf8mb4"
   },
@@ -11,7 +11,7 @@
     "timezone": "Europe/Madrid",
     "title": "GTD App",
     "calendar_sync": {
-      "calendar_id": "mgestal@gmail.com"
+      "calendar_id": "YOUR_GMAIL@gmail.com"
     },
     "pagination": {
       "agenda_per_page": 15,
@@ -25,8 +25,7 @@
   },
   "security": {
     "allowed_user_ids": [
-      835990144,
-      1228759930
+      123456789
     ],
     "allowed_group_ids": [],
     "reply_on_unauthorized": true

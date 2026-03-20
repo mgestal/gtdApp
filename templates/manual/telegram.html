@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="page-title">
+    <h1>❓Manual: Integración con Telegram</h1>
+  </div>
+  <p class="subtitle">Configuración del bot, permisos y envío de resumen diario.</p>
+
+  <div class="card">
+    <div class="card-header"><div><div class="card-title">Ficheros necesarios</div></div></div>
+    <div class="list">
+      <div class="list-row"><div><div class="hint"><code>.token-gtdapp</code>: token del bot creado en BotFather.</div></div></div>
+      <div class="list-row"><div><div class="hint"><code>instance/telegram_chat.json</code>: chat registrado para envíos automáticos.</div></div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><div><div class="card-title">Flujo de configuración</div></div></div>
+    <div class="list">
+      <div class="list-row"><div><div class="hint">1. Crear bot en BotFather y copiar token.</div></div></div>
+      <div class="list-row"><div><div class="hint">2. Guardar token en <code>.token-gtdapp</code>.</div></div></div>
+      <div class="list-row"><div><div class="hint">3. Configurar usuarios/grupos autorizados en <code>instance/config.json</code> (bloque <code>security</code>).</div></div></div>
+      <div class="list-row"><div><div class="hint">4. Iniciar conversación con el bot para registrar el chat.</div></div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><div><div class="card-title">Uso</div></div></div>
+    <div class="list">
+      <div class="list-row"><div><div class="hint">El bot puede guardar el chat activo y enviar recordatorios/resúmenes.</div></div></div>
+      <div class="list-row"><div><div class="hint">El script <code>send_today.py</code> envía el resumen de tareas del día al chat configurado.</div></div></div>
+    </div>
+  </div>
+
+  <p><a href="{{ url_for('manual') }}">Volver al manual principal</a></p>
+{% endblock %}

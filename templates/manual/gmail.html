@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="page-title">
+    <h1>❓ Manual: Integración con Gmail</h1>
+  </div>
+  <p class="subtitle">Cómo preparar OAuth y usar la importación de correos a Inbox.</p>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Ficheros necesarios</div>
+      </div>
+    </div>
+    <div class="list">
+      <div class="list-row"><div><div class="hint"><code>instance/gmail_credentials.json</code>: credenciales OAuth descargadas de Google Cloud.</div></div></div>
+      <div class="list-row"><div><div class="hint"><code>instance/gmail_token.json</code>: token generado tras autorizar la cuenta.</div></div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><div><div class="card-title">Flujo de configuración</div></div></div>
+    <div class="list">
+      <div class="list-row"><div><div class="hint">1. Crear OAuth Client ID en Google Cloud.</div></div></div>
+      <div class="list-row"><div><div class="hint">2. Descargar el JSON y guardarlo como <code>instance/gmail_credentials.json</code>.</div></div></div>
+      <div class="list-row"><div><div class="hint">3. Ejecutar el flujo de autorización manual para generar <code>instance/gmail_token.json</code>.</div></div></div>
+      <div class="list-row"><div><div class="hint">4. Verificar permisos de lectura para el usuario que ejecuta la app (por ejemplo, <code>www-data</code> en Apache).</div></div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><div><div class="card-title">Uso en la aplicación</div></div></div>
+    <div class="list">
+      <div class="list-row"><div><div class="hint">Desde la pantalla principal puedes importar correos y convertirlos en tareas de Inbox.</div></div></div>
+      <div class="list-row"><div><div class="hint">La app evita importar dos veces el mismo mensaje.</div></div></div>
+      <div class="list-row"><div><div class="hint">Si cambias credenciales o permisos OAuth, normalmente hay que regenerar el token.</div></div></div>
+    </div>
+  </div>
+
+  <p><a href="{{ url_for('manual') }}">Volver al manual principal</a></p>
+{% endblock %}

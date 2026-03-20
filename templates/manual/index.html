@@ -1,0 +1,353 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="page-title">
+    <h1>❓ Manual de usuario</h1>
+  </div>
+  <p class="subtitle">Guía práctica de GTD App: qué hace cada sección, cómo usarla y ejemplos habituales.</p>
+
+  <style>
+    .manual-cta-link {
+      display: inline-block;
+      margin-top: 6px;
+      padding: 6px 10px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--panel2);
+      color: var(--text);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .manual-cta-link:hover {
+      text-decoration: none;
+      background: #ffe3e5;
+      border-color: #f1aeb3;
+    }
+  </style>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Visión general</div>
+        <div class="card-sub">La app está organizada para capturar, aclarar, organizar y revisar tareas con un flujo GTD.</div>
+      </div>
+    </div>
+
+    <div class="list">
+      <div class="list-row">
+        <div>
+          <div style="font-weight:600; margin-bottom:4px;">Objetivo principal</div>
+          <div class="hint">Gestionar tareas, proyectos, etiquetas, carpetas, revisiones y sincronización con Google Calendar desde una única interfaz.</div>
+        </div>
+      </div>
+      <div class="list-row">
+        <div>
+          <div style="font-weight:600; margin-bottom:4px;">Flujo recomendado</div>
+          <div class="hint">1. Captura en Inbox. 2. Aclara y clasifica. 3. Ejecuta desde Hoy, NextActions o Próximo. 4. Revisa con Review y Dashboard.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Añadir tareas</div>
+        <div class="card-sub">Puedes crear tareas desde el botón + Añadir tarea o desde formularios rápidos en varias vistas.</div>
+      </div>
+    </div>
+    <div class="hint" style="margin-bottom:10px;">
+      Sintaxis rápida: nombre + [@etiquetas] + [*fecha] + [h:HH:MM] + [#proyecto] + [cada {día|semana|mes|año}]
+    </div>
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Ejemplo</th>
+          <th>Qué hace</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>Llamar a Juan @NextAction *mañana</code></td>
+          <td>Crea una tarea para mañana con la etiqueta NextAction.</td>
+        </tr>
+        <tr>
+          <td><code>Podar árboles #Jardin</code></td>
+          <td>Crea una tarea asociada al proyecto Jardin.</td>
+        </tr>
+        <tr>
+          <td><code>Act. cuentas @Finanzas *+3 h:09:00 cada mes</code></td>
+          <td>Crea una tarea con fecha dentro de 3 días, hora 09:00 y recurrencia mensual.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Secciones principales</div>
+        <div class="card-sub">Accesos más usados del menú lateral y barra superior.</div>
+      </div>
+    </div>
+
+    <div class="list">
+      <div class="list-row">
+        <div>
+          <div style="font-weight:600;">Inbox</div>
+          <div class="hint">Bandeja de entrada para capturar tareas sin proyecto ni carpeta.</div>
+          <div class="hint">Ejemplo: anotar “Renovar seguro del coche” y clasificarla después.</div>
+        </div>
+      </div>
+      <div class="list-row">
+        <div>
+          <div style="font-weight:600;">Hoy</div>
+          <div class="hint">Tareas relevantes para hoy. Útil para enfoque diario.</div>
+          <div class="hint">Ejemplo: revisar llamadas pendientes, pagos y recados del día.</div>
+        </div>
+      </div>
+      <div class="list-row">
+        <div>
+          <div style="font-weight:600;">Esta semana</div>
+          <div class="hint">Vista de tareas que debes atender en el corto plazo semanal.</div>
+          <div class="hint">Ejemplo: preparar reunión, entregar documentación o compras semanales.</div>
+        </div>
+      </div>
+      <div class="list-row">
+        <div>
+          <div style="font-weight:600;">NextActions</div>
+          <div class="hint">Lista de próximas acciones ejecutables. Muy útil para trabajar por contexto o disponibilidad.</div>
+          <div class="hint">Ejemplo: “Enviar mail al proveedor”, “Pedir cita médica”, “Comprar bombillas”.</div>
+        </div>
+      </div>
+      <div class="list-row">
+        <div>
+          <div style="font-weight:600;">Próximo</div>
+          <div class="hint">Agenda de próximos compromisos y tareas con fecha.</div>
+          <div class="hint">Ejemplo: una cita médica a las 10:00 o una entrega el viernes.</div>
+        </div>
+      </div>
+      <div class="list-row">
+        <div>
+          <div style="font-weight:600;">Calendario</div>
+          <div class="hint">Vista calendario interna para revisar tareas fechadas y su distribución temporal.</div>
+          <div class="hint">Ejemplo: ver de un vistazo la carga de eventos de la semana.</div>
+        </div>
+      </div>
+      <div class="list-row">
+        <div>
+          <div style="font-weight:600;">Etiquetas</div>
+          <div class="hint">Permiten clasificar tareas por contexto, estado o temática.</div>
+          <div class="hint">Ejemplo: @NextAction, @agenda, @EnEspera, @Finanzas.</div>
+        </div>
+      </div>
+      <div class="list-row">
+        <div>
+          <div style="font-weight:600;">Filtros</div>
+          <div class="hint">Consultas guardadas para localizar subconjuntos de tareas según reglas.</div>
+          <div class="hint">Ejemplo: tareas con etiqueta @Finanzas y vencimiento esta semana.</div>
+          <div class="hint"><a class="manual-cta-link" href="{{ url_for('manual_filters') }}">Ver sintaxis completa de expresiones de filtros</a></div>
+        </div>
+      </div>
+      <div class="list-row">
+        <div>
+          <div style="font-weight:600;">Proyectos</div>
+          <div class="hint">Agrupan tareas relacionadas con un resultado concreto.</div>
+          <div class="hint">Ejemplo: “Mudanza”, “Artículo revista”, “Reforma del despacho”.</div>
+        </div>
+      </div>
+      <div class="list-row">
+        <div>
+          <div style="font-weight:600;">Carpetas</div>
+          <div class="hint">Agrupan proyectos y tareas por áreas, horizontes o contenedores organizativos.</div>
+          <div class="hint">Ejemplo: Trabajo, Casa, Algún día, Checklists, Rutinas.</div>
+        </div>
+      </div>
+      <div class="list-row">
+        <div>
+          <div style="font-weight:600;">Búsqueda</div>
+          <div class="hint">Permite encontrar tareas, proyectos u otros elementos por texto.</div>
+          <div class="hint">Ejemplo: buscar “factura”, “Amazon” o “sexenio”.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Revisión y control</div>
+        <div class="card-sub">Herramientas para mantener el sistema limpio y fiable.</div>
+      </div>
+    </div>
+    <div class="list">
+      <div class="list-row">
+        <div>
+          <div style="font-weight:600;">Review</div>
+          <div class="hint">Guía de revisión semanal con bloques de trabajo: Inbox, NextActions, agenda, proyectos, checklists, etc.</div>
+          <div class="hint">Ejemplo: usarla los viernes para vaciar inbox, revisar en espera y detectar proyectos sin acciones.</div>
+        </div>
+      </div>
+      <div class="list-row">
+        <div>
+          <div style="font-weight:600;">Dashboard</div>
+          <div class="hint">Resumen ejecutivo de tareas abiertas, completadas y próximos vencimientos.</div>
+          <div class="hint">Ejemplo: comprobar cuántas tareas completaste esta semana y qué vence en 7 días.</div>
+        </div>
+      </div>
+      <div class="list-row">
+        <div>
+          <div style="font-weight:600;">Archivo</div>
+          <div class="hint">Contiene tareas y proyectos archivados para consulta o recuperación posterior.</div>
+          <div class="hint">Ejemplo: revisar una tarea que fue archivada al borrar un evento en Google Calendar.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Filtros</div>
+        <div class="card-sub">Puedes crear filtros avanzados combinando etiquetas, proyectos, carpetas, fechas y operadores lógicos.</div>
+      </div>
+    </div>
+    <div class="list">
+      <div class="list-row">
+        <div>
+          <div style="font-weight:600;">Guía ampliada</div>
+          <div class="hint">La documentación completa incluye prefijos como <code>f:</code>, <code>p:</code>, <code>fa:</code>, <code>pf:</code>, operadores lógicos y palabras clave.</div>
+          <div class="hint"><a class="manual-cta-link" href="{{ url_for('manual_filters') }}">Abrir explicación completa de expresiones de filtros</a></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Integraciones</div>
+        <div class="card-sub">Resumen de integraciones disponibles y acceso a su documentación completa.</div>
+      </div>
+    </div>
+    <div class="list">
+      <div class="list-row">
+        <div>
+          <div style="font-weight:600;">Gmail</div>
+          <div class="hint">Permite importar correos como tareas en Inbox usando OAuth con Google.</div>
+          <div class="hint"><a class="manual-cta-link" href="{{ url_for('manual_gmail') }}">Ver explicación completa de integración con Gmail</a></div>
+        </div>
+      </div>
+      <div class="list-row">
+        <div>
+          <div style="font-weight:600;">Google Calendar</div>
+          <div class="hint">Sincroniza tareas y eventos en ambos sentidos con resolución de conflictos desde Admin.</div>
+          <div class="hint"><a class="manual-cta-link" href="{{ url_for('manual_google_calendar') }}">Ver explicación completa de integración con Google Calendar</a></div>
+        </div>
+      </div>
+      <div class="list-row">
+        <div>
+          <div style="font-weight:600;">Telegram</div>
+          <div class="hint">El bot permite interacción básica y envío de resumen diario al chat configurado.</div>
+          <div class="hint"><a class="manual-cta-link" href="{{ url_for('manual_telegram') }}">Ver explicación completa de integración con Telegram</a></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Configuración</div>
+        <div class="card-sub">La configuración principal se guarda en <code>instance/config.json</code>.</div>
+      </div>
+    </div>
+    <div class="list">
+      <div class="list-row">
+        <div>
+          <div style="font-weight:600;">Bloque db</div>
+          <div class="hint">Define la conexión con MariaDB: host, puerto, usuario, contraseña, base de datos y juego de caracteres.</div>
+          <div class="hint">Ejemplo habitual: usar <code>127.0.0.1</code>, puerto <code>3306</code> y la base <code>gtd</code>.</div>
+        </div>
+      </div>
+      <div class="list-row">
+        <div>
+          <div style="font-weight:600;">Bloque app</div>
+          <div class="hint">Incluye opciones generales como la zona horaria, el título mostrado en la interfaz y parámetros de paginación.</div>
+          <div class="hint">En esta instalación se usa la zona <code>Europe/Madrid</code> y el título <code>GTD App</code>.</div>
+        </div>
+      </div>
+      <div class="list-row">
+        <div>
+          <div style="font-weight:600;">calendar_sync.calendar_id</div>
+          <div class="hint">Indica el calendario de Google que se usa para sincronizar tareas y para importar eventos a Inbox.</div>
+          <div class="hint">Ejemplo: <code>mgestal@gmail.com</code> para trabajar con un calendario compartido en lugar de <code>primary</code>.</div>
+        </div>
+      </div>
+      <div class="list-row">
+        <div>
+          <div style="font-weight:600;">Paginación</div>
+          <div class="hint">Los campos <code>agenda_per_page</code>, <code>search_per_page</code>, <code>tags_per_page</code>, <code>folders_per_page</code>, <code>filters_per_page</code> y <code>projects_per_page</code> limitan cuántos elementos se ven por página.</div>
+          <div class="hint">Si una vista muestra demasiados resultados, reduce esos valores para hacerla más manejable.</div>
+        </div>
+      </div>
+      <div class="list-row">
+        <div>
+          <div style="font-weight:600;">Bloque security</div>
+          <div class="hint">Se usa sobre todo para Telegram. Permite definir qué usuarios o grupos están autorizados con <code>allowed_user_ids</code> y <code>allowed_group_ids</code>.</div>
+          <div class="hint">La opción <code>reply_on_unauthorized</code> controla si el bot responde cuando alguien no autorizado intenta usarlo.</div>
+        </div>
+      </div>
+      <div class="list-row">
+        <div>
+          <div style="font-weight:600;">Recomendación práctica</div>
+          <div class="hint">Haz copia de seguridad de <code>instance/config.json</code> antes de cambiarlo y reinicia la aplicación web o el proceso correspondiente para aplicar los cambios.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Admin</div>
+        <div class="card-sub">Panel para mantenimiento, sincronización y configuración avanzada.</div>
+      </div>
+    </div>
+    <div class="list">
+      <div class="list-row">
+        <div>
+          <div style="font-weight:600;">Sincronizar ahora</div>
+          <div class="hint">Lanza la sincronización manual con Google Calendar y muestra el resultado dentro de la propia card.</div>
+        </div>
+      </div>
+      <div class="list-row">
+        <div>
+          <div style="font-weight:600;">Resolución de conflictos</div>
+          <div class="hint">Permite elegir “Usar Google” o “Usar GTD” si hubo cambios concurrentes.</div>
+        </div>
+      </div>
+      <div class="list-row">
+        <div>
+          <div style="font-weight:600;">Mantenimiento</div>
+          <div class="hint">Incluye tareas como limpiar etiquetas no usadas, borrar proyectos vacíos o archivar tareas antiguas.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Consejos de uso</div>
+      </div>
+    </div>
+    <ul>
+      <li>Captura rápido en Inbox y clasifica después; evita perder ideas por querer organizarlas en el momento.</li>
+      <li>Usa etiquetas para contexto y carpetas/proyectos para estructura.</li>
+      <li>Reserva una revisión semanal con la vista Review para mantener el sistema fiable.</li>
+      <li>Usa Admin para lanzar sincronización manual cuando hayas tocado tareas o eventos importantes.</li>
+      <li>Si una tarea desaparece de las listas activas, revisa Archivo antes de asumir que se borró definitivamente.</li>
+    </ul>
+  </div>
+{% endblock %}

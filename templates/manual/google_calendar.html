@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="page-title">
+    <h1>❓ Manual: Integración con Google Calendar</h1>
+  </div>
+  <p class="subtitle">Sincronización bidireccional entre tareas GTD y eventos de Google Calendar.</p>
+
+  <div class="card">
+    <div class="card-header"><div><div class="card-title">Configuración base</div></div></div>
+    <div class="list">
+      <div class="list-row"><div><div class="hint">El calendario objetivo se define en <code>instance/config.json</code> con <code>app.calendar_sync.calendar_id</code>.</div></div></div>
+      <div class="list-row"><div><div class="hint">Credenciales/token de Google: <code>instance/gmail_credentials.json</code> y <code>instance/gmail_token.json</code>.</div></div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><div><div class="card-title">Qué sincroniza</div></div></div>
+    <div class="list">
+      <div class="list-row"><div><div class="hint">GTD -> Google: creación/actualización de eventos desde tareas.</div></div></div>
+      <div class="list-row"><div><div class="hint">Google -> GTD: cambios de título, fecha y hora en eventos vinculados.</div></div></div>
+      <div class="list-row"><div><div class="hint">Borrado remoto: si se elimina un evento en Google, la tarea vinculada puede archivarse en GTD.</div></div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><div><div class="card-title">Conflictos y ejecución</div></div></div>
+    <div class="list">
+      <div class="list-row"><div><div class="hint">Cuando hay cambios simultáneos en ambos lados, el conflicto se resuelve en Admin.</div></div></div>
+      <div class="list-row"><div><div class="hint">En Admin puedes forzar la sincronización manual y revisar el resultado del último ciclo.</div></div></div>
+    </div>
+  </div>
+
+  <p><a href="{{ url_for('manual') }}">Volver al manual principal</a></p>
+{% endblock %}

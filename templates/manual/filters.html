@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="page-title">
+    <h1>❓ Manual: Filtros</h1>
+  </div>
+  <p class="subtitle">Sintaxis completa para crear expresiones de filtros avanzadas.</p>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Operadores y estructura</div>
+      </div>
+    </div>
+    <div class="list">
+      <div class="list-row">
+        <div>
+          <div class="hint"><code>&amp;</code> = AND, <code>|</code> = OR, <code>!</code> = NOT, <code>( )</code> = agrupación.</div>
+          <div class="hint">También se acepta <code>and</code> y <code>or</code> (se convierten automáticamente).</div>
+          <div class="hint">Ejemplo: <code>(@NextAction &amp; !done) | p:Administración</code></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Prefijos admitidos</div>
+      </div>
+    </div>
+    <div class="list">
+      <div class="list-row">
+        <div>
+          <div style="font-weight:600;">@etiqueta</div>
+          <div class="hint">Filtra por etiqueta exacta. Ejemplo: <code>@Finanzas</code>.</div>
+        </div>
+      </div>
+      <div class="list-row">
+        <div>
+          <div style="font-weight:600;">p:nombre</div>
+          <div class="hint">Proyecto exacto. Ejemplo: <code>p:WebGTD</code> o <code>p:&quot;Web GTD&quot;</code>.</div>
+          <div class="hint">Especial: <code>p:null</code> para tareas sin proyecto.</div>
+        </div>
+      </div>
+      <div class="list-row">
+        <div>
+          <div style="font-weight:600;">f:nombre</div>
+          <div class="hint">Carpeta directa exacta de la tarea. Ejemplo: <code>f:Trabajo</code>.</div>
+          <div class="hint">Especial: <code>f:null</code> para tareas sin carpeta directa.</div>
+        </div>
+      </div>
+      <div class="list-row">
+        <div>
+          <div style="font-weight:600;">fr:nombre</div>
+          <div class="hint">Carpeta recursiva: carpeta + subcarpetas sobre la carpeta directa de la tarea.</div>
+          <div class="hint">Ejemplo: <code>fr:Casa</code>.</div>
+        </div>
+      </div>
+      <div class="list-row">
+        <div>
+          <div style="font-weight:600;">fa:nombre</div>
+          <div class="hint">Folder anywhere: busca por árbol de carpetas en la carpeta de la tarea y en la carpeta del proyecto.</div>
+          <div class="hint">Ejemplo: <code>fa:Trabajo</code>.</div>
+        </div>
+      </div>
+      <div class="list-row">
+        <div>
+          <div style="font-weight:600;">pf:valor</div>
+          <div class="hint">Búsqueda flexible en proyecto/carpeta.</div>
+          <div class="hint">Ejemplo libre: <code>pf:impuestos</code>.</div>
+          <div class="hint">Ejemplo ruta: <code>pf:&quot;Trabajo/Clientes&quot;</code> (Carpeta/Proyecto).</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Comparaciones de fecha</div>
+      </div>
+    </div>
+    <div class="list">
+      <div class="list-row">
+        <div>
+          <div class="hint">Campos admitidos: <code>fecha</code> y <code>due</code>.</div>
+          <div class="hint">Operadores: <code>&lt;</code>, <code>&lt;=</code>, <code>=</code>, <code>&gt;=</code>, <code>&gt;</code>.</div>
+          <div class="hint">Referencias válidas: <code>hoy</code>, <code>null</code>, desplazamiento en días (<code>+7</code>, <code>-3</code>) o fecha <code>dd-mm-aaaa</code>.</div>
+          <div class="hint">Ejemplos: <code>fecha&lt;hoy</code>, <code>due&gt;=+7</code>, <code>fecha=25-03-2026</code>, <code>due=null</code>.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Palabras clave admitidas</div>
+      </div>
+    </div>
+    <div class="list">
+      <div class="list-row">
+        <div>
+          <div class="hint"><code>inbox</code>: tareas sin proyecto y sin carpeta.</div>
+          <div class="hint"><code>done</code>: tareas completadas.</div>
+          <div class="hint"><code>null</code>: valor especial para <code>p:</code>, <code>f:</code> y fecha con <code>=</code>.</div>
+          <div class="hint"><code>hoy</code>: fecha actual (Europe/Madrid) para comparaciones de fecha.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Ejemplos completos</div>
+      </div>
+    </div>
+    <div class="list">
+      <div class="list-row"><div><div class="hint"><code>@NextAction &amp; !done &amp; due&lt;=+3</code> -> próximas acciones no completadas para los próximos 3 días.</div></div></div>
+      <div class="list-row"><div><div class="hint"><code>inbox | p:null</code> -> tareas sin clasificar por proyecto/carpeta.</div></div></div>
+      <div class="list-row"><div><div class="hint"><code>fa:Trabajo &amp; (@Urgente | @Agenda)</code> -> tareas del área Trabajo con etiqueta Urgente o Agenda.</div></div></div>
+    </div>
+  </div>
+
+  <p><a href="{{ url_for('manual') }}">Volver al manual principal</a></p>
+{% endblock %}

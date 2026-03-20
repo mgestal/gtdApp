@@ -96,8 +96,7 @@
         <div>
           <div style="font-weight:600;">Inbox</div>
           <div class="hint">Bandeja de entrada para capturar tareas sin proyecto ni carpeta.</div>
-          <div class="hint">Ejemplo: anotar “Renovar seguro del coche” y clasificarla después.</div>
-        </div>
+          <div class="hint">Ejemplo: anotar “Renovar seguro del coche” y clasificarla después.</div>          <div class="hint">El botón <strong>🗄 Archivar realizadas</strong> envía al archivo todas las tareas completadas del Inbox de una vez.</div>        </div>
       </div>
       <div class="list-row">
         <div>
@@ -119,8 +118,13 @@
           <div class="hint">Lista de próximas acciones ejecutables. Muy útil para trabajar por contexto o disponibilidad.</div>
           <div class="hint">Ejemplo: “Enviar mail al proveedor”, “Pedir cita médica”, “Comprar bombillas”.</div>
         </div>
-      </div>
-      <div class="list-row">
+      </div>      <div class="list-row">
+        <div>
+          <div style="font-weight:600;">⟲ Tareas periódicas</div>
+          <div class="hint">Las tareas con recurrencia muestran el chip <strong>⟲ periódica</strong> en rojo. Al hacer clic se abre el histórico de ejecuciones: fecha y hora de cada vez que se completó, vencimiento anterior y siguiente previsto.</div>
+          <div class="hint">Ejemplo: comprobar las veces que se ha realizado una revisión mensual o verificar que una rutina semanal se ejecutó correctamente.</div>
+        </div>
+      </div>      <div class="list-row">
         <div>
           <div style="font-weight:600;">Próximo</div>
           <div class="hint">Agenda de próximos compromisos y tareas con fecha.</div>
@@ -288,8 +292,8 @@
       <div class="list-row">
         <div>
           <div style="font-weight:600;">Paginación</div>
-          <div class="hint">Los campos <code>agenda_per_page</code>, <code>search_per_page</code>, <code>tags_per_page</code>, <code>folders_per_page</code>, <code>filters_per_page</code> y <code>projects_per_page</code> limitan cuántos elementos se ven por página.</div>
-          <div class="hint">Si una vista muestra demasiados resultados, reduce esos valores para hacerla más manejable.</div>
+          <div class="hint">Los campos <code>agenda_per_page</code>, <code>search_per_page</code>, <code>tags_per_page</code>, <code>folders_per_page</code>, <code>filters_per_page</code>, <code>projects_per_page</code>, <code>nextactions_per_page</code>, <code>archive_tasks_per_page</code>, <code>archive_projects_per_page</code> y <code>periodic_history_per_page</code> limitan cuántos elementos se ven por página.</div>
+          <div class="hint">Todos estos valores también son editables directamente desde el panel <strong>Admin → Paginación</strong> sin necesidad de editar el fichero de configuración.</div>
         </div>
       </div>
       <div class="list-row">

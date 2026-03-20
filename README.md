@@ -17,6 +17,8 @@ Aplicación personal de **Getting Things Done (GTD)** desarrollada en **Python +
 
 - Inbox, proyectos, carpetas jerárquicas, etiquetas, subtareas
 - Fechas de vencimiento, hora y recurrencias (diaria, semanal, mensual, anual)
+- **Histórico de ejecuciones** de tareas periódicas accesible directamente desde el chip ⟲ periódica
+- Archivar tareas realizadas desde el Inbox con un solo clic
 - Creación rápida desde cualquier vista con sintaxis natural
 - Vistas: Inbox, Hoy, Esta semana, NextActions, Próximo, Calendario
 
@@ -206,7 +208,11 @@ Crea `instance/config.json`:
       "tag_detail_per_page": 10,
       "folders_per_page": 10,
       "filters_per_page": 10,
-      "projects_per_page": 15
+      "projects_per_page": 15,
+      "nextactions_per_page": 25,
+      "archive_tasks_per_page": 25,
+      "archive_projects_per_page": 25,
+      "periodic_history_per_page": 20
     }
   },
   "security": {

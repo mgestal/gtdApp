@@ -68,6 +68,9 @@
 
     <div class="card-header">
       <div class="card-title">Tareas sin carpeta</div>
+      <form method="post" action="{{ url_for('inbox_archive_completed_tasks') }}">
+        <button class="btn btn-soft" onclick="return confirm('¿Archivar tareas realizadas del inbox?');">🗄 Archivar realizadas</button>
+      </form>
     </div>
 
     {% if inbox and inbox|length > 0 %}

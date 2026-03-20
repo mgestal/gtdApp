@@ -68,6 +68,21 @@
     background:#fff;
   }
 
+  .review-mini-item-task{
+    display:flex;
+    gap:8px;
+    align-items:flex-start;
+  }
+
+  .review-mini-item-main{
+    flex:1;
+    min-width:0;
+  }
+
+  .review-mini-toggle-form{
+    margin-top:2px;
+  }
+
   .review-mini-item-title{
     font-weight:600;
     margin-bottom:2px;
@@ -175,7 +190,11 @@
     {% if inbox %}
       <div class="review-mini-list">
         {% for t in inbox %}
-          <div class="review-mini-item">
+          <div class="review-mini-item review-mini-item-task">
+            <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}" class="review-mini-toggle-form">
+              <button class="radio" aria-label="toggle" title="Marcar / desmarcar"></button>
+            </form>
+            <div class="review-mini-item-main">
             <div class="review-mini-item-title">
               <a class="link" href="{{ url_for('task_edit', task_id=t.id) }}">{{ t.title }}</a>
 			   {% if t.notes %}
@@ -201,6 +220,7 @@
               {% if not t.folder_name and not t.project_name %}
                 Inbox
               {% endif %}
+            </div>
             </div>
           </div>
         {% endfor %}
@@ -224,7 +244,11 @@
         {% if nextactions_open %}
           <div class="review-mini-list" style="margin-bottom:0;">
             {% for t in nextactions_open %}
-              <div class="review-mini-item">
+              <div class="review-mini-item review-mini-item-task">
+                <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}" class="review-mini-toggle-form">
+                  <button class="radio" aria-label="toggle" title="Marcar / desmarcar"></button>
+                </form>
+                <div class="review-mini-item-main">
                 <div class="review-mini-item-title">
                   <a class="link" href="{{ url_for('task_edit', task_id=t.id) }}">{{ t.title }}</a>
 				   {% if t.notes %}
@@ -250,6 +274,7 @@
                   {% if not t.folder_name and not t.project_name %}
                     Inbox
                   {% endif %}
+                </div>
                 </div>
               </div>
             {% endfor %}
@@ -264,7 +289,11 @@
         {% if nextactions_overdue %}
           <div class="review-mini-list" style="margin-bottom:0;">
             {% for t in nextactions_overdue %}
-              <div class="review-mini-item">
+              <div class="review-mini-item review-mini-item-task">
+                <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}" class="review-mini-toggle-form">
+                  <button class="radio" aria-label="toggle" title="Marcar / desmarcar"></button>
+                </form>
+                <div class="review-mini-item-main">
                 <div class="review-mini-item-title">
                   <a class="link" href="{{ url_for('task_edit', task_id=t.id) }}">{{ t.title }}</a>
 				   {% if t.notes %}
@@ -290,6 +319,7 @@
                   {% if not t.folder_name and not t.project_name %}
                     Inbox
                   {% endif %}
+                </div>
                 </div>
               </div>
             {% endfor %}
@@ -311,7 +341,11 @@
     {% if upcoming_7 %}
       <div class="review-mini-list">
         {% for t in upcoming_7 %}
-          <div class="review-mini-item">
+          <div class="review-mini-item review-mini-item-task">
+            <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}" class="review-mini-toggle-form">
+              <button class="radio" aria-label="toggle" title="Marcar / desmarcar"></button>
+            </form>
+            <div class="review-mini-item-main">
             <div class="review-mini-item-title">
               <a class="link" href="{{ url_for('task_edit', task_id=t.id) }}">{{ t.title }}</a>
 			   {% if t.notes %}
@@ -337,6 +371,7 @@
               {% if not t.folder_name and not t.project_name %}
                 Inbox
               {% endif %}
+            </div>
             </div>
           </div>
         {% endfor %}
@@ -358,7 +393,11 @@
     {% elif en_seguimiento_tasks %}
       <div class="review-mini-list">
         {% for t in en_seguimiento_tasks %}
-          <div class="review-mini-item">
+          <div class="review-mini-item review-mini-item-task">
+            <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}" class="review-mini-toggle-form">
+              <button class="radio" aria-label="toggle" title="Marcar / desmarcar"></button>
+            </form>
+            <div class="review-mini-item-main">
             <div class="review-mini-item-title">
               <a class="link" href="{{ url_for('task_edit', task_id=t.id) }}">{{ t.title }}</a>
 			   {% if t.notes %}
@@ -384,6 +423,7 @@
               {% if not t.folder_name and not t.project_name %}
                 Inbox
               {% endif %}
+            </div>
             </div>
           </div>
         {% endfor %}
@@ -404,7 +444,11 @@
     {% elif agenda_overdue %}
       <div class="review-mini-list">
         {% for t in agenda_overdue %}
-          <div class="review-mini-item">
+          <div class="review-mini-item review-mini-item-task">
+            <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}" class="review-mini-toggle-form">
+              <button class="radio" aria-label="toggle" title="Marcar / desmarcar"></button>
+            </form>
+            <div class="review-mini-item-main">
             <div class="review-mini-item-title">
               <a class="link" href="{{ url_for('task_edit', task_id=t.id) }}">{{ t.title }}</a>
 			   {% if t.notes %}
@@ -430,6 +474,7 @@
               {% if not t.folder_name and not t.project_name %}
                 Inbox
               {% endif %}
+            </div>
             </div>
           </div>
         {% endfor %}
@@ -450,7 +495,11 @@
     {% elif en_espera_tasks %}
       <div class="review-mini-list">
         {% for t in en_espera_tasks %}
-          <div class="review-mini-item">
+          <div class="review-mini-item review-mini-item-task">
+            <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}" class="review-mini-toggle-form">
+              <button class="radio" aria-label="toggle" title="Marcar / desmarcar"></button>
+            </form>
+            <div class="review-mini-item-main">
             <div class="review-mini-item-title">
               <a class="link" href="{{ url_for('task_edit', task_id=t.id) }}">{{ t.title }}</a>
 			   {% if t.notes %}
@@ -476,6 +525,7 @@
               {% if not t.folder_name and not t.project_name %}
                 Inbox
               {% endif %}
+            </div>
             </div>
           </div>
         {% endfor %}
@@ -605,7 +655,11 @@
       {% elif sometime_tasks_no_project %}
         <div class="review-mini-list" style="margin-bottom:0;">
           {% for t in sometime_tasks_no_project %}
-            <div class="review-mini-item">
+            <div class="review-mini-item review-mini-item-task">
+              <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}" class="review-mini-toggle-form">
+                <button class="radio" aria-label="toggle" title="Marcar / desmarcar"></button>
+              </form>
+              <div class="review-mini-item-main">
               <div class="review-mini-item-title">
                 <a class="link" href="{{ url_for('task_edit', task_id=t.id) }}">{{ t.title }}</a>
                 {% if t.notes %}
@@ -622,6 +676,7 @@
                   <span class="muted"> · </span>
                   <a href="{{ url_for('folder_detail', folder_id=t.folder_id) }}">📂 {{ t.folder_name }}</a>
                 {% endif %}
+              </div>
               </div>
             </div>
           {% endfor %}
@@ -659,7 +714,11 @@
         <div class="review-subtitle">Tareas directas</div>
         <div class="review-mini-list">
           {% for t in checklist_tasks %}
-            <div class="review-mini-item">
+            <div class="review-mini-item review-mini-item-task">
+              <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}" class="review-mini-toggle-form">
+                <button class="radio" aria-label="toggle" title="Marcar / desmarcar"></button>
+              </form>
+              <div class="review-mini-item-main">
               <div class="review-mini-item-title">
                 <a class="link" href="{{ url_for('task_edit', task_id=t.id) }}">{{ t.title }}</a>
                 {% if t.notes %}
@@ -672,6 +731,7 @@
               </div>
               <div class="review-mini-meta">
                 {% if t.due_date %}{{ t.due_date.strftime('%d-%m-%Y') }}{% else %}Sin fecha{% endif %}
+              </div>
               </div>
             </div>
           {% endfor %}

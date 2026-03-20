@@ -497,6 +497,8 @@ def get_today_tasks_extended():
                 LEFT JOIN projects p ON p.id = t.project_id
                 LEFT JOIN folders fd ON fd.id = COALESCE(t.folder_id, p.folder_id)
                 WHERE t.completed_at IS NULL
+                                    AND COALESCE(t.archived, 0) = 0
+                                    AND (t.project_id IS NULL OR COALESCE(p.archived, 0) = 0)
                   AND t.due_date = CURDATE()
                 ORDER BY t.id ASC
                 """
@@ -552,6 +554,8 @@ def get_agenda_tasks_extended(limit: int = 15):
                 LEFT JOIN projects p ON p.id = t.project_id
                 LEFT JOIN folders fd ON fd.id = COALESCE(t.folder_id, p.folder_id)
                 WHERE t.completed_at IS NULL
+                                    AND COALESCE(t.archived, 0) = 0
+                                    AND (t.project_id IS NULL OR COALESCE(p.archived, 0) = 0)
                   AND t.due_date IS NOT NULL
                 ORDER BY t.due_date ASC, t.id ASC
                 LIMIT %s
@@ -666,9 +670,12 @@ async def cmd_nextactions(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     rows = q(
         "SELECT t.id,t.title,t.due_date "
         "FROM tasks t "
+        "LEFT JOIN projects p ON p.id=t.project_id "
         "JOIN task_tags tt ON tt.task_id=t.id "
         "JOIN tags tg ON tg.id=tt.tag_id "
         "WHERE t.completed_at IS NULL "
+        "AND COALESCE(t.archived,0)=0 "
+        "AND (t.project_id IS NULL OR COALESCE(p.archived,0)=0) "
         "AND LOWER(tg.name)=LOWER(%s) "
         "ORDER BY (t.due_date IS NULL), t.due_date, t.id DESC",
         ("NextAction",),
@@ -693,9 +700,13 @@ async def cmd_hoy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     today_d = today_local()
 
     rows = q(
-        "SELECT id,title,due_date "
-        "FROM tasks "
-        "WHERE completed_at IS NULL AND due_date=%s",
+        "SELECT t.id,t.title,t.due_date "
+        "FROM tasks t "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+        "WHERE t.completed_at IS NULL "
+        "AND COALESCE(t.archived,0)=0 "
+        "AND (t.project_id IS NULL OR COALESCE(p.archived,0)=0) "
+        "AND t.due_date=%s",
         (today_d,),
     )
 

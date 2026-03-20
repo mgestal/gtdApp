@@ -1510,6 +1510,19 @@ def today():
         (today_d,)
     )
 
+    overdue_rows = q(
+        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, "
+        "p.name AS project_name, p.id AS project_id, "
+        "fd.id AS folder_id, fd.name AS folder_name "
+        "FROM tasks t "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+        "LEFT JOIN folders fd ON fd.id=t.folder_id "
+        "WHERE t.due_date < %s AND t.completed_at IS NULL "
+        "AND (t.project_id IS NULL OR p.archived = 0) "
+        "ORDER BY t.due_date ASC, t.id DESC",
+        (today_d,)
+    )
+
     done_rows = q(
         "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, "
         "p.name AS project_name, p.id AS project_id, "
@@ -1523,9 +1536,16 @@ def today():
         (today_d,)
     )
 
-    all_ids = [r["id"] for r in pending_rows] + [r["id"] for r in done_rows]
+    all_ids = [r["id"] for r in pending_rows] + [r["id"] for r in overdue_rows] + [r["id"] for r in done_rows]
     tags_map = load_tags_map(all_ids) if all_ids else {}
-    return render_template("today.html", pending_rows=pending_rows, done_rows=done_rows, tags_map=tags_map, today=today_d)
+    return render_template(
+        "today.html",
+        pending_rows=pending_rows,
+        overdue_rows=overdue_rows,
+        done_rows=done_rows,
+        tags_map=tags_map,
+        today=today_d,
+    )
 
 
 @app.route("/week")

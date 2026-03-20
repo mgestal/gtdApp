@@ -1,12 +1,54 @@
 {% extends "base.html" %}
 {% block content %}
-  <div class="page-title">
+  <style>
+    @media (max-width: 980px) {
+      .archive-table-wrap {
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .archive-table-wrap .archive-table {
+        min-width: 680px;
+      }
+
+      .archive-search-form .input {
+        min-width: 0 !important;
+        width: 100%;
+        flex: 1 1 100%;
+      }
+
+      .archive-pager {
+        align-items: flex-start !important;
+      }
+
+      .archive-pager .muted {
+        width: 100%;
+        overflow-wrap: anywhere;
+      }
+
+      .archive-pager-actions {
+        width: 100%;
+      }
+
+      .archive-project-row {
+        flex-direction: column;
+      }
+
+      .archive-project-actions {
+        width: 100%;
+        flex-wrap: wrap;
+      }
+    }
+  </style>
+
+  <div class="archive-page page-title">
     <h1>Archivo 🗄️</h1>
     <p class="subtitle">Tareas archivadas y proyectos archivados.</p>
   </div>
 
   <div class="card" style="margin-bottom:12px;">
-    <form method="get" class="form" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:0;">
+    <form method="get" class="form archive-search-form" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:0;">
       <label class="label" style="margin:0;">Buscar por título</label>
       <input class="input" type="text" name="q" value="{{ qtxt or '' }}" placeholder="Título de tarea o proyecto" style="flex:1; min-width:220px; margin:0;">
       <button class="btn btn-primary" type="submit">Buscar</button>
@@ -23,11 +65,11 @@
     </div>
 
     {% if archived_tasks %}
-      <div class="pager" style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:10px;">
+      <div class="pager archive-pager" style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:10px;">
         <div class="muted">
           Mostrando {{ (task_page-1)*per_page + 1 }}–{{ [task_page*per_page, total_tasks]|min }} de {{ total_tasks }} · página {{ task_page }} de {{ task_pages }}
         </div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <div class="archive-pager-actions" style="display:flex; gap:8px; flex-wrap:wrap;">
           {% if task_page > 1 %}
             <a class="btn btn-soft" href="{{ url_for('archive_view', q=qtxt, task_page=1, project_page=project_page) }}">« Primera</a>
             <a class="btn btn-soft" href="{{ url_for('archive_view', q=qtxt, task_page=task_page-1, project_page=project_page) }}">‹ Anterior</a>
@@ -45,61 +87,63 @@
         </div>
       </div>
 
-      <table class="table">
-        <thead>
-          <tr>
-            <th>Tarea</th>
-            <th style="width:120px;">Archivada</th>
-            <th style="width:120px;">Realizada</th>
-            <th>Ubicación</th>
-            <th style="width:110px; text-align:right;">Acciones</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for t in archived_tasks %}
+      <div class="archive-table-wrap">
+        <table class="table archive-table">
+          <thead>
             <tr>
-              <td class="row-done">{{ t.title }}</td>
-              <td style="font-size:13px; line-height:1.2; white-space:nowrap;">
-                {% if t.archived_at %}
-                  <div>{{ t.archived_at.strftime('%d-%m-%Y') }}</div>
-                  <div class="muted">{{ t.archived_at.strftime('%H:%M') }}</div>
-                {% else %}
-                  <span class="muted">—</span>
-                {% endif %}
-              </td>
-              <td style="font-size:13px; line-height:1.2; white-space:nowrap;">
-                {% if t.completed_at %}
-                  <div>{{ t.completed_at.strftime('%d-%m-%Y') }}</div>
-                  <div class="muted">{{ t.completed_at.strftime('%H:%M') }}</div>
-                {% else %}
-                  <span class="muted">—</span>
-                {% endif %}
-              </td>
-              <td>
-                {% if t.project_id %}
-                  <a href="{{ url_for('project_detail', project_id=t.project_id) }}">📁 {{ t.project_name }}</a>
-                {% elif t.folder_id %}
-                  <a href="{{ url_for('folder_detail', folder_id=t.folder_id) }}">🗂️ {{ t.folder_name }}</a>
-                {% else %}
-                  <span class="muted">Inbox</span>
-                {% endif %}
-              </td>
-              <td style="text-align:right;">
-                <div style="display:inline-flex; gap:6px;">
-                  <form method="post" action="{{ url_for('task_unarchive', task_id=t.id) }}" style="display:inline;">
-                    <input type="hidden" name="next" value="{{ request.full_path }}">
-                    <button class="btn btn-soft" type="submit">Desarchivar</button>
-                  </form>
-                  <form method="post" action="{{ url_for('task_delete', task_id=t.id) }}" style="display:inline;">
-                    <input type="hidden" name="next" value="{{ request.full_path }}">
-                    <button class="btn btn-soft" type="submit" onclick="return confirm('¿Borrar esta tarea archivada?');">🗑</button>
-                  </form>
-                </div>
-              </td>
+              <th>Tarea</th>
+              <th style="width:120px;">Archivada</th>
+              <th style="width:120px;">Realizada</th>
+              <th>Ubicación</th>
+              <th style="width:110px; text-align:right;">Acciones</th>
             </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {% for t in archived_tasks %}
+              <tr>
+                <td class="row-done">{{ t.title }}</td>
+                <td style="font-size:13px; line-height:1.2; white-space:nowrap;">
+                  {% if t.archived_at %}
+                    <div>{{ t.archived_at.strftime('%d-%m-%Y') }}</div>
+                    <div class="muted">{{ t.archived_at.strftime('%H:%M') }}</div>
+                  {% else %}
+                    <span class="muted">—</span>
+                  {% endif %}
+                </td>
+                <td style="font-size:13px; line-height:1.2; white-space:nowrap;">
+                  {% if t.completed_at %}
+                    <div>{{ t.completed_at.strftime('%d-%m-%Y') }}</div>
+                    <div class="muted">{{ t.completed_at.strftime('%H:%M') }}</div>
+                  {% else %}
+                    <span class="muted">—</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if t.project_id %}
+                    <a href="{{ url_for('project_detail', project_id=t.project_id) }}">📁 {{ t.project_name }}</a>
+                  {% elif t.folder_id %}
+                    <a href="{{ url_for('folder_detail', folder_id=t.folder_id) }}">🗂️ {{ t.folder_name }}</a>
+                  {% else %}
+                    <span class="muted">Inbox</span>
+                  {% endif %}
+                </td>
+                <td style="text-align:right;">
+                  <div style="display:inline-flex; gap:6px;">
+                    <form method="post" action="{{ url_for('task_unarchive', task_id=t.id) }}" style="display:inline;">
+                      <input type="hidden" name="next" value="{{ request.full_path }}">
+                      <button class="btn btn-soft" type="submit">Desarchivar</button>
+                    </form>
+                    <form method="post" action="{{ url_for('task_delete', task_id=t.id) }}" style="display:inline;">
+                      <input type="hidden" name="next" value="{{ request.full_path }}">
+                      <button class="btn btn-soft" type="submit" onclick="return confirm('¿Borrar esta tarea archivada?');">🗑</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     {% else %}
       <div class="empty">No hay tareas archivadas.</div>
     {% endif %}
@@ -111,11 +155,11 @@
       <div class="muted">{{ total_projects }} resultados</div>
     </div>
 
-    <div class="pager" style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:10px;">
+    <div class="pager archive-pager" style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:10px;">
       <div class="muted">
         Mostrando {{ (project_page-1)*per_page + 1 }}–{{ [project_page*per_page, total_projects]|min }} de {{ total_projects }} · página {{ project_page }} de {{ project_pages }}
       </div>
-      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <div class="archive-pager-actions" style="display:flex; gap:8px; flex-wrap:wrap;">
         {% if project_page > 1 %}
           <a class="btn btn-soft" href="{{ url_for('archive_view', q=qtxt, task_page=task_page, project_page=1) }}">« Primera</a>
           <a class="btn btn-soft" href="{{ url_for('archive_view', q=qtxt, task_page=task_page, project_page=project_page-1) }}">‹ Anterior</a>
@@ -136,7 +180,7 @@
     {% if archived_projects %}
       <div class="list">
         {% for p in archived_projects %}
-          <div class="list-row" style="align-items:flex-start; gap:8px;">
+          <div class="list-row archive-project-row" style="align-items:flex-start; gap:8px;">
             <div style="flex:1; min-width:0;">
               <a href="{{ url_for('project_detail', project_id=p.id) }}" style="font-weight:700; text-decoration:none;">{{ p.name }}</a> - 
               
@@ -156,7 +200,7 @@
               {% endif %}
 
             </div>
-            <div style="display:inline-flex; gap:6px;">
+            <div class="archive-project-actions" style="display:inline-flex; gap:6px;">
               <form method="post" action="{{ url_for('project_unarchive', project_id=p.id) }}" style="margin:0;">
                 <button class="btn btn-soft" type="submit">Desarchivar</button>
               </form>

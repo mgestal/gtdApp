@@ -1672,3 +1672,47 @@ hr{
     display: block !important;
   }
 }
+
+/* ============================
+   Archive: ajustes móvil
+   ============================ */
+
+.archive-table-wrap{
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.archive-table{
+  min-width: 680px;
+}
+
+@media (max-width: 640px){
+  .archive-search-form .input{
+    min-width: 0 !important;
+    width: 100%;
+    flex: 1 1 100%;
+  }
+
+  .archive-pager{
+    align-items: flex-start !important;
+  }
+
+  .archive-pager .muted{
+    width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  .archive-pager-actions{
+    width: 100%;
+  }
+
+  .archive-project-row{
+    flex-direction: column;
+  }
+
+  .archive-project-actions{
+    width: 100%;
+    flex-wrap: wrap;
+  }
+}

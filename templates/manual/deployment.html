@@ -1,0 +1,475 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="page-title">
+    <h1>🚀 Instalación y despliegue</h1>
+  </div>
+  <p class="subtitle">Cómo ejecutar GTD App en tu propio servidor o máquina.</p>
+
+  <style>
+    .manual-cta-link {
+      display: inline-block;
+      margin-top: 6px;
+      padding: 6px 10px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--panel2);
+      color: var(--text);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .manual-cta-link:hover {
+      text-decoration: none;
+      background: #ffe3e5;
+      border-color: #f1aeb3;
+    }
+
+    .deployment-option {
+      margin-bottom: 24px;
+    }
+
+    .option-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      color: var(--text);
+    }
+
+    .option-desc {
+      color: var(--text-secondary);
+      margin-bottom: 12px;
+      line-height: 1.5;
+    }
+
+    .code-block {
+      background: var(--panel2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px;
+      overflow-x: auto;
+      font-family: monospace;
+      font-size: 13px;
+      margin: 12px 0;
+    }
+
+    .pros-cons {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin: 12px 0;
+    }
+
+    .pros, .cons {
+      background: var(--panel2);
+      padding: 12px;
+      border-radius: 6px;
+      border-left: 3px solid;
+    }
+
+    .pros {
+      border-left-color: #4caf50;
+    }
+
+    .cons {
+      border-left-color: #ff9800;
+    }
+
+    .pros-cons ul, .cons ul {
+      margin: 0;
+      padding-left: 18px;
+      font-size: 13px;
+    }
+
+    .pros-cons li, .cons li {
+      margin-bottom: 4px;
+    }
+
+    .step {
+      background: var(--panel2);
+      padding: 12px;
+      border-radius: 6px;
+      margin: 12px 0;
+      border-left: 3px solid var(--primary);
+    }
+
+    .step-num {
+      font-weight: 700;
+      color: var(--primary);
+      margin-bottom: 6px;
+    }
+  </style>
+
+  <!-- DOCKER (RECOMENDADO) -->
+  <div class="card deployment-option">
+    <div class="card-header">
+      <div>
+        <div class="card-title">🐳 Docker (Recomendado)</div>
+        <div class="card-sub">La opción más sencilla y portable para instalar en cualquier equipo.</div>
+      </div>
+    </div>
+
+    <div class="list">
+      <div class="list-row">
+        <div class="option-desc">
+          <strong>Requisitos:</strong> Docker y Docker Compose instalados en tu sistema.
+        </div>
+      </div>
+
+      <div class="list-row">
+        <div>
+          <div class="step-num">1. Clonar el repositorio</div>
+          <div class="code-block">
+git clone &lt;tu-repositorio&gt;
+cd gtdApp
+          </div>
+        </div>
+      </div>
+
+      <div class="list-row">
+        <div>
+          <div class="step-num">2. Iniciar la aplicación</div>
+          <div class="code-block">
+docker-compose up -d
+          </div>
+          <div class="option-desc" style="margin-top:8px;">
+            Esto descargará las imágenes, creará los contenedores, ejecutará el esquema SQL automáticamente y arrancará la app.
+          </div>
+        </div>
+      </div>
+
+      <div class="list-row">
+        <div>
+          <div class="step-num">Acceder a la app</div>
+          <div class="code-block">
+http://localhost:5000
+          </div>
+          <div class="option-desc" style="margin-top:8px; color: #4caf50; font-weight: 600;">
+            ✓ La base de datos está lista automáticamente
+          </div>
+        </div>
+      </div>
+
+      <div class="list-row">
+        <div style="margin-top: 12px;">
+          <div style="font-weight: 600; margin-bottom: 8px;">Comandos útiles</div>
+          <div style="font-size: 13px; font-family: monospace; background: var(--panel2); padding: 8px; border-radius: 4px; margin: 6px 0; overflow-x: auto;">
+Ver logs: <code>docker-compose logs -f app</code>
+          </div>
+          <div style="font-size: 13px; font-family: monospace; background: var(--panel2); padding: 8px; border-radius: 4px; margin: 6px 0; overflow-x: auto;">
+Parar: <code>docker-compose down</code>
+          </div>
+          <div style="font-size: 13px; font-family: monospace; background: var(--panel2); padding: 8px; border-radius: 4px; margin: 6px 0; overflow-x: auto;">
+Borrar BD: <code>docker-compose down -v</code>
+          </div>
+        </div>
+      </div>
+
+      <div class="list-row">
+        <div class="pros-cons">
+          <div class="pros">
+            <strong>✓ Ventajas</strong>
+            <ul>
+              <li>Idéntico en cualquier máquina</li>
+              <li>BD incluida automáticamente</li>
+              <li>Sin conflictos de dependencias</li>
+              <li>Fácil de actualizar</li>
+            </ul>
+          </div>
+          <div class="cons">
+            <strong>⚠ Requisitos</strong>
+            <ul>
+              <li>Docker instalado</li>
+              <li>~2GB de espacio (imágenes)</li>
+              <li>Puertos 5000 y 3306 libres</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MANUAL (AVANZADO) -->
+  <div class="card deployment-option">
+    <div class="card-header">
+      <div>
+        <div class="card-title">🛠 Instalación manual (Avanzado)</div>
+        <div class="card-sub">Para usuarios que prefieren tener acceso directo a los componentes.</div>
+      </div>
+    </div>
+
+    <div class="list">
+      <div class="list-row">
+        <div class="option-desc">
+          <strong>Requisitos:</strong> Python 3.10+, MySQL/MariaDB, pip, git
+        </div>
+      </div>
+
+      <div class="list-row">
+        <div>
+          <div class="step-num">1. Clonar y crear entorno virtual</div>
+          <div class="code-block">
+git clone &lt;tu-repositorio&gt;
+cd gtdApp
+python -m venv .venv
+source .venv/bin/activate  # En Windows: .venv\Scripts\activate
+          </div>
+        </div>
+      </div>
+
+      <div class="list-row">
+        <div>
+          <div class="step-num">2. Instalar dependencias</div>
+          <div class="code-block">
+pip install -r requirements.txt
+          </div>
+        </div>
+      </div>
+
+      <div class="list-row">
+        <div>
+          <div class="step-num">3. Crear la base de datos</div>
+          <div class="code-block">
+mysql -u root -p &lt;&lt;'SQL'
+CREATE DATABASE gtd CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'gtd'@'localhost' IDENTIFIED BY 'gtd_password';
+GRANT ALL PRIVILEGES ON gtd.* TO 'gtd'@'localhost';
+FLUSH PRIVILEGES;
+SQL
+
+mysql -u gtd -p gtd &lt; sql/esquema.sql
+          </div>
+        </div>
+      </div>
+
+      <div class="list-row">
+        <div>
+          <div class="step-num">4. Configurar instance/config.json</div>
+          <div class="option-desc">
+            Crea o edita el archivo con tus datos de BD (usuario, contraseña, timezone, etc.). Ver <strong>Configuración</strong> más abajo.
+          </div>
+        </div>
+      </div>
+
+      <div class="list-row">
+        <div>
+          <div class="step-num">5. Ejecutar la app</div>
+          <div class="code-block">
+python app.py
+          </div>
+          <div class="option-desc" style="margin-top:8px;">
+            Desarrollo: acceder a <code>http://localhost:5000</code>
+          </div>
+        </div>
+      </div>
+
+      <div class="list-row">
+        <div class="pros-cons">
+          <div class="pros">
+            <strong>✓ Ventajas</strong>
+            <ul>
+              <li>Control total</li>
+              <li>Debugging local</li>
+              <li>Personalización avanzada</li>
+            </ul>
+          </div>
+          <div class="cons">
+            <strong>⚠ Desventajas</strong>
+            <ul>
+              <li>Más configuración manual</li>
+              <li>Conflictos de dependencias posibles</li>
+              <li>Portabilidad limitada</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SERVIDOR PRODUCCIÓN -->
+  <div class="card deployment-option">
+    <div class="card-header">
+      <div>
+        <div class="card-title">🌐 Producción (Servidor remoto)</div>
+        <div class="card-sub">Ejecutar en un VPS, Raspberry Pi, NAS o servidor propio.</div>
+      </div>
+    </div>
+
+    <div class="list">
+      <div class="list-row">
+        <div class="option-desc">
+          <strong>Recomendado:</strong> Usar Docker en el servidor para mantener consistencia con desarrollo.
+        </div>
+      </div>
+
+      <div class="list-row">
+        <div>
+          <div class="step-num">En VPS/Servidor Linux</div>
+          <div class="code-block">
+# SSH al servidor
+ssh usuario@tu-servidor.com
+
+# Clonar repo, instalar Docker si no está
+sudo apt update && sudo apt install docker.io docker-compose
+sudo usermod -aG docker $USER
+
+# Clonar y ejecutar
+git clone &lt;tu-repositorio&gt;
+cd gtdApp
+docker-compose up -d
+
+# Para acceso remoto seguro, usar reverse proxy (nginx + SSL)
+          </div>
+        </div>
+      </div>
+
+      <div class="list-row">
+        <div>
+          <div style="font-weight: 600; margin-bottom: 8px;">Opciones de acceso:</div>
+          <div style="font-size: 13px; margin: 8px 0;">
+            <strong>Opción 1:</strong> Port forwarding (acceso a IP:5000 desde la red local o internet)
+          </div>
+          <div style="font-size: 13px; margin: 8px 0;">
+            <strong>Opción 2:</strong> Nginx reverse proxy + SSL (recomendado para internet)
+          </div>
+          <div style="font-size: 13px; margin: 8px 0;">
+            <strong>Opción 3:</strong> Apache + mod_wsgi (si tienes Apache ya instalado)
+          </div>
+        </div>
+      </div>
+
+      <div class="list-row">
+        <div style="margin-top: 12px;">
+          <div style="font-weight: 600; margin-bottom: 8px;">Automatizar backups</div>
+          <div class="code-block">
+# Backup diario (añadir a crontab)
+0 2 * * * docker exec gtd_mysql mysqldump -u gtd -pgtd_password gtd > /backups/gtd_$(date +\%Y\%m\%d).sql
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONFIGURACIÓN -->
+  <div class="card deployment-option">
+    <div class="card-header">
+      <div>
+        <div class="card-title">⚙️ Configuración (instance/config.json)</div>
+        <div class="card-sub">Parámetros principales de la aplicación.</div>
+      </div>
+    </div>
+
+    <div class="list">
+      <div class="list-row">
+        <div class="code-block" style="overflow-x: auto;">
+{
+  "db": {
+    "host": "127.0.0.1",        // localhost o 'mysql' si usas Docker
+    "port": 3306,
+    "user": "gtd",
+    "password": "gtd_password",
+    "database": "gtd",
+    "charset": "utf8mb4"
+  },
+  "app": {
+    "timezone": "Europe/Madrid", // Tu zona horaria
+    "title": "GTD App",
+    "calendar_sync": {
+      "calendar_id": "primary"   // 'primary' o email@gmail.com
+    }
+  },
+  "security": {
+    "allowed_user_ids": [835990144, 1228759930],  // IDs Telegram permitidos
+    "allowed_group_ids": [],
+    "reply_on_unauthorized": true
+  }
+}
+        </div>
+      </div>
+
+      <div class="list-row">
+        <div>
+          <div style="font-weight: 600; margin-bottom: 8px;">Parámetros importantes:</div>
+          <ul style="font-size: 13px; margin: 0; padding-left: 18px;">
+            <li><code>timezone</code>: Zona horaria para mostrar fechas correctamente</li>
+            <li><code>calendar_id</code>: "primary" para tu calendario por defecto o email para compartido</li>
+            <li><code>allowed_user_ids</code>: Solo estos usuarios Telegram pueden usar el bot</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CREDENCIALES GOOGLE -->
+  <div class="card deployment-option">
+    <div class="card-header">
+      <div>
+        <div class="card-title">🔐 Credenciales Google (Gmail + Calendar)</div>
+        <div class="card-sub">Configurar acceso a Gmail y Google Calendar.</div>
+      </div>
+    </div>
+
+    <div class="list">
+      <div class="list-row">
+        <div class="option-desc">
+          Necesario para importar correos y eventos automáticamente.
+        </div>
+      </div>
+
+      <div class="list-row">
+        <div>
+          <div class="step-num">1. Google Cloud Console</div>
+          <div style="font-size: 13px; line-height: 1.6;">
+            • Ir a <a href="https://console.cloud.google.com/" target="_blank">console.cloud.google.com</a><br>
+            • Crear un nuevo proyecto<br>
+            • Habilitar APIs: <strong>Gmail</strong> y <strong>Google Calendar</strong><br>
+            • Crear OAuth 2.0 Client (tipo "Aplicación de escritorio")
+          </div>
+        </div>
+      </div>
+
+      <div class="list-row">
+        <div>
+          <div class="step-num">2. Guardar credenciales</div>
+          <div class="code-block">
+# Descargar JSON y guardar como:
+instance/gmail_credentials.json
+
+# Se generará automáticamente:
+instance/gmail_token.json
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TROUBLESHOOTING -->
+  <div class="card deployment-option">
+    <div class="card-header">
+      <div>
+        <div class="card-title">🔧 Solución de problemas</div>
+        <div class="card-sub">Errores comunes y cómo resolverlos.</div>
+      </div>
+    </div>
+
+    <div class="list">
+      <div class="list-row">
+        <div style="font-size: 13px; line-height: 1.6;">
+          <strong>Error de conexión a BD</strong><br>
+          • Docker: Verificar que el contenedor MySQL está corriendo: <code>docker-compose logs mysql</code><br>
+          • Manual: Asegurar que MySQL está ejecutándose y credentials en config.json son correctas<br>
+          <br>
+          <strong>Puerto 5000 en uso</strong><br>
+          • Docker: Cambiar puerto en docker-compose.yml: <code>"5001:5000"</code><br>
+          • Manual: Usar <code>export FLASK_ENV=production; python app.py --port 8000</code><br>
+          <br>
+          <strong>Permisos en Docker</strong><br>
+          • Agregar usuario a grupo: <code>sudo usermod -aG docker $USER</code><br>
+          <br>
+          <strong>Pérdida de datos al bajar contenedor</strong><br>
+          • Los volúmenes persisten: <code>docker-compose down</code> (sin <code>-v</code>)<br>
+        </div>
+      </div>
+    </div>
+  </div>
+
+{% endblock %}

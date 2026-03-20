@@ -2829,6 +2829,11 @@ def manual_telegram():
     return render_template("manual/telegram.html", title="Manual: Integración con Telegram")
 
 
+@app.route("/gtdApp/manual/despliegue")
+def manual_deployment():
+    return render_template("manual/deployment.html", title="Manual: Instalación y despliegue")
+
+
 # ---------------- Routes: create/edit tasks ----------------
 
 @app.route("/tasks/create", methods=["POST"])

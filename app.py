@@ -2879,7 +2879,7 @@ def task_periodic_history(task_id: int):
         flash("La tarea no es periódica.", "error")
         return redirect(safe_next_url(request.args.get("next"), "home"))
 
-    per_page = 20
+    per_page = cfg_int(["app", "pagination", "periodic_history_per_page"], default=20, min_v=5, max_v=500)
     try:
         page = int(request.args.get("page", "1"))
     except ValueError:
@@ -4650,6 +4650,7 @@ def admin():
             pag["filters_per_page"] = _int_field("filters_per_page", pag.get("filters_per_page", 15), 5, 500)
             pag["projects_per_page"] = _int_field("projects_per_page", pag.get("projects_per_page", 15), 5, 500)
             pag["nextactions_per_page"] = _int_field("nextactions_per_page", pag.get("nextactions_per_page", 25), 5, 500)
+            pag["periodic_history_per_page"] = _int_field("periodic_history_per_page", pag.get("periodic_history_per_page", 20), 5, 500)
             # Archivo: claves separadas para tareas y proyectos (manteniendo compatibilidad con archive_per_page).
             legacy_archive = _int_field("archive_per_page", pag.get("archive_per_page", 25), 5, 500)
             pag["archive_tasks_per_page"] = _int_field(

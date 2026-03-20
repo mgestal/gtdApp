@@ -160,6 +160,10 @@
                 <input class="input" type="number" name="nextactions_per_page" value="{{ cfg.get('app', {}).get('pagination', {}).get('nextactions_per_page', 25) }}">
               </div>
               <div>
+                <label class="label">Histórico periódico</label>
+                <input class="input" type="number" name="periodic_history_per_page" value="{{ cfg.get('app', {}).get('pagination', {}).get('periodic_history_per_page', 20) }}">
+              </div>
+              <div>
                 <label class="label">Archivo: tareas</label>
                 <input class="input" type="number" name="archive_tasks_per_page" value="{{ cfg.get('app', {}).get('pagination', {}).get('archive_tasks_per_page', cfg.get('app', {}).get('pagination', {}).get('archive_per_page', 25)) }}">
               </div>

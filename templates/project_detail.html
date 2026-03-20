@@ -1,6 +1,13 @@
 {% extends "base.html" %}
 {% block content %} 
   <div class="page-title">
+    {% if folder_breadcrumb and folder_breadcrumb|length > 0 %}
+      <p class="subtitle" style="margin-bottom:6px;">
+        {% for f in folder_breadcrumb %}
+          <a href="{{ url_for('folder_detail', folder_id=f.id) }}">{{ f.name }}</a>{% if not loop.last %} &gt;&gt; {% endif %}
+        {% endfor %}
+      </p>
+    {% endif %}
     <h1>💼 {{ project.name }}</h1>
     {% if project.description %}<p class="subtitle">{{ project.description }}</p>{% endif %}
     {% if project.archived %}<p class="subtitle"><span class="pill">Archivado</span></p>{% endif %}

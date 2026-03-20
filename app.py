@@ -1128,6 +1128,39 @@ def load_folder_tree(include_archived: bool = False) -> List[Dict[str, Any]]:
     return roots
 
 
+def build_folder_breadcrumb(folder_id: Optional[int], include_self: bool = True) -> List[Dict[str, Any]]:
+    """Devuelve la ruta de carpetas desde raíz hasta folder_id."""
+    if not folder_id:
+        return []
+
+    rows = q("SELECT id, parent_id, name FROM folders")
+    folder_map: Dict[int, Dict[str, Any]] = {}
+    for r in rows:
+        folder_map[int(r["id"])] = {
+            "id": int(r["id"]),
+            "parent_id": int(r["parent_id"]) if r.get("parent_id") is not None else None,
+            "name": r["name"],
+        }
+
+    current_id = int(folder_id)
+    visited: set[int] = set()
+    chain: List[Dict[str, Any]] = []
+
+    while current_id in folder_map and current_id not in visited:
+        visited.add(current_id)
+        node = folder_map[current_id]
+        chain.append({"id": node["id"], "name": node["name"]})
+        parent_id = node["parent_id"]
+        if parent_id is None:
+            break
+        current_id = parent_id
+
+    chain.reverse()
+    if not include_self and chain:
+        return chain[:-1]
+    return chain
+
+
 @app.route("/search")
 def search():
     qtxt = (request.args.get("q") or "").strip()
@@ -1801,9 +1834,11 @@ def projects():
 
 @app.route("/projects/<int:project_id>")
 def project_detail(project_id: int):
-    project = q1("SELECT id, name, description, archived FROM projects WHERE id=%s", (project_id,))
+    project = q1("SELECT id, name, description, archived, folder_id FROM projects WHERE id=%s", (project_id,))
     if not project:
         abort(404)
+
+    folder_breadcrumb = build_folder_breadcrumb(project.get("folder_id"), include_self=True)
 
     active_tasks = q(
         "SELECT id, title, notes, due_date, completed_at, recurrence_rule "
@@ -1830,6 +1865,7 @@ def project_detail(project_id: int):
     return render_template(
         "project_detail.html",
         project=project,
+        folder_breadcrumb=folder_breadcrumb,
         active_tasks=active_tasks,
         done_tasks=done_tasks,
         tags_map=tags_map,
@@ -2898,6 +2934,8 @@ def folder_detail(folder_id: int):
     if not folder:
         abort(404)
 
+    folder_breadcrumb = build_folder_breadcrumb(folder_id, include_self=False)
+
     # Proyectos dentro de la carpeta (activos)
     projects = q(
         "SELECT id, name FROM projects WHERE folder_id=%s AND archived=0 ORDER BY name",
@@ -2942,7 +2980,16 @@ def folder_detail(folder_id: int):
         for r in cnt_rows:
             sub_counts[int(r["task_id"])] = {"total": int(r["total"]), "done": int(r["done"] or 0)}
 
-    return render_template("folder_detail.html", folder=folder, projects=projects, tasks=tasks, tags_map=tags_map, sub_map=sub_map, sub_counts=sub_counts,)
+    return render_template(
+        "folder_detail.html",
+        folder=folder,
+        folder_breadcrumb=folder_breadcrumb,
+        projects=projects,
+        tasks=tasks,
+        tags_map=tags_map,
+        sub_map=sub_map,
+        sub_counts=sub_counts,
+    )
 
 @app.route("/folders/<int:folder_id>/rename", methods=["POST"])
 def folder_rename(folder_id: int):

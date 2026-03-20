@@ -67,7 +67,7 @@
     {% if archived_tasks %}
       <div class="pager archive-pager" style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:10px;">
         <div class="muted">
-          Mostrando {{ (task_page-1)*per_page + 1 }}–{{ [task_page*per_page, total_tasks]|min }} de {{ total_tasks }} · página {{ task_page }} de {{ task_pages }}
+          Mostrando {{ (task_page-1)*task_per_page + 1 }}–{{ [task_page*task_per_page, total_tasks]|min }} de {{ total_tasks }} · página {{ task_page }} de {{ task_pages }}
         </div>
         <div class="archive-pager-actions" style="display:flex; gap:8px; flex-wrap:wrap;">
           {% if task_page > 1 %}
@@ -157,7 +157,7 @@
 
     <div class="pager archive-pager" style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:10px;">
       <div class="muted">
-        Mostrando {{ (project_page-1)*per_page + 1 }}–{{ [project_page*per_page, total_projects]|min }} de {{ total_projects }} · página {{ project_page }} de {{ project_pages }}
+        Mostrando {{ (project_page-1)*project_per_page + 1 }}–{{ [project_page*project_per_page, total_projects]|min }} de {{ total_projects }} · página {{ project_page }} de {{ project_pages }}
       </div>
       <div class="archive-pager-actions" style="display:flex; gap:8px; flex-wrap:wrap;">
         {% if project_page > 1 %}

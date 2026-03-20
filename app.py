@@ -4459,6 +4459,20 @@ def admin():
             pag["folders_per_page"] = _int_field("folders_per_page", pag.get("folders_per_page", 10), 5, 200)
             pag["filters_per_page"] = _int_field("filters_per_page", pag.get("filters_per_page", 15), 5, 500)
             pag["projects_per_page"] = _int_field("projects_per_page", pag.get("projects_per_page", 15), 5, 500)
+            # Archivo: claves separadas para tareas y proyectos (manteniendo compatibilidad con archive_per_page).
+            legacy_archive = _int_field("archive_per_page", pag.get("archive_per_page", 25), 5, 500)
+            pag["archive_tasks_per_page"] = _int_field(
+                "archive_tasks_per_page",
+                pag.get("archive_tasks_per_page", legacy_archive),
+                5,
+                500,
+            )
+            pag["archive_projects_per_page"] = _int_field(
+                "archive_projects_per_page",
+                pag.get("archive_projects_per_page", legacy_archive),
+                5,
+                500,
+            )
 
             save_config(cfg)
             flash("Paginación guardada.", "ok")
@@ -4526,21 +4540,33 @@ def admin():
 @app.route("/archive")
 def archive_view():
     qtxt = (request.args.get("q") or "").strip()
-    per_page = cfg_int(["app", "pagination", "archive_per_page"], default=25, min_v=5, max_v=500)
+    archive_legacy_per_page = cfg_int(["app", "pagination", "archive_per_page"], default=25, min_v=5, max_v=500)
+    task_per_page = cfg_int(
+        ["app", "pagination", "archive_tasks_per_page"],
+        default=archive_legacy_per_page,
+        min_v=5,
+        max_v=500,
+    )
+    project_per_page = cfg_int(
+        ["app", "pagination", "archive_projects_per_page"],
+        default=archive_legacy_per_page,
+        min_v=5,
+        max_v=500,
+    )
 
     try:
         task_page = int(request.args.get("task_page", "1"))
     except ValueError:
         task_page = 1
     task_page = max(task_page, 1)
-    task_offset = (task_page - 1) * per_page
+    task_offset = (task_page - 1) * task_per_page
 
     try:
         project_page = int(request.args.get("project_page", "1"))
     except ValueError:
         project_page = 1
     project_page = max(project_page, 1)
-    project_offset = (project_page - 1) * per_page
+    project_offset = (project_page - 1) * project_per_page
 
     params_tasks: List[Any] = []
     where_tasks = ["t.archived=1"]
@@ -4564,11 +4590,11 @@ def archive_view():
         tuple(params_tasks),
     )
     total_tasks = int(total_tasks_row["c"]) if total_tasks_row else 0
-    task_pages = max(1, (total_tasks + per_page - 1) // per_page)
+    task_pages = max(1, (total_tasks + task_per_page - 1) // task_per_page)
 
     if task_page > task_pages:
         task_page = task_pages
-        task_offset = (task_page - 1) * per_page
+        task_offset = (task_page - 1) * task_per_page
 
     archived_tasks = q(
         "SELECT t.id, t.title, t.completed_at, t.archived_at, "
@@ -4580,7 +4606,7 @@ def archive_view():
         "WHERE " + where_tasks_sql + " "
         "ORDER BY t.completed_at DESC, t.id DESC "
         "LIMIT %s OFFSET %s",
-        tuple(params_tasks + [per_page, task_offset]),
+        tuple(params_tasks + [task_per_page, task_offset]),
     )
 
     total_projects_row = q1(
@@ -4590,11 +4616,11 @@ def archive_view():
         tuple(params_projects),
     )
     total_projects = int(total_projects_row["c"]) if total_projects_row else 0
-    project_pages = max(1, (total_projects + per_page - 1) // per_page)
+    project_pages = max(1, (total_projects + project_per_page - 1) // project_per_page)
 
     if project_page > project_pages:
         project_page = project_pages
-        project_offset = (project_page - 1) * per_page
+        project_offset = (project_page - 1) * project_per_page
 
     archived_projects = q(
         "SELECT p.id, p.name, p.description, p.folder_id, p.archived_at, f.name AS folder_name "
@@ -4603,7 +4629,7 @@ def archive_view():
         "WHERE " + where_projects_sql + " "
         "ORDER BY p.name ASC "
         "LIMIT %s OFFSET %s",
-        tuple(params_projects + [per_page, project_offset]),
+        tuple(params_projects + [project_per_page, project_offset]),
     )
 
     task_ids = [r["id"] for r in archived_tasks]
@@ -4621,7 +4647,8 @@ def archive_view():
         project_page=project_page,
         project_pages=project_pages,
         total_projects=total_projects,
-        per_page=per_page,
+        task_per_page=task_per_page,
+        project_per_page=project_per_page,
     )
 
 # ---------------- Errors ----------------

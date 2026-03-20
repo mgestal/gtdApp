@@ -20,7 +20,9 @@
       "tag_detail_per_page": 10,
       "folders_per_page": 10,
       "filters_per_page": 10,
-      "projects_per_page": 10
+      "projects_per_page": 10,
+      "archive_tasks_per_page": 25,
+      "archive_projects_per_page": 25
     }
   },
   "security": {

@@ -20,6 +20,9 @@
         <form method="post" action="{{ url_for('folder_purge_tasks', folder_id=folder.id) }}">
           <button class="dropdown-item danger" onclick="return confirm('¿Vaciar tareas de la carpeta? Se borrarán solo las tareas NO asignadas a proyectos.');">Borrar sólo tareas</button>
         </form>
+        <form method="post" action="{{ url_for('folder_archive_completed_tasks', folder_id=folder.id) }}">
+          <button class="dropdown-item" onclick="return confirm('¿Archivar tareas realizadas de esta carpeta? Solo afectará a tareas sin proyecto.');">Archivar tareas realizadas</button>
+        </form>
         <form method="post" action="{{ url_for('folder_purge_all', folder_id=folder.id) }}">
           <button class="dropdown-item danger" onclick="return confirm('¿Vaciar todo? Se borrarán tareas de la carpeta y proyectos contenidos.');">Borrar todo</button>
         </form>

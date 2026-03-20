@@ -2908,7 +2908,7 @@ def folder_detail(folder_id: int):
     tasks = q(
         "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule "
         "FROM tasks t "
-        "WHERE t.folder_id=%s AND t.project_id IS NULL "
+        "WHERE t.folder_id=%s AND t.project_id IS NULL AND t.archived=0 "
         "ORDER BY (t.completed_at IS NOT NULL) ASC, (t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC",
         (folder_id,)
     )
@@ -3080,6 +3080,44 @@ def folder_purge_tasks(folder_id: int):
     except Exception as e:
         rollback()
         flash(f"No se pudieron vaciar las tareas de la carpeta: {e}", "error")
+
+    return redirect(url_for("folder_detail", folder_id=folder_id))
+
+
+@app.route("/folders/<int:folder_id>/archive_completed_tasks", methods=["POST"])
+def folder_archive_completed_tasks(folder_id: int):
+    folder = q1("SELECT id, name FROM folders WHERE id=%s", (folder_id,))
+    if not folder:
+        abort(404)
+
+    try:
+        total_row = q1(
+            "SELECT COUNT(*) AS c "
+            "FROM tasks "
+            "WHERE folder_id=%s "
+            "AND project_id IS NULL "
+            "AND archived=0 "
+            "AND completed_at IS NOT NULL",
+            (folder_id,),
+        )
+        total_to_archive = int(total_row["c"]) if total_row else 0
+
+        if total_to_archive > 0:
+            exec_sql(
+                "UPDATE tasks "
+                "SET archived=1, archived_at=NOW() "
+                "WHERE folder_id=%s "
+                "AND project_id IS NULL "
+                "AND archived=0 "
+                "AND completed_at IS NOT NULL",
+                (folder_id,),
+            )
+
+        commit()
+        flash(f"{total_to_archive} tareas realizadas archivadas.", "ok")
+    except Exception as e:
+        rollback()
+        flash(f"No se pudieron archivar las tareas realizadas: {e}", "error")
 
     return redirect(url_for("folder_detail", folder_id=folder_id))
 

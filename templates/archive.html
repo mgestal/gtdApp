@@ -58,7 +58,7 @@
         <tbody>
           {% for t in archived_tasks %}
             <tr>
-              <td style="font-weight:600;">{{ t.title }}</td>
+              <td class="row-done">{{ t.title }}</td>
               <td style="font-size:13px; line-height:1.2; white-space:nowrap;">
                 {% if t.archived_at %}
                   <div>{{ t.archived_at.strftime('%d-%m-%Y') }}</div>

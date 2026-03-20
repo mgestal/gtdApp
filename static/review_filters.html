@@ -4,30 +4,80 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Review semanal: filtros aplicados</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='0.9em' font-size='90'%3E%E2%9C%8D%F0%9F%8F%BC%3C/text%3E%3C/svg%3E">
   <style>
     :root {
-      --bg: #f6f4f2;
+      --bg: #fff7f7;
       --card: #ffffff;
-      --text: #2b2b2b;
-      --muted: #6e6a66;
-      --border: #dfd8d2;
-      --accent: #8a5c3a;
+      --text: #2a2a2a;
+      --muted: #7a6f73;
+      --border: #f0d7d9;
+      --accent: #d88991;
+      --accent-soft: #f3c4c8;
+      --panel: #fff1f1;
+      --shadow: 0 10px 30px rgba(0,0,0,0.06);
+      --radius: 16px;
     }
 
     * { box-sizing: border-box; }
 
     body {
       margin: 0;
-      font-family: "Segoe UI", "Noto Sans", sans-serif;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", "Helvetica Neue", sans-serif;
       color: var(--text);
-      background: linear-gradient(180deg, #fbfaf9, var(--bg));
+      background: radial-gradient(1200px 420px at 5% -10%, #ffecef 0%, #fff7f7 45%, #fff9f9 100%);
       line-height: 1.45;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: rgba(255, 255, 255, 0.78);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .topbar-inner {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .brand {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .brand-main {
+      font-weight: 760;
+      letter-spacing: .2px;
+      font-size: 16px;
+    }
+
+    .brand-sub {
+      color: var(--muted);
+      font-size: 12px;
     }
 
     .wrap {
       max-width: 980px;
       margin: 0 auto;
-      padding: 24px 16px 40px;
+      padding: 18px 16px 40px;
+    }
+
+    .hero {
+      background: linear-gradient(160deg, #fff7f8 0%, #fff 80%);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 16px;
+      margin-bottom: 12px;
     }
 
     h1 {
@@ -41,8 +91,8 @@
     }
 
     .note {
-      background: #fff6ed;
-      border: 1px solid #efd8c4;
+      background: var(--panel);
+      border: 1px solid var(--border);
       border-radius: 12px;
       padding: 10px 12px;
       margin-bottom: 18px;
@@ -52,7 +102,8 @@
     .card {
       background: var(--card);
       border: 1px solid var(--border);
-      border-radius: 14px;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
       padding: 14px;
       margin-bottom: 12px;
     }
@@ -71,7 +122,8 @@
     li { margin: 4px 0; }
 
     code {
-      background: #f3efec;
+      background: #fff;
+      border: 1px solid var(--border);
       padding: 1px 5px;
       border-radius: 6px;
       font-size: 13px;
@@ -79,9 +131,20 @@
   </style>
 </head>
 <body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <div class="brand-main">✍🏼 GTD App</div>
+        <div class="brand-sub">Review semanal - referencia de filtros</div>
+      </div>
+    </div>
+  </header>
+
   <main class="wrap">
-    <h1>Review semanal: filtros aplicados</h1>
-    <p class="lead">Referencia estática de los criterios que usa la vista <b>Review</b> para construir cada card/subcard.</p>
+    <section class="hero">
+      <h1>Review semanal: filtros aplicados</h1>
+      <p class="lead">Referencia estática de los criterios que usa la vista <b>Review</b> para construir cada card/subcard.</p>
+    </section>
 
     <div class="note">
       Todos los bloques de tareas trabajan sobre tareas abiertas: <code>completed_at IS NULL</code>.

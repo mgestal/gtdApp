@@ -19,6 +19,7 @@ Aplicación personal de **Getting Things Done (GTD)** desarrollada en **Python +
 - Fechas de vencimiento, hora y recurrencias (diaria, semanal, mensual, anual)
 - **Histórico de ejecuciones** de tareas periódicas accesible directamente desde el chip ⟲ periódica
 - Archivar tareas realizadas desde el Inbox con un solo clic
+- Revisión semanal con bloque EnEspera separado en tareas etiquetadas y proyectos de la carpeta EnEspera
 - Creación rápida desde cualquier vista con sintaxis natural
 - Vistas: Inbox, Hoy, Esta semana, NextActions, Próximo, Calendario
 

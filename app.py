@@ -5543,6 +5543,7 @@ def review():
 
     # 5) EnEspera
     en_espera_exists = tag_exists("EnEspera")
+    en_espera_folder_exists = folder_exists("EnEspera")
 
     en_espera_tasks = q(
         "SELECT t.id, t.title, t.due_date, t.notes, t.completed_at, t.recurrence_rule, "
@@ -5559,6 +5560,23 @@ def review():
         "ORDER BY (t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC",
         ("EnEspera",)
     ) if en_espera_exists else []
+
+    en_espera_projects = []
+    if en_espera_folder_exists:
+        en_espera_folder = q1(
+            "SELECT id FROM folders WHERE LOWER(name)=LOWER(%s)",
+            ("EnEspera",),
+        )
+        if en_espera_folder and en_espera_folder.get("id") is not None:
+            en_espera_projects = q(
+                "SELECT p.id, p.name, p.description, p.archived, f.name AS folder_name "
+                "FROM projects p "
+                "LEFT JOIN folders f ON f.id=p.folder_id "
+                "WHERE p.archived=0 "
+                "AND p.folder_id=%s "
+                "ORDER BY p.name",
+                (en_espera_folder["id"],),
+            ) or []
 
     # 6) Proyectos (excluyendo Sometime y sus subcarpetas)
     def get_folder_tree_ids(parent_id, include_self=True):
@@ -5746,6 +5764,8 @@ def review():
         agenda_overdue=agenda_overdue,
         en_espera_exists=en_espera_exists,
         en_espera_tasks=en_espera_tasks,
+        en_espera_folder_exists=en_espera_folder_exists,
+        en_espera_projects=en_espera_projects,
         active_projects=active_projects,
         active_projects_rutinas=active_projects_rutinas,
         active_projects_other=active_projects_other,

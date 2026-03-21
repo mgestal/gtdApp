@@ -487,52 +487,77 @@
   <div class="card">
     <div class="card-header">
       <div class="card-title">5) Revisar EnEspera</div>
-      <div class="muted">{{ en_espera_tasks|length }}</div>
+      <div class="muted">{{ en_espera_tasks|length + en_espera_projects|length }}</div>
     </div>
 
-    {% if not en_espera_exists %}
-      <div class="empty">No existe la etiqueta EnEspera.</div>
-    {% elif en_espera_tasks %}
-      <div class="review-mini-list">
-        {% for t in en_espera_tasks %}
-          <div class="review-mini-item review-mini-item-task">
-            <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}" class="review-mini-toggle-form">
-              <button class="radio" aria-label="toggle" title="Marcar / desmarcar"></button>
-            </form>
-            <div class="review-mini-item-main">
-            <div class="review-mini-item-title">
-              <a class="link" href="{{ url_for('task_edit', task_id=t.id) }}">{{ t.title }}</a>
-			   {% if t.notes %}
-					<a href="{{ url_for('task_edit', task_id=t.id, next=url_for('next_actions')) }}"
-					   title="{{ t.notes }}"
-					   style="text-decoration:none; font-size:0.9rem; opacity:.75;">
-					   📝
-					</a>
-				  {% endif %}
+    <div class="review-subtitle">Tareas en Espera</div>
+    <div class="card" style="padding:10px; margin-bottom:10px;">
+      {% if not en_espera_exists %}
+        <div class="empty">No existe la etiqueta EnEspera.</div>
+      {% elif en_espera_tasks %}
+        <div class="review-mini-list" style="margin-bottom:0;">
+          {% for t in en_espera_tasks %}
+            <div class="review-mini-item review-mini-item-task">
+              <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}" class="review-mini-toggle-form">
+                <button class="radio" aria-label="toggle" title="Marcar / desmarcar"></button>
+              </form>
+              <div class="review-mini-item-main">
+              <div class="review-mini-item-title">
+                <a class="link" href="{{ url_for('task_edit', task_id=t.id) }}">{{ t.title }}</a>
+			     {% if t.notes %}
+					  <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('next_actions')) }}"
+					     title="{{ t.notes }}"
+					     style="text-decoration:none; font-size:0.9rem; opacity:.75;">
+					     📝
+					  </a>
+				    {% endif %}
+              </div>
+              <div class="review-mini-meta">
+                {% if t.due_date %}{{ t.due_date.strftime('%d-%m-%Y') }}{% else %}Sin fecha{% endif %}
+                ·
+                {% if t.folder_name %}
+                  <a href="{{ url_for('folder_detail', folder_id=t.folder_id) }}">📂 {{ t.folder_name }}</a>
+                {% endif %}
+                {% if t.folder_name and t.project_name %}
+                  <span class="muted"> · </span>
+                {% endif %}
+                {% if t.project_name %}
+                  <a href="{{ url_for('project_detail', project_id=t.project_id) }}">💼 {{ t.project_name }}</a>
+                {% endif %}
+                {% if not t.folder_name and not t.project_name %}
+                  Inbox
+                {% endif %}
+              </div>
+              </div>
             </div>
-            <div class="review-mini-meta">
-              {% if t.due_date %}{{ t.due_date.strftime('%d-%m-%Y') }}{% else %}Sin fecha{% endif %}
-              ·
-              {% if t.folder_name %}
-                <a href="{{ url_for('folder_detail', folder_id=t.folder_id) }}">📂 {{ t.folder_name }}</a>
-              {% endif %}
-              {% if t.folder_name and t.project_name %}
-                <span class="muted"> · </span>
-              {% endif %}
-              {% if t.project_name %}
-                <a href="{{ url_for('project_detail', project_id=t.project_id) }}">💼 {{ t.project_name }}</a>
-              {% endif %}
-              {% if not t.folder_name and not t.project_name %}
-                Inbox
-              {% endif %}
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty">No hay tareas con la etiqueta EnEspera.</div>
+      {% endif %}
+    </div>
+
+    <div class="review-subtitle">Proyectos en carpeta EnEspera</div>
+    <div class="card" style="padding:10px; margin-bottom:10px;">
+      {% if not en_espera_folder_exists %}
+        <div class="empty">No existe la carpeta EnEspera.</div>
+      {% elif en_espera_projects %}
+        <div class="review-mini-list" style="margin-bottom:0;">
+          {% for p in en_espera_projects %}
+            <div class="review-mini-item">
+              <div class="review-mini-item-title">
+                <a class="link" href="{{ url_for('project_detail', project_id=p.id) }}">💼 {{ p.name }}</a>
+              </div>
+              <div class="review-mini-meta">
+                {% if p.folder_name %}📁 {{ p.folder_name }}{% else %}Sin carpeta{% endif %}
+              </div>
             </div>
-            </div>
-          </div>
-        {% endfor %}
-      </div>
-    {% else %}
-      <div class="empty">No hay tareas con la etiqueta EnEspera.</div>
-    {% endif %}
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty">No hay proyectos activos en la carpeta EnEspera.</div>
+      {% endif %}
+    </div>
   </div>
 
   <div class="card">
@@ -548,7 +573,7 @@
           {% for p in active_projects_other %}
             <div class="review-mini-item">
               <div class="review-mini-item-title">
-                <a class="link" href="{{ url_for('project_detail', project_id=p.id) }}">{{ p.name }}</a>
+                <a class="link" href="{{ url_for('project_detail', project_id=p.id) }}">💼 {{ p.name }}</a>
               </div>
               <div class="review-mini-meta">
                 {% if p.folder_name %}📁 {{ p.folder_name }}{% else %}Sin carpeta{% endif %}
@@ -568,7 +593,7 @@
           {% for p in empty_projects %}
             <div class="review-mini-item">
               <div class="review-mini-item-title">
-                <a class="link" href="{{ url_for('project_detail', project_id=p.id) }}">{{ p.name }}</a>
+                <a class="link" href="{{ url_for('project_detail', project_id=p.id) }}">💼 {{ p.name }}</a>
               </div>
               <div class="review-mini-meta">
                 Sin tareas activas
@@ -588,7 +613,7 @@
           {% for p in active_projects_rutinas %}
             <div class="review-mini-item">
               <div class="review-mini-item-title">
-                <a class="link" href="{{ url_for('project_detail', project_id=p.id) }}">{{ p.name }}</a>
+                <a class="link" href="{{ url_for('project_detail', project_id=p.id) }}">💼 {{ p.name }}</a>
               </div>
               <div class="review-mini-meta">
                 {% if p.folder_name %}📁 {{ p.folder_name }}{% else %}Sin carpeta{% endif %}
@@ -617,7 +642,7 @@
           {% for p in adtv_projects %}
             <div class="review-mini-item">
               <div class="review-mini-item-title">
-                <a class="link" href="{{ url_for('project_detail', project_id=p.id) }}">{{ p.name }}</a>
+                <a class="link" href="{{ url_for('project_detail', project_id=p.id) }}">💼 {{ p.name }}</a>
               </div>
               <div class="review-mini-meta">📁 ADTV</div>
             </div>
@@ -637,7 +662,7 @@
           {% for p in esta_semana_no_projects %}
             <div class="review-mini-item">
               <div class="review-mini-item-title">
-                <a class="link" href="{{ url_for('project_detail', project_id=p.id) }}">{{ p.name }}</a>
+                <a class="link" href="{{ url_for('project_detail', project_id=p.id) }}">💼 {{ p.name }}</a>
               </div>
               <div class="review-mini-meta">📁 🔜EstaSemanaNo</div>
             </div>
@@ -702,7 +727,7 @@
           {% for p in checklist_projects %}
             <div class="review-mini-item">
               <div class="review-mini-item-title">
-                <a class="link" href="{{ url_for('project_detail', project_id=p.id) }}">{{ p.name }}</a>
+                <a class="link" href="{{ url_for('project_detail', project_id=p.id) }}">💼 {{ p.name }}</a>
               </div>
               <div class="review-mini-meta">📁 ✅Checklists</div>
             </div>

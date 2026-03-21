@@ -263,6 +263,85 @@ python app.py
       </div>
 
       <div class="list-row">
+        <div>
+          <div class="step-num">6. Configurar Apache + mod_wsgi (opcional para producción)</div>
+          <div class="option-desc">
+            Si publicas la app con Apache en la ruta <code>/gtdApp</code>, puedes usar una configuración como esta en
+            <code>webconfig/000-default.conf</code> (HTTP) y <code>webconfig/apps-SSL.conf</code> (HTTPS).
+          </div>
+          <div class="code-block">
+# -------------------------
+# GTD App (HTTP - 000-default.conf)
+# -------------------------
+WSGIDaemonProcess gtdApp user=www-data group=www-data threads=5 \
+    python-home=/var/www/gtdApp/.venv \
+    python-path=/var/www/gtdApp
+
+WSGIScriptAlias /gtdApp /var/www/gtdApp/wsgi.py process-group=gtdApp application-group=%{GLOBAL}
+
+SetEnv GTD_ADMIN_PASSWORD "N03m1t4"
+SetEnv GTD_SECRET_KEY "1234567890"
+
+Alias /gtdApp/static /var/www/gtdApp/static
+&lt;Directory /var/www/gtdApp&gt;
+    AuthType Basic
+    AuthName "Restricted Content"
+    AuthUserFile /etc/apache2/htpasswd-apacheusers
+    Require valid-user
+    Options FollowSymLinks
+&lt;/Directory&gt;
+
+&lt;Directory /var/www/gtdApp/static&gt;
+    AuthType Basic
+    AuthName "Restricted Content"
+    AuthUserFile /etc/apache2/htpasswd-apacheusers
+    Require valid-user
+    Options FollowSymLinks
+&lt;/Directory&gt;
+
+# ========================
+# GTD App (SSL - apps-SSL.conf)
+# ========================
+WSGIDaemonProcess gtdAppSSL user=www-data group=www-data threads=5 \
+    python-home=/var/www/gtdApp/.venv \
+    python-path=/var/www/gtdApp
+
+WSGIScriptAlias /gtdApp /var/www/gtdApp/wsgi.py process-group=gtdAppSSL application-group=%{GLOBAL}
+
+Alias /gtdApp/static /var/www/gtdApp/static
+&lt;Directory /var/www/gtdApp&gt;
+    AuthType Basic
+    AuthName "Restricted Content"
+    AuthUserFile /etc/apache2/htpasswd-apacheusers
+    Require valid-user
+    Options FollowSymLinks
+&lt;/Directory&gt;
+&lt;Directory /var/www/gtdApp/static&gt;
+    AuthType Basic
+    AuthName "Restricted Content"
+    AuthUserFile /etc/apache2/htpasswd-apacheusers
+    Require valid-user
+    Options FollowSymLinks
+&lt;/Directory&gt;
+
+SetEnv GTD_ADMIN_PASSWORD "gtd_password"
+SetEnv GTD_SECRET_KEY "1234567890"
+          </div>
+          <div class="code-block">
+# Activar módulos/sitios y recargar Apache
+sudo a2enmod wsgi
+sudo a2enmod ssl
+sudo a2ensite 000-default
+sudo a2ensite apps-SSL
+sudo systemctl reload apache2
+          </div>
+          <div class="option-desc" style="margin-top:8px;">
+            Recomendación: mueve las credenciales reales a variables de entorno del sistema o a un fichero protegido y evita dejarlas hardcodeadas en los vhost.
+          </div>
+        </div>
+      </div>
+
+      <div class="list-row">
         <div class="pros-cons">
           <div class="pros">
             <strong>✓ Ventajas</strong>

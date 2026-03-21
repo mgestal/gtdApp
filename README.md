@@ -229,6 +229,87 @@ Crea `instance/config.json`:
 
 > `security.allowed_user_ids`: lista de Telegram User IDs autorizados a usar el bot.
 
+### 5. Configurar Apache + mod_wsgi (manual avanzado)
+
+Si vas a publicar la app en `/gtdApp`, puedes usar una configuración como esta.
+
+#### HTTP (`000-default.conf`)
+
+```apache
+# -------------------------
+# GTD App
+# -------------------------
+WSGIDaemonProcess gtdApp user=www-data group=www-data threads=5 \
+  python-home=/var/www/gtdApp/.venv \
+  python-path=/var/www/gtdApp
+
+WSGIScriptAlias /gtdApp /var/www/gtdApp/wsgi.py process-group=gtdApp application-group=%{GLOBAL}
+
+# Admin interno de la app
+SetEnv GTD_ADMIN_PASSWORD "N03m1t4"
+SetEnv GTD_SECRET_KEY "1234567890"
+
+Alias /gtdApp/static /var/www/gtdApp/static
+<Directory /var/www/gtdApp>
+  AuthType Basic
+  AuthName "Restricted Content"
+  AuthUserFile /etc/apache2/htpasswd-apacheusers
+  Require valid-user
+  Options FollowSymLinks
+</Directory>
+
+<Directory /var/www/gtdApp/static>
+  AuthType Basic
+  AuthName "Restricted Content"
+  AuthUserFile /etc/apache2/htpasswd-apacheusers
+  Require valid-user
+  Options FollowSymLinks
+</Directory>
+```
+
+#### SSL (`apps-SSL.conf`)
+
+```apache
+# ========================
+# GTD App (en el mismo vhost SSL)
+# ========================
+WSGIDaemonProcess gtdAppSSL user=www-data group=www-data threads=5 \
+  python-home=/var/www/gtdApp/.venv \
+  python-path=/var/www/gtdApp
+
+WSGIScriptAlias /gtdApp /var/www/gtdApp/wsgi.py process-group=gtdAppSSL application-group=%{GLOBAL}
+
+Alias /gtdApp/static /var/www/gtdApp/static
+<Directory /var/www/gtdApp>
+  AuthType Basic
+  AuthName "Restricted Content"
+  AuthUserFile /etc/apache2/htpasswd-apacheusers
+  Require valid-user
+  Options FollowSymLinks
+</Directory>
+<Directory /var/www/gtdApp/static>
+  AuthType Basic
+  AuthName "Restricted Content"
+  AuthUserFile /etc/apache2/htpasswd-apacheusers
+  Require valid-user
+  Options FollowSymLinks
+</Directory>
+
+# Variables de entorno para la app
+SetEnv GTD_ADMIN_PASSWORD "gtd_password"
+SetEnv GTD_SECRET_KEY "1234567890"
+```
+
+Activación y recarga:
+
+```bash
+sudo a2enmod wsgi ssl
+sudo a2ensite 000-default apps-SSL
+sudo systemctl reload apache2
+```
+
+Recomendación: no dejes contraseñas reales en los ficheros de vhost; usa secretos en variables de entorno del sistema o un mecanismo seguro equivalente.
+
 ---
 
 ## Integración Google (Gmail + Calendar)

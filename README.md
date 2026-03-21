@@ -60,6 +60,7 @@ fecha<hoy
 ### Sincronización Google Calendar (bidireccional)
 
 - GTD → Google: crea/actualiza eventos al sincronizar desde Admin
+- Las tareas sin fecha y sin hora no se envían a Google Calendar
 - Google → GTD: propaga cambios de título, fecha y hora a la tarea vinculada
 - Resolución de conflictos desde el panel Admin
 - Borrado remoto: si se elimina un evento en Google, la tarea se archiva en GTD

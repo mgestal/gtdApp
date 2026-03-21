@@ -58,6 +58,15 @@
     <button class="btn btn-primary" type="submit">
       Cargar eventos a Inbox
     </button>
+
+    <button
+      class="btn btn-primary"
+      type="submit"
+      formaction="{{ url_for('calendar_sync_now') }}"
+      formmethod="post"
+    >
+      Sincronizar calendario
+    </button>
   </div>
 </form>
 

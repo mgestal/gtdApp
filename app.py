@@ -430,6 +430,49 @@ def _sync_task_push(task_id: int, service=None) -> bool:
     if row.get("calendar_sync_state") == "conflict":
         return False
 
+    # Regla de negocio: sin fecha y sin hora no se sincroniza a Calendar.
+    # Si ya existia evento remoto vinculado, se elimina para mantener consistencia.
+    has_when = _task_has_calendar_datetime(row)
+    archived = int(row.get("archived") or 0) == 1
+    if not archived and not has_when:
+        event_id = row.get("google_event_id")
+        calendar_id = row.get("google_calendar_id") or calendar_sync_calendar_id()
+
+        if event_id:
+            own_service = False
+            if service is None:
+                service = _calendar_sync_service()
+                own_service = True
+
+            if service is None:
+                exec_sql(
+                    "UPDATE tasks SET calendar_sync_error=%s, calendar_sync_state='error' WHERE id=%s",
+                    ("No hay servicio de Google Calendar disponible", task_id),
+                )
+                return False
+
+            try:
+                service.events().delete(calendarId=calendar_id, eventId=event_id).execute()
+            except Exception as e:
+                exec_sql(
+                    "UPDATE tasks SET calendar_sync_error=%s, calendar_sync_state='error' WHERE id=%s",
+                    (str(e), task_id),
+                )
+                return False
+            finally:
+                if own_service:
+                    pass
+
+        exec_sql(
+            "UPDATE tasks "
+            "SET google_event_id=NULL, google_event_etag=NULL, google_calendar_id=%s, "
+            "calendar_sync_state='none', calendar_sync_error=NULL, "
+            "calendar_last_synced_hash=%s, calendar_last_synced_at=NOW(), calendar_local_changed_at=NULL "
+            "WHERE id=%s",
+            (calendar_id, _task_calendar_hash(row), task_id),
+        )
+        return True
+
     own_service = False
     if service is None:
         service = _calendar_sync_service()
@@ -4577,9 +4620,9 @@ def admin():
                 commit()
                 partial = " (parcial por límite de tiempo/páginas)" if pull_res.get("truncated") else ""
                 session["calendar_sync_last_info"] = (
-                    "Sync Calendar completada: "
-                    f"pull(updated={pull_res['updated']}, conflicts={pull_res['conflicts']}, archived={pull_res['archived']}) "
-                    f"push(ok={push_res['ok']}, fail={push_res['fail']}).{partial}"
+                    "Sync Calendar: "
+                    f"en GTD (updated={pull_res['updated']}, conflicts={pull_res['conflicts']}, archived={pull_res['archived']}) "
+                    f"en GCalendar (ok={push_res['ok']}, fail={push_res['fail']}).{partial}"
                 )
                 session["calendar_sync_last_level"] = "ok"
             except Exception as e:
@@ -6108,5 +6151,46 @@ def calendar_import_to_inbox():
     except Exception as e:
         rollback()
         flash(f"No se pudieron importar los eventos: {e}", "error")
+
+    return redirect(next_url)
+
+
+@app.route("/calendar/sync_now", methods=["POST"])
+def calendar_sync_now():
+    next_url = safe_next_url(request.form.get("next"), "home")
+
+    try:
+        service = _calendar_sync_service()
+        if service is None:
+            msg = "No hay credenciales de Google Calendar disponibles."
+            session["calendar_sync_last_info"] = msg
+            session["calendar_sync_last_level"] = "error"
+            flash(msg, "error")
+            return redirect(next_url)
+
+        pull_res = run_calendar_pull_sync(
+            force=True,
+            service=service,
+            max_pages=4,
+            time_budget_seconds=12,
+        )
+        push_res = run_calendar_push_sync(limit=500, service=service)
+        commit()
+
+        partial = " (parcial por límite de tiempo/páginas)" if pull_res.get("truncated") else ""
+        msg = (
+            "Sync Calendar: "
+            f"en GTD (updated={pull_res['updated']}, conflicts={pull_res['conflicts']}, archived={pull_res['archived']}) "
+            f"en GCalendar (ok={push_res['ok']}, fail={push_res['fail']}).{partial}"
+        )
+        session["calendar_sync_last_info"] = msg
+        session["calendar_sync_last_level"] = "ok"
+        flash(msg, "ok")
+    except Exception as e:
+        rollback()
+        msg = f"No se pudo sincronizar con Google Calendar: {e}"
+        session["calendar_sync_last_info"] = msg
+        session["calendar_sync_last_level"] = "error"
+        flash(msg, "error")
 
     return redirect(next_url)

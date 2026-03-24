@@ -1,53 +1,273 @@
 {% extends "base.html" %}
 {% block content %}
-  <div class="page-title">
-    <h1>Dashboard 📈</h1>
-    <p class="subtitle">Estadísticas rápidas y próximos vencimientos.</p>
+  <style>
+    .db-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .db-title h1 {
+      margin: 0;
+      font-size: 1.6rem;
+      line-height: 1.1;
+    }
+    .db-title p {
+      margin: 8px 0 0;
+      color: var(--muted);
+    }
+    .db-period {
+      display: inline-flex;
+      gap: 8px;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 6px;
+    }
+    .db-pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 54px;
+      height: 34px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      color: #4b5563;
+    }
+    .db-pill.active {
+      background: #12324a;
+      color: #fff;
+      font-weight: 700;
+    }
+    .db-kpis {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .db-kpi {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      background: #fff;
+      display: flex;
+      gap: 10px;
+      align-items: stretch;
+    }
+    .db-kpi-bar {
+      width: 10px;
+      border-radius: 8px;
+    }
+    .db-kpi-label {
+      color: #5f6f86;
+      font-size: 1rem;
+      margin-bottom: 4px;
+    }
+    .db-kpi-value {
+      font-size: 2.25rem;
+      font-weight: 800;
+      line-height: 1;
+      color: #132038;
+    }
+    .db-main {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+    .db-card {
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: #fff;
+      padding: 16px;
+    }
+    .db-card h2 {
+      margin: 0 0 12px;
+      font-size: 1.35rem;
+      color: #182338;
+      line-height: 1.1;
+    }
+    .db-chart-wrap {
+      border: 1px solid #dce3ec;
+      border-radius: 12px;
+      background: #fbfdff;
+      overflow: hidden;
+    }
+    .db-chart-wrap svg {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+    .db-legend {
+      margin-top: 8px;
+      font-size: 0.9rem;
+      color: #6b7280;
+    }
+    .db-bottom-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .db-project-row {
+      display: grid;
+      grid-template-columns: 110px 1fr auto;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .db-project-row:last-child {
+      margin-bottom: 0;
+    }
+    .db-bar-bg {
+      background: #e8edf3;
+      border-radius: 8px;
+      height: 28px;
+      overflow: hidden;
+    }
+    .db-bar-fill {
+      height: 100%;
+      background: #2bbf60;
+      border-radius: 8px;
+    }
+    .db-tag-list {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .db-tag {
+      border-radius: 14px;
+      padding: 8px 14px;
+      font-size: 1.05rem;
+      font-weight: 600;
+      line-height: 1;
+    }
+    .db-tag-0 { background: #dbeafe; color: #1e40af; }
+    .db-tag-1 { background: #fee2e2; color: #b91c1c; }
+    .db-tag-2 { background: #dcfce7; color: #166534; }
+    .db-tag-3 { background: #fef3c7; color: #92400e; }
+    .db-tag-4 { background: #ede9fe; color: #5b21b6; }
+    .db-tag-5 { background: #fde68a; color: #78350f; }
+    @media (max-width: 1100px) {
+      .db-kpis {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .db-bottom-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    @media (max-width: 700px) {
+      .db-header {
+        flex-direction: column;
+      }
+      .db-kpis {
+        grid-template-columns: 1fr;
+      }
+      .db-project-row {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+
+  <div class="db-header">
+    <div class="db-title">
+      <h1>Resumen de Productividad</h1>
+      <p>Seguimiento de completadas, carga por proyecto y tendencias</p>
+    </div>
+    <div class="db-period" aria-label="Seleccionar periodo de dashboard">
+      <a class="db-pill {% if period_days == 7 %}active{% endif %}" href="{{ url_for('dashboard', days=7) }}">7d</a>
+      <a class="db-pill {% if period_days == 30 %}active{% endif %}" href="{{ url_for('dashboard', days=30) }}">30d</a>
+      <a class="db-pill {% if period_days == 90 %}active{% endif %}" href="{{ url_for('dashboard', days=90) }}">90d</a>
+    </div>
   </div>
 
-  <h3 style="margin-bottom: 12px; font-size: 1rem; opacity: 0.7;">General</h3>
-  <div class="grid3" style="margin-bottom: 24px;">
-    <div class="card stat">
-      <div class="stat-k">Tareas totales</div>
-      <div class="stat-v">{{ stats.total }}</div>
-    </div>
-    <div class="card stat">
-      <div class="stat-k">Abiertas</div>
-      <div class="stat-v">{{ stats.open }}</div>
-    </div>
-    <div class="card stat">
-      <div class="stat-k">Completadas (histórico)</div>
-      <div class="stat-v">{{ stats.completed }}</div>
-    </div>
-    <div class="card stat">
-      <div class="stat-k">Inbox abiertas</div>
-      <div class="stat-v">{{ stats.inbox }}</div>
-    </div>
-    <div class="card stat">
-      <div class="stat-k">Proyectos activos</div>
-      <div class="stat-v">{{ stats.projects }}</div>
-    </div>
-    <div class="card stat">
-      <div class="stat-k">Archivados</div>
-      <div class="stat-v">{{ stats.archived }}</div>
-    </div>
-  </div>
+  <section class="db-kpis">
+    <article class="db-kpi">
+      <div class="db-kpi-bar" style="background:#0ea5e9"></div>
+      <div>
+        <div class="db-kpi-label">Completadas hoy</div>
+        <div class="db-kpi-value">{{ stats.comp_today }}</div>
+      </div>
+    </article>
+    <article class="db-kpi">
+      <div class="db-kpi-bar" style="background:#22c55e"></div>
+      <div>
+        <div class="db-kpi-label">Completadas {{ period_days }}d</div>
+        <div class="db-kpi-value">{{ stats.comp_period }}</div>
+      </div>
+    </article>
+    <article class="db-kpi">
+      <div class="db-kpi-bar" style="background:#f59e0b"></div>
+      <div>
+        <div class="db-kpi-label">Tasa de cierre</div>
+        <div class="db-kpi-value">{{ stats.close_rate }}%</div>
+      </div>
+    </article>
+    <article class="db-kpi">
+      <div class="db-kpi-bar" style="background:#ef4444"></div>
+      <div>
+        <div class="db-kpi-label">Pendientes activas</div>
+        <div class="db-kpi-value">{{ stats.pending_active }}</div>
+      </div>
+    </article>
+  </section>
 
-  <h3 style="margin-bottom: 12px; font-size: 1rem; opacity: 0.7;">Completadas por período</h3>
-  <div class="grid3" style="margin-bottom: 24px;">
-    <div class="card stat" style="border-top: 3px solid #4CAF50;">
-      <div class="stat-k">Hoy</div>
-      <div class="stat-v">{{ stats.comp_today }}</div>
+  <section class="db-main">
+    <article class="db-card">
+      <h2>Tendencia diaria de tareas completadas</h2>
+      <div class="db-chart-wrap">
+        <svg viewBox="0 0 920 230" role="img" aria-label="Gráfico de tendencia diaria de tareas completadas">
+          {% for y in y_grid %}
+            <line x1="32" y1="{{ y }}" x2="912" y2="{{ y }}" stroke="#e4ebf3" stroke-width="1" />
+          {% endfor %}
+          <line x1="32" y1="{{ axis_y }}" x2="912" y2="{{ axis_y }}" stroke="#c8d4e3" stroke-width="1.5" />
+          {% for t in x_ticks %}
+            <line x1="{{ t.x }}" y1="{{ axis_y }}" x2="{{ t.x }}" y2="{{ axis_y + 6 }}" stroke="#9eb1c8" stroke-width="1" />
+            <text x="{{ t.x }}" y="{{ axis_y + 20 }}" text-anchor="middle" fill="#64748b" font-size="11">{{ t.label }}</text>
+          {% endfor %}
+          <polyline fill="none" stroke="#0ea5e9" stroke-width="4" points="{{ trend_polyline }}" stroke-linecap="round" stroke-linejoin="round" />
+          {% for p in trend_points %}
+            <circle cx="{{ p.x }}" cy="{{ p.y }}" r="4.2" fill="#fff" stroke="#0ea5e9" stroke-width="2">
+              <title>{{ p.label }}: {{ p.value }} completadas</title>
+            </circle>
+          {% endfor %}
+        </svg>
+      </div>
+      <div class="db-legend">Máximo diario en el período: {{ trend_max }}</div>
+    </article>
+
+    <div class="db-bottom-grid">
+      <article class="db-card">
+        <h2>Completadas por proyecto</h2>
+        {% if completed_by_project %}
+          {% for p in completed_by_project %}
+            <div class="db-project-row">
+              <div>{{ p.name }}</div>
+              <div class="db-bar-bg">
+                <div class="db-bar-fill" data-pct="{{ (p.c * 100 / project_max)|round(1) }}"></div>
+              </div>
+              <strong>{{ p.c }}</strong>
+            </div>
+          {% endfor %}
+        {% else %}
+          <div class="muted">No hay tareas completadas en el período.</div>
+        {% endif %}
+      </article>
+
+      <article class="db-card">
+        <h2>Etiquetas más usadas</h2>
+        {% if top_tags %}
+          <div class="db-tag-list">
+            {% for tag in top_tags %}
+              <span class="db-tag db-tag-{{ loop.index0 % 6 }}">@{{ tag.name }}</span>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="muted">Sin etiquetas usadas en tareas completadas del período.</div>
+        {% endif %}
+      </article>
     </div>
-    <div class="card stat" style="border-top: 3px solid #2196F3;">
-      <div class="stat-k">Esta semana</div>
-      <div class="stat-v">{{ stats.comp_week }}</div>
-    </div>
-    <div class="card stat" style="border-top: 3px solid #9C27B0;">
-      <div class="stat-k">Este mes</div>
-      <div class="stat-v">{{ stats.comp_month }}</div>
-    </div>
-  </div>
+  </section>
 
   <div class="card">
     <div class="card-header">
@@ -57,11 +277,10 @@
       <table class="table">
         <thead>
           <tr>
-            <th style="width:42px;"></th> {# Columna para el radio button #}
+            <th style="width:42px;"></th>
             <th>Tarea</th>
             <th style="width:110px;">Fecha</th>
             <th style="width:180px;">Ubicación</th>
-
           </tr>
         </thead>
         <tbody>
@@ -69,49 +288,30 @@
             <tr>
               <td>
                 <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}">
-                  <input type="hidden" name="next" value="{{ url_for('dashboard') }}">
+                  <input type="hidden" name="next" value="{{ url_for('dashboard', days=period_days) }}">
                   <button class="radio" aria-label="toggle" title="Marcar como completada"></button>
                 </form>
               </td>
               <td>
-                <a href="{{ url_for('task_edit', task_id=t.id) }}" style="font-weight: 500;">
-				
-				<div style="font-weight:600; display:flex; align-items:center; gap:6px;">
-				  {{ t.title }}
-
-				  {% if t.notes %}
-					<a href="{{ url_for('task_edit', task_id=t.id, next=url_for('next_actions')) }}"
-					   title="{{ t.notes }}"
-					   style="text-decoration:none; font-size:0.9rem; opacity:.75;">
-					   📝
-					</a>
-				  {% endif %}
-				</div>
-
-				
-				</a>
+                <a href="{{ url_for('task_edit', task_id=t.id) }}" style="font-weight:600; display:flex; align-items:center; gap:6px;">
+                  {{ t.title }}
+                </a>
               </td>
-              <td style="font-size: 0.9rem;">
-                {{ t.due_date.strftime('%d-%m-%Y') }}
-              </td>
+              <td style="font-size: 0.9rem;">{{ t.due_date.strftime('%d-%m-%Y') }}</td>
               <td style="font-size: 0.8rem;">
                 {% if t.folder_name %}
                   <a href="{{ url_for('folder_detail', folder_id=t.folder_id) }}">📂 {{ t.folder_name }}</a>
                 {% endif %}
-                
                 {% if t.folder_name and t.project_name %}
                   <span class="muted"> · </span>
                 {% endif %}
-                
                 {% if t.project_name %}
                   <a href="{{ url_for('project_detail', project_id=t.project_id) }}">💼 {{ t.project_name }}</a>
                 {% endif %}
-                
                 {% if not t.folder_name and not t.project_name %}
                   <span class="muted">Inbox</span>
                 {% endif %}
               </td>
- 
             </tr>
           {% endfor %}
         </tbody>
@@ -120,4 +320,15 @@
       <div class="empty">Nada próximo para los siguientes 7 días.</div>
     {% endif %}
   </div>
+
+  <script>
+    (function () {
+      const bars = document.querySelectorAll('.db-bar-fill[data-pct]');
+      bars.forEach(function (bar) {
+        const pct = Number(bar.getAttribute('data-pct') || '0');
+        const safe = Number.isFinite(pct) ? Math.max(0, Math.min(100, pct)) : 0;
+        bar.style.width = safe + '%';
+      });
+    })();
+  </script>
 {% endblock %}

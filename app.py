@@ -2996,6 +2996,8 @@ from datetime import date, timedelta
 @app.route("/dashboard")
 def dashboard():
     today = _today_madrid()
+    period_days = coerce_int(request.args.get("days", 30), default=30, min_v=7, max_v=180)
+    period_start = today - timedelta(days=period_days - 1)
     # Lunes de la semana actual
     monday = today - timedelta(days=today.weekday())
     # Primer día del mes actual
@@ -3008,11 +3010,108 @@ def dashboard():
     inbox = q1("SELECT COUNT(*) AS c FROM tasks WHERE project_id IS NULL AND completed_at IS NULL")["c"]
     projects_cnt = q1("SELECT COUNT(*) AS c FROM projects WHERE archived=0")["c"]
     archived_cnt = q1("SELECT COUNT(*) AS c FROM projects WHERE archived=1")["c"]
+    pending_active = q1(
+        "SELECT COUNT(*) AS c "
+        "FROM tasks t "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+        "WHERE t.completed_at IS NULL "
+        "AND t.archived=0 "
+        "AND (t.project_id IS NULL OR p.archived=0)"
+    )["c"]
 
     # --- NUEVAS ESTADÍSTICAS DE COMPLETADOS ---
     comp_today = q1("SELECT COUNT(*) AS c FROM tasks WHERE DATE(completed_at) = %s", (today,))["c"]
     comp_week = q1("SELECT COUNT(*) AS c FROM tasks WHERE DATE(completed_at) >= %s", (monday,))["c"]
     comp_month = q1("SELECT COUNT(*) AS c FROM tasks WHERE DATE(completed_at) >= %s", (first_of_month,))["c"]
+    comp_period = q1(
+        "SELECT COUNT(*) AS c FROM tasks WHERE completed_at IS NOT NULL AND DATE(completed_at) >= %s",
+        (period_start,),
+    )["c"]
+    created_period = q1(
+        "SELECT COUNT(*) AS c FROM tasks WHERE DATE(created_at) >= %s",
+        (period_start,),
+    )["c"]
+    close_rate = int(round((comp_period / created_period) * 100)) if created_period else 0
+
+    # --- TENDENCIA DIARIA DE COMPLETADAS ---
+    trend_rows = q(
+        "SELECT DATE(completed_at) AS d, COUNT(*) AS c "
+        "FROM tasks "
+        "WHERE completed_at IS NOT NULL "
+        "AND DATE(completed_at) >= %s "
+        "GROUP BY DATE(completed_at) "
+        "ORDER BY d ASC",
+        (period_start,),
+    )
+    trend_map = {r["d"]: int(r["c"]) for r in trend_rows}
+    trend_values: List[int] = []
+    trend_labels: List[str] = []
+    for i in range(period_days):
+        d = period_start + timedelta(days=i)
+        trend_values.append(trend_map.get(d, 0))
+        trend_labels.append(d.strftime("%d/%m"))
+
+    svg_w, svg_h = 920, 230
+    pad_l, pad_r, pad_t, pad_b = 32, 8, 12, 34
+    plot_w = svg_w - pad_l - pad_r
+    plot_h = svg_h - pad_t - pad_b
+    vmax = max(max(trend_values, default=0), 1)
+    n_points = max(1, len(trend_values))
+
+    trend_points: List[Dict[str, Any]] = []
+    for idx, val in enumerate(trend_values):
+        x = pad_l + (plot_w * idx / (n_points - 1 if n_points > 1 else 1))
+        y = pad_t + (plot_h * (1 - (val / vmax)))
+        trend_points.append({
+            "x": round(x, 2),
+            "y": round(y, 2),
+            "value": val,
+            "label": trend_labels[idx],
+        })
+    trend_polyline = " ".join(f"{p['x']},{p['y']}" for p in trend_points)
+    y_grid = [round(pad_t + (plot_h * i / 5), 2) for i in range(6)]
+    axis_y = round(pad_t + plot_h, 2)
+
+    tick_count = 5 if period_days <= 30 else 7
+    tick_indices = sorted({
+        int(round(i * (n_points - 1) / (tick_count - 1)))
+        for i in range(tick_count)
+    })
+    x_ticks = [
+        {
+            "x": trend_points[i]["x"],
+            "label": trend_points[i]["label"],
+        }
+        for i in tick_indices
+    ]
+
+    # --- TOP PROYECTOS COMPLETADOS EN PERIODO ---
+    completed_by_project = q(
+        "SELECT COALESCE(p.name, 'Inbox') AS name, COUNT(*) AS c "
+        "FROM tasks t "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+        "WHERE t.completed_at IS NOT NULL "
+        "AND DATE(t.completed_at) >= %s "
+        "GROUP BY COALESCE(p.name, 'Inbox') "
+        "ORDER BY c DESC, name ASC "
+        "LIMIT 6",
+        (period_start,),
+    )
+    project_max = max([int(r["c"]) for r in completed_by_project], default=1)
+
+    # --- TOP ETIQUETAS EN PERIODO ---
+    top_tags = q(
+        "SELECT tg.name AS name, COUNT(*) AS c "
+        "FROM task_tags tt "
+        "INNER JOIN tags tg ON tg.id=tt.tag_id "
+        "INNER JOIN tasks t ON t.id=tt.task_id "
+        "WHERE t.completed_at IS NOT NULL "
+        "AND DATE(t.completed_at) >= %s "
+        "GROUP BY tg.id, tg.name "
+        "ORDER BY c DESC, tg.name ASC "
+        "LIMIT 10",
+        (period_start,),
+    )
 
     # --- CONSULTA MEJORADA DE VENCIMIENTOS (CON UBICACIÓN) ---
     due_soon = q(
@@ -3044,7 +3143,20 @@ def dashboard():
             "comp_today": comp_today,
             "comp_week": comp_week,
             "comp_month": comp_month,
+            "comp_period": comp_period,
+            "close_rate": close_rate,
+            "pending_active": pending_active,
         },
+        period_days=period_days,
+        trend_points=trend_points,
+        trend_polyline=trend_polyline,
+        y_grid=y_grid,
+        axis_y=axis_y,
+        x_ticks=x_ticks,
+        trend_max=vmax,
+        completed_by_project=completed_by_project,
+        project_max=project_max,
+        top_tags=top_tags,
         due_soon=due_soon,
     )
 

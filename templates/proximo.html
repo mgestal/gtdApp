@@ -1,6 +1,22 @@
 {% extends "base.html" %}
 {% block content %}
   <style>
+    .proximo-toggle-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .proximo-priority-bar {
+      width: 6px;
+      height: 24px;
+      border-radius: 6px;
+      display: inline-block;
+      flex: 0 0 6px;
+    }
+    .proximo-priority-high { background: #ef4444; }
+    .proximo-priority-medium { background: #f59e0b; }
+    .proximo-priority-low { background: #22c55e; }
+
     @media (max-width: 980px) {
       .proximo-card {
         padding: 10px;
@@ -54,7 +70,7 @@
       <table class="table">
         <thead>
           <tr>
-            <th style="width:42px;"></th>
+            <th style="width:58px;"></th>
             <th>Tarea</th>
             <th style="width:90px;">Fecha</th>
             <th style="width:80px;">Hora</th>
@@ -66,9 +82,18 @@
         {% for t in rows %}
           <tr class="{% if t.completed_at %}row-done{% endif %}">
             <td>
-              <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}">
-                <button class="radio" aria-label="toggle" title="Marcar / desmarcar"></button>
-              </form>
+              <div class="proximo-toggle-wrap">
+                {% set prio = t.priority %}
+                {% if prio in [1, 2, 3] %}
+                  <span
+                    class="proximo-priority-bar {% if prio == 1 %}proximo-priority-high{% elif prio == 3 %}proximo-priority-low{% else %}proximo-priority-medium{% endif %}"
+                    title="Prioridad {% if prio == 1 %}Alta{% elif prio == 3 %}Baja{% else %}Media{% endif %}"
+                  ></span>
+                {% endif %}
+                <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}">
+                  <button class="radio" aria-label="toggle" title="Marcar / desmarcar"></button>
+                </form>
+              </div>
             </td>
 
             <td>

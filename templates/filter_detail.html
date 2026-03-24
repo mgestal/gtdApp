@@ -1,5 +1,25 @@
 {% extends "base.html" %}
 {% block content %}
+  <style>
+    .filter-check-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .filter-priority-bar {
+      width: 4px;
+      min-height: 22px;
+      border-radius: 999px;
+      flex: 0 0 4px;
+    }
+
+    .filter-priority-1 { background: #d9534f; }
+    .filter-priority-2 { background: #f0ad4e; }
+    .filter-priority-3 { background: #5cb85c; }
+  </style>
+
   <div class="page-title">
     <h1>✂ Filtro: {{ flt.name }}</h1> 
     <p class="subtitle"><code>{{ flt.expression }}</code></p>
@@ -45,7 +65,7 @@
       <table class="table">
         <thead>
           <tr>
-            <th style="width:42px;"></th>
+            <th style="width:58px;"></th>
             <th>Tarea</th>
             <th style="width:100px;">Fecha</th>
             <th style="width:180px;">Ubicación</th>
@@ -56,9 +76,14 @@
         {% for t in rows %}
           <tr class="{% if t.completed_at %}row-done{% endif %}">
             <td>
-              <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}">
-                <button class="radio" aria-label="toggle" title="Marcar / desmarcar"></button>
-              </form>
+              <div class="filter-check-wrap">
+                {% if t.priority in [1, 2, 3] %}
+                  <span class="filter-priority-bar filter-priority-{{ t.priority }}" aria-hidden="true"></span>
+                {% endif %}
+                <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}">
+                  <button class="radio" aria-label="toggle" title="Marcar / desmarcar"></button>
+                </form>
+              </div>
             </td>
 
             <td>

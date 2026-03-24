@@ -71,6 +71,14 @@
           <div class="hint">Ejemplo ruta: <code>pf:&quot;Trabajo/Clientes&quot;</code> (Carpeta/Proyecto).</div>
         </div>
       </div>
+      <div class="list-row">
+        <div>
+          <div style="font-weight:600;">prioridad:valor</div>
+          <div class="hint">Filtra por prioridad exacta de tarea.</div>
+          <div class="hint">Valores válidos: <code>alta</code>, <code>media</code>, <code>baja</code>, <code>1</code>, <code>2</code>, <code>3</code>, <code>null</code>.</div>
+          <div class="hint">Alias admitidos: <code>pr:</code>, <code>prio:</code>, <code>priority:</code>.</div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -103,7 +111,7 @@
         <div>
           <div class="hint"><code>inbox</code>: tareas sin proyecto y sin carpeta.</div>
           <div class="hint"><code>done</code>: tareas completadas.</div>
-          <div class="hint"><code>null</code>: valor especial para <code>p:</code>, <code>f:</code> y fecha con <code>=</code>.</div>
+          <div class="hint"><code>null</code>: valor especial para <code>p:</code>, <code>f:</code>, <code>prioridad:</code> y fecha con <code>=</code>.</div>
           <div class="hint"><code>hoy</code>: fecha actual (Europe/Madrid) para comparaciones de fecha.</div>
         </div>
       </div>
@@ -120,6 +128,7 @@
       <div class="list-row"><div><div class="hint"><code>@NextAction &amp; !done &amp; due&lt;=+3</code> -> próximas acciones no completadas para los próximos 3 días.</div></div></div>
       <div class="list-row"><div><div class="hint"><code>inbox | p:null</code> -> tareas sin clasificar por proyecto/carpeta.</div></div></div>
       <div class="list-row"><div><div class="hint"><code>fa:Trabajo &amp; (@Urgente | @Agenda)</code> -> tareas del área Trabajo con etiqueta Urgente o Agenda.</div></div></div>
+      <div class="list-row"><div><div class="hint"><code>prioridad:alta &amp; !done</code> -> tareas abiertas con prioridad alta.</div></div></div>
     </div>
   </div>
 

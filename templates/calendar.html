@@ -27,6 +27,24 @@
         padding: 7px 10px;
       }
     }
+
+    .calendar-check-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .calendar-priority-bar {
+      width: 4px;
+      min-height: 22px;
+      border-radius: 999px;
+      flex: 0 0 4px;
+    }
+
+    .calendar-priority-1 { background: #d9534f; }
+    .calendar-priority-2 { background: #f0ad4e; }
+    .calendar-priority-3 { background: #5cb85c; }
   </style>
 
   {% set view_names = {'day': 'Día', 'week': 'Semana', 'month': 'Mes'} %}
@@ -144,7 +162,7 @@
         <table class="table">
           <thead>
             <tr>
-              <th style="width:40px;"></th>
+              <th style="width:58px;"></th>
               <th>Título</th>
               <th style="width:130px;">Ubicación</th>
               <th style="width:110px;">Fecha</th>
@@ -157,14 +175,19 @@
               {% set completed = t.completed_at is not none %}
               <tr class="{% if completed %}row-done{% endif %}">
                 <td>
-                  {% if not completed %}
-                    <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}" style="margin:0;">
-                      <input type="hidden" name="next" value="{{ request.full_path }}" />
-                      <button class="radio" aria-label="toggle" title="Marcar / desmarcar"></button>
-                    </form>
-                  {% else %}
-                    <span style="font-size:0.8rem; color:#aaa;">✔</span>
-                  {% endif %}
+                  <div class="calendar-check-wrap">
+                    {% if t.priority in [1, 2, 3] %}
+                      <span class="calendar-priority-bar calendar-priority-{{ t.priority }}" aria-hidden="true"></span>
+                    {% endif %}
+                    {% if not completed %}
+                      <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}" style="margin:0;">
+                        <input type="hidden" name="next" value="{{ request.full_path }}" />
+                        <button class="radio" aria-label="toggle" title="Marcar / desmarcar"></button>
+                      </form>
+                    {% else %}
+                      <span style="font-size:0.8rem; color:#aaa;">✔</span>
+                    {% endif %}
+                  </div>
                 </td>
                 <td>
                   <div style="font-weight:600; display:flex; align-items:center; gap:6px;">

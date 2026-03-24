@@ -1,5 +1,25 @@
 {% extends "base.html" %}
 {% block content %}
+  <style>
+    .folder-check-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .folder-priority-bar {
+      width: 4px;
+      min-height: 22px;
+      border-radius: 999px;
+      flex: 0 0 4px;
+    }
+
+    .folder-priority-1 { background: #d9534f; }
+    .folder-priority-2 { background: #f0ad4e; }
+    .folder-priority-3 { background: #5cb85c; }
+  </style>
+
   <div class="page-title">
     {% if folder_breadcrumb and folder_breadcrumb|length > 0 %}
       <p class="subtitle" style="margin-bottom:6px;">
@@ -103,9 +123,9 @@
         <form method="post" action="{{ url_for('task_quick_add') }}" class="form" style="gap:8px;">
           <input type="hidden" name="folder_id" value="{{ folder.id }}">
           <input type="hidden" name="next" value="{{ url_for('folder_detail', folder_id=folder.id) }}">
-          <div style="display:flex; gap:10px; align-items:center;">
-            <input class="input" name="quick" placeholder="Ej: Tarea @tag #proy *hoy h:hh:mm]" required style="flex:1;">
-            <button class="btn btn-primary" type="submit">Añadir</button>
+          <div style="display:flex; gap:10px; align-items:center; width:100%;">
+            <input class="input" name="quick" placeholder="Ej: Tarea ^alta @tag #proy *hoy h:hh:mm" required style="flex:1; min-width:0;">
+            <button class="btn btn-primary" type="submit" style="margin-left:auto;">Añadir</button>
           </div>
         </form>
       </div>
@@ -120,7 +140,7 @@
       <table class="table">
         <thead>
           <tr>
-            <th style="width:40px;"></th>
+            <th style="width:58px;"></th>
             <th>Tarea y Etiquetas</th>
             <th style="width:100px;">Fecha</th>
             <th style="width:100px; text-align:right;">Acciones</th>
@@ -130,10 +150,15 @@
         {% for t in tasks %}
           <tr class="{% if t.completed_at %}row-done{% endif %}">
             <td style="vertical-align:top; padding-top:6px;">
-              <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}" style="margin:0;">
-                <input type="hidden" name="next" value="{{ url_for('folder_detail', folder_id=folder.id) }}">
-                <button class="radio"></button>
-              </form>
+              <div class="folder-check-wrap">
+                {% if t.priority in [1, 2, 3] %}
+                  <span class="folder-priority-bar folder-priority-{{ t.priority }}" aria-hidden="true"></span>
+                {% endif %}
+                <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}" style="margin:0;">
+                  <input type="hidden" name="next" value="{{ url_for('folder_detail', folder_id=folder.id) }}">
+                  <button class="radio"></button>
+                </form>
+              </div>
             </td>
 
             <td>

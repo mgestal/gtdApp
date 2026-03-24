@@ -1,5 +1,25 @@
 {% extends "base.html" %}
 {% block content %} 
+  <style>
+    .project-check-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .project-priority-bar {
+      width: 4px;
+      min-height: 22px;
+      border-radius: 999px;
+      flex: 0 0 4px;
+    }
+
+    .project-priority-1 { background: #d9534f; }
+    .project-priority-2 { background: #f0ad4e; }
+    .project-priority-3 { background: #5cb85c; }
+  </style>
+
   <div class="page-title">
     {% if folder_breadcrumb and folder_breadcrumb|length > 0 %}
       <p class="subtitle" style="margin-bottom:6px;">
@@ -65,7 +85,7 @@
       <table class="table">
         <thead>
           <tr>
-            <th style="width:40px;"></th>
+            <th style="width:58px;"></th>
             <th>Tarea y Etiquetas</th>
             <th style="width:100px;">Fecha</th>
             <th style="width:100px; text-align:right;">Acciones</th>
@@ -76,13 +96,18 @@
           {% set sc = sub_counts.get(t.id, {'total':0, 'done':0}) %}
           <tr>
 			<td style="vertical-align:top; padding-top:6px;">
-			  {% if not project.archived %}
-			  <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}">
-				<button class="radio"></button>
-			  </form>
-			  {% else %}
-			    <span class="radio" style="opacity:0.3; cursor:default;"></span>
-			  {% endif %}
+        <div class="project-check-wrap">
+          {% if t.priority in [1, 2, 3] %}
+            <span class="project-priority-bar project-priority-{{ t.priority }}" aria-hidden="true"></span>
+          {% endif %}
+          {% if not project.archived %}
+          <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}">
+          <button class="radio"></button>
+          </form>
+          {% else %}
+            <span class="radio" style="opacity:0.3; cursor:default;"></span>
+          {% endif %}
+        </div>
 			</td>
             <td>
               <div style="font-weight:600; margin-bottom:4px;">
@@ -186,13 +211,18 @@
         {% for t in done_tasks %}
           <tr class="row-done">
 			<td style="vertical-align:top; padding-top:6px;">
-			  {% if not project.archived %}
-			  <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}">
-				<button class="radio"></button>
-			  </form>
-			  {% else %}
-			    <span class="radio" style="opacity:0.3; cursor:default;"></span>
-			  {% endif %}
+        <div class="project-check-wrap">
+          {% if t.priority in [1, 2, 3] %}
+            <span class="project-priority-bar project-priority-{{ t.priority }}" aria-hidden="true"></span>
+          {% endif %}
+          {% if not project.archived %}
+          <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}">
+          <button class="radio"></button>
+          </form>
+          {% else %}
+            <span class="radio" style="opacity:0.3; cursor:default;"></span>
+          {% endif %}
+        </div>
 			</td>
             <td>
               <div style="text-decoration: line-through; opacity:0.7;">{{ t.title }}</div>

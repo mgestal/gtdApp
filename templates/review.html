@@ -81,6 +81,24 @@
 
   .review-mini-toggle-form{
     margin-top:2px;
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+
+  .review-priority-bar{
+    width:4px;
+    min-height:22px;
+    border-radius:999px;
+    flex:0 0 4px;
+  }
+
+  .review-priority-1{ background:#d9534f; }
+  .review-priority-2{ background:#f0ad4e; }
+  .review-priority-3{ background:#5cb85c; }
+
+  .review-mini-item-task{
+    padding-left:8px;
   }
 
   .review-mini-item-title{
@@ -192,6 +210,9 @@
         {% for t in inbox %}
           <div class="review-mini-item review-mini-item-task">
             <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}" class="review-mini-toggle-form">
+              {% if t.priority in [1, 2, 3] %}
+                <span class="review-priority-bar review-priority-{{ t.priority }}" aria-hidden="true"></span>
+              {% endif %}
               <button class="radio" aria-label="toggle" title="Marcar / desmarcar"></button>
             </form>
             <div class="review-mini-item-main">
@@ -246,6 +267,9 @@
             {% for t in nextactions_open %}
               <div class="review-mini-item review-mini-item-task">
                 <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}" class="review-mini-toggle-form">
+                  {% if t.priority in [1, 2, 3] %}
+                    <span class="review-priority-bar review-priority-{{ t.priority }}" aria-hidden="true"></span>
+                  {% endif %}
                   <button class="radio" aria-label="toggle" title="Marcar / desmarcar"></button>
                 </form>
                 <div class="review-mini-item-main">
@@ -291,6 +315,9 @@
             {% for t in nextactions_overdue %}
               <div class="review-mini-item review-mini-item-task">
                 <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}" class="review-mini-toggle-form">
+                  {% if t.priority in [1, 2, 3] %}
+                    <span class="review-priority-bar review-priority-{{ t.priority }}" aria-hidden="true"></span>
+                  {% endif %}
                   <button class="radio" aria-label="toggle" title="Marcar / desmarcar"></button>
                 </form>
                 <div class="review-mini-item-main">
@@ -343,6 +370,9 @@
         {% for t in upcoming_7 %}
           <div class="review-mini-item review-mini-item-task">
             <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}" class="review-mini-toggle-form">
+              {% if t.priority in [1, 2, 3] %}
+                <span class="review-priority-bar review-priority-{{ t.priority }}" aria-hidden="true"></span>
+              {% endif %}
               <button class="radio" aria-label="toggle" title="Marcar / desmarcar"></button>
             </form>
             <div class="review-mini-item-main">
@@ -395,6 +425,9 @@
         {% for t in en_seguimiento_tasks %}
           <div class="review-mini-item review-mini-item-task">
             <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}" class="review-mini-toggle-form">
+              {% if t.priority in [1, 2, 3] %}
+                <span class="review-priority-bar review-priority-{{ t.priority }}" aria-hidden="true"></span>
+              {% endif %}
               <button class="radio" aria-label="toggle" title="Marcar / desmarcar"></button>
             </form>
             <div class="review-mini-item-main">
@@ -446,6 +479,9 @@
         {% for t in agenda_overdue %}
           <div class="review-mini-item review-mini-item-task">
             <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}" class="review-mini-toggle-form">
+              {% if t.priority in [1, 2, 3] %}
+                <span class="review-priority-bar review-priority-{{ t.priority }}" aria-hidden="true"></span>
+              {% endif %}
               <button class="radio" aria-label="toggle" title="Marcar / desmarcar"></button>
             </form>
             <div class="review-mini-item-main">
@@ -499,6 +535,9 @@
           {% for t in en_espera_tasks %}
             <div class="review-mini-item review-mini-item-task">
               <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}" class="review-mini-toggle-form">
+                {% if t.priority in [1, 2, 3] %}
+                  <span class="review-priority-bar review-priority-{{ t.priority }}" aria-hidden="true"></span>
+                {% endif %}
                 <button class="radio" aria-label="toggle" title="Marcar / desmarcar"></button>
               </form>
               <div class="review-mini-item-main">
@@ -682,6 +721,9 @@
           {% for t in sometime_tasks_no_project %}
             <div class="review-mini-item review-mini-item-task">
               <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}" class="review-mini-toggle-form">
+                {% if t.priority in [1, 2, 3] %}
+                  <span class="review-priority-bar review-priority-{{ t.priority }}" aria-hidden="true"></span>
+                {% endif %}
                 <button class="radio" aria-label="toggle" title="Marcar / desmarcar"></button>
               </form>
               <div class="review-mini-item-main">
@@ -741,6 +783,9 @@
           {% for t in checklist_tasks %}
             <div class="review-mini-item review-mini-item-task">
               <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}" class="review-mini-toggle-form">
+                {% if t.priority in [1, 2, 3] %}
+                  <span class="review-priority-bar review-priority-{{ t.priority }}" aria-hidden="true"></span>
+                {% endif %}
                 <button class="radio" aria-label="toggle" title="Marcar / desmarcar"></button>
               </form>
               <div class="review-mini-item-main">
@@ -775,6 +820,12 @@
     <form method="post" action="{{ url_for('task_create') }}" class="form">
       <div class="review-quick-form">
         <input class="input" name="quick" placeholder="Ej: Idea nueva @NextAction #Proyecto" required>
+        <select class="input" name="priority" style="max-width:130px;">
+          <option value="" selected>(sin)</option>
+          <option value="1">Alta</option>
+          <option value="2">Media</option>
+          <option value="3">Baja</option>
+        </select>
         <button class="btn btn-primary" type="submit">Añadir</button>
       </div>
     </form>

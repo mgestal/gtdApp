@@ -81,6 +81,29 @@ def coerce_int(value: Any, default: int = 1, min_v: int = 1, max_v: Optional[int
     return x
 
 
+def coerce_priority(value: Any, default: Optional[int] = None) -> Optional[int]:
+    """Normaliza prioridad a 1=Alta, 2=Media, 3=Baja o None (sin prioridad)."""
+    if value is None:
+        return default
+    raw = str(value).strip().lower()
+    if raw == "":
+        return None
+    aliases = {
+        "1": 1,
+        "alta": 1,
+        "high": 1,
+        "2": 2,
+        "media": 2,
+        "medium": 2,
+        "3": 3,
+        "baja": 3,
+        "low": 3,
+    }
+    if raw in aliases:
+        return aliases[raw]
+    return default
+
+
 def get_page_arg(name: str = "page", default: int = 1) -> int:
     """Devuelve page desde query string con protección contra valores inválidos."""
     return coerce_int(request.args.get(name, default), default, min_v=1)
@@ -891,6 +914,14 @@ def ensure_schema_updates() -> None:
         "ADD COLUMN IF NOT EXISTS archived_at DATETIME NULL AFTER archived"
     )
     exec_sql(
+        "ALTER TABLE tasks "
+        "ADD COLUMN IF NOT EXISTS priority TINYINT NULL DEFAULT NULL AFTER recurrence_rule"
+    )
+    exec_sql(
+        "ALTER TABLE tasks "
+        "MODIFY COLUMN priority TINYINT NULL DEFAULT NULL"
+    )
+    exec_sql(
         "ALTER TABLE projects "
         "ADD COLUMN IF NOT EXISTS archived_at DATETIME NULL AFTER archived"
     )
@@ -901,6 +932,10 @@ def ensure_schema_updates() -> None:
     exec_sql(
         "ALTER TABLE tasks "
         "ADD INDEX IF NOT EXISTS idx_tasks_archived_at (archived_at)"
+    )
+    exec_sql(
+        "ALTER TABLE tasks "
+        "ADD INDEX IF NOT EXISTS idx_tasks_priority (priority)"
     )
     exec_sql(
         "ALTER TABLE projects "
@@ -1047,6 +1082,36 @@ DATE_BARE_RE = re.compile(
 )
 
 TIME_TOKEN_RE = re.compile(r'(?<!\S)h:(\d{1,2}:\d{2})\b', re.IGNORECASE)
+PRIORITY_TOKEN_RE = re.compile(r'(?<!\S)\^(alta|media|baja)\b', re.IGNORECASE)
+
+
+def extract_priority_from_quick(raw_text: str) -> Tuple[Optional[int], str]:
+    """
+    Devuelve (priority, cleaned_text).
+
+    Soporta tokens en texto:
+    - ^alta
+    - ^media
+    - ^baja
+    """
+    s = (raw_text or "").strip()
+    if not s:
+        return None, s
+
+    m = PRIORITY_TOKEN_RE.search(s)
+    if not m:
+        return None, s
+
+    raw = (m.group(1) or "").strip().lower()
+    prio_map = {
+        "alta": 1,
+        "media": 2,
+        "baja": 3,
+    }
+    priority = prio_map.get(raw)
+    cleaned = (s[:m.start()] + " " + s[m.end():]).strip()
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    return priority, cleaned
 
 def parse_due_token(token: str) -> date:
     token = (token or "").strip().lower()
@@ -1273,7 +1338,8 @@ def tokenize_filter(expr: str):
     #   - agrupación: ( )
     #   - etiquetas: @NextAction
     #   - comparadores de fecha: fecha<hoy, fecha <= 25-03-2026, due>=+7
-    #   - prefijos como p:proyecto, f:carpeta, fr:carpeta-recursiva, fa:carpeta-anywhere pf:proyectORfolder
+    #   - prefijos como p:proyecto, f:carpeta, fr:carpeta-recursiva, fa:carpeta-anywhere,
+    #     pf:proyectORfolder, prioridad:alta|media|baja
     #   - identificadores especiales: inbox, done
     tokens = []
 
@@ -1478,6 +1544,7 @@ def compile_filter_to_sql(ast: Node) -> Tuple[str, List[Any]]:
       fr:name   => folder recursivo (tareas de folder_id en el árbol)
       fa:name   => folder anywhere (folder + proyectos en el árbol)
       pf:value  => búsqueda libre en proyecto/carpeta/field
+            prioridad:value / pr:value => prioridad (alta|media|baja|1|2|3|null)
 
     Tokens de comparadores de fechas (DATECMP) se interpretan en _parse_date_ref().
     """
@@ -1659,6 +1726,32 @@ def compile_filter_to_sql(ast: Node) -> Tuple[str, List[Any]]:
                         "OR LOWER(fd.name) LIKE %s "
                         "OR LOWER(pf.name) LIKE %s"
                         ")"
+                    )
+
+                # -----------------------------
+                # prioridad: / pr:
+                # -----------------------------
+
+                if prefix in ("prioridad", "priority", "prio", "pr"):
+                    v = val_str.lower()
+
+                    if v in ("1", "alta", "high"):
+                        params.append(1)
+                        return "(t.priority=%s)"
+
+                    if v in ("2", "media", "medium"):
+                        params.append(2)
+                        return "(t.priority=%s)"
+
+                    if v in ("3", "baja", "low"):
+                        params.append(3)
+                        return "(t.priority=%s)"
+
+                    if v in ("null", "none", "sin", "ninguna"):
+                        return "(t.priority IS NULL)"
+
+                    raise FilterParseError(
+                        "Prioridad inválida. Usa prioridad:alta|media|baja|1|2|3|null."
                     )
 
                 raise FilterParseError(f"Prefijo desconocido: {prefix}:")
@@ -2180,7 +2273,7 @@ def proximo():
     pages = max(1, (total + per_page - 1) // per_page)
 
     rows = q(
-        "SELECT t.id, t.title, t.notes, t.due_date, t.due_time, t.completed_at, t.recurrence_rule, "
+        "SELECT t.id, t.title, t.notes, t.due_date, t.due_time, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.id AS folder_id, fd.name AS folder_name "
         "FROM tasks t "
@@ -2217,7 +2310,7 @@ def today():
     today_d = _today_madrid()
 
     pending_rows = q(
-        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, "
+        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.id AS folder_id, fd.name AS folder_name "
         "FROM tasks t "
@@ -2230,7 +2323,7 @@ def today():
     )
 
     overdue_rows = q(
-        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, "
+        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.id AS folder_id, fd.name AS folder_name "
         "FROM tasks t "
@@ -2243,7 +2336,7 @@ def today():
     )
 
     done_rows = q(
-        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, "
+        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.id AS folder_id, fd.name AS folder_name "
         "FROM tasks t "
@@ -2281,7 +2374,7 @@ def week():
     sunday_d = monday_d + timedelta(days=6)
 
     rows = q(
-        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, "
+        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.name AS folder_name, fd.id AS folder_id "
         "FROM tasks t "
@@ -2364,7 +2457,7 @@ def calendar_view():
 
     # Pendientes por due_date dentro de rango
     pending_rows = q(
-        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, "
+        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.id AS folder_id, fd.name AS folder_name "
         "FROM tasks t "
@@ -2381,7 +2474,7 @@ def calendar_view():
 
     # Completadas según completed_at (independiente due_date)
     completed_rows = q(
-        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, "
+        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.id AS folder_id, fd.name AS folder_name "
         "FROM tasks t "
@@ -2527,7 +2620,7 @@ def project_detail(project_id: int):
     folder_breadcrumb = build_folder_breadcrumb(project.get("folder_id"), include_self=True)
 
     active_tasks = q(
-        "SELECT id, title, notes, due_date, completed_at, recurrence_rule "
+        "SELECT id, title, notes, due_date, completed_at, recurrence_rule, priority "
         "FROM tasks "
         "WHERE project_id=%s AND completed_at IS NULL "
         "ORDER BY (due_date IS NULL) ASC, due_date ASC, id",
@@ -2535,7 +2628,7 @@ def project_detail(project_id: int):
     )
 
     done_tasks = q(
-        "SELECT id, title, notes, due_date, completed_at, recurrence_rule "
+        "SELECT id, title, notes, due_date, completed_at, recurrence_rule, priority "
         "FROM tasks "
         "WHERE project_id=%s AND completed_at IS NOT NULL "
         "ORDER BY completed_at DESC, id",
@@ -2804,7 +2897,7 @@ def tag_detail(tag_id: int):
 
     # tareas (con proyecto para mostrarlo/enlazarlo)
     rows = q(
-        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, "
+        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.id AS folder_id, fd.name AS folder_name "
         "FROM task_tags tt "
@@ -3101,7 +3194,7 @@ def dashboard():
 
     # --- TOP ETIQUETAS EN PERIODO ---
     top_tags = q(
-        "SELECT tg.name AS name, COUNT(*) AS c "
+        "SELECT tg.id AS id, tg.name AS name, COUNT(*) AS c "
         "FROM task_tags tt "
         "INNER JOIN tags tg ON tg.id=tt.tag_id "
         "INNER JOIN tasks t ON t.id=tt.task_id "
@@ -3116,7 +3209,7 @@ def dashboard():
     # --- CONSULTA MEJORADA DE VENCIMIENTOS (CON UBICACIÓN) ---
     due_soon = q(
         """
-        SELECT t.id, t.title, t.notes, t.due_date, t.project_id, t.folder_id, 
+        SELECT t.id, t.title, t.notes, t.due_date, t.project_id, t.folder_id, t.priority,
                p.name AS project_name, f.name AS folder_name
         FROM tasks t
         LEFT JOIN projects p ON t.project_id = p.id
@@ -3210,6 +3303,7 @@ def task_create():
     due = request.form.get("due_date") or None
     due_time_raw = (request.form.get("due_time") or "").strip()
     recurrence = (request.form.get("recurrence_rule") or "").strip() or None
+    priority = coerce_priority(request.form.get("priority"), default=None)
 
     if not raw:
         flash("El nombre de la tarea es obligatorio.", "error")
@@ -3223,7 +3317,9 @@ def task_create():
     # 2) Extraer fecha desde texto rápido
     detected_due_date = None
     detected_due_time = None
+    detected_priority = None
     try:
+        detected_priority, raw_work = extract_priority_from_quick(raw_work)
         if not due:
             detected_due_date, raw_work = extract_due_date_from_quick(raw_work)
         if not due_time_raw:
@@ -3283,6 +3379,9 @@ def task_create():
     elif detected_due_time:
         due_time = detected_due_time
 
+    if detected_priority is not None:
+        priority = detected_priority
+
     try:
         project_sel = (request.form.get("project_id") or "").strip()
         folder_sel = (request.form.get("folder_id") or "").strip()
@@ -3315,8 +3414,8 @@ def task_create():
                     )
 
         task_id = exec_sql(
-            "INSERT INTO tasks(title, project_id, folder_id, due_date, due_time, recurrence_rule) VALUES(%s,%s,%s,%s,%s,%s)",
-            (title, project_id, folder_id, due_date, due_time, recurrence),
+            "INSERT INTO tasks(title, project_id, folder_id, due_date, due_time, recurrence_rule, priority) VALUES(%s,%s,%s,%s,%s,%s,%s)",
+            (title, project_id, folder_id, due_date, due_time, recurrence, priority),
         )
 
         for t in tags:
@@ -3354,11 +3453,13 @@ def task_quick_add():
     """
     raw = (request.form.get("quick") or "").strip()
     due_time_raw = (request.form.get("due_time") or "").strip()
+    priority = coerce_priority(request.form.get("priority"), default=None)
     if not raw:
         flash("El nombre de la tarea es obligatorio.", "error")
         return redirect(request.form.get("next") or request.referrer or url_for("home"))
 
     try:
+        detected_priority, raw = extract_priority_from_quick(raw)
         due_date, raw = extract_due_date_from_quick(raw)
         detected_due_time = None
         if not due_time_raw:
@@ -3376,6 +3477,9 @@ def task_quick_add():
             return redirect(request.form.get("next") or request.referrer or url_for("home"))
     else:
         due_time = detected_due_time
+
+    if detected_priority is not None:
+        priority = detected_priority
 
     title, tags, quick_project_name = parse_task_quick_entry(raw)
     
@@ -3423,8 +3527,8 @@ def task_quick_add():
         #    - si hay project_id => la tarea va al proyecto
         #    - si no hay project_id => va a la carpeta (si existe)
         task_id = exec_sql(
-            "INSERT INTO tasks(title, project_id, folder_id, due_date, due_time) VALUES(%s,%s,%s,%s,%s)",
-            (title, project_id, folder_id, due_date, due_time),
+            "INSERT INTO tasks(title, project_id, folder_id, due_date, due_time, priority) VALUES(%s,%s,%s,%s,%s,%s)",
+            (title, project_id, folder_id, due_date, due_time, priority),
         )
 
         # 3) Etiquetas
@@ -3456,7 +3560,7 @@ def task_edit(task_id: int):
 
     # ---------- load task ----------
     task = q1(
-        "SELECT id, title, notes, due_date, due_time, project_id, folder_id, recurrence_rule, completed_at "
+        "SELECT id, title, notes, due_date, due_time, project_id, folder_id, recurrence_rule, priority, completed_at "
         "FROM tasks WHERE id=%s",
         (task_id,),
     )
@@ -3500,6 +3604,7 @@ def task_edit(task_id: int):
         due_raw = (request.form.get("due_date") or "").strip()
         due_time_raw = (request.form.get("due_time") or "").strip()
         recurrence = (request.form.get("recurrence_rule") or "").strip() or None
+        priority = coerce_priority(request.form.get("priority"), default=task.get("priority"))
 
         project_raw = (request.form.get("project_id") or "").strip()
         folder_raw = (request.form.get("folder_id") or "").strip()
@@ -3622,9 +3727,9 @@ def task_edit(task_id: int):
         try:
             exec_sql(
                 "UPDATE tasks "
-                "SET title=%s, notes=%s, due_date=%s, due_time=%s, project_id=%s, folder_id=%s, recurrence_rule=%s "
+                "SET title=%s, notes=%s, due_date=%s, due_time=%s, project_id=%s, folder_id=%s, recurrence_rule=%s, priority=%s "
                 "WHERE id=%s",
-                (clean_title, notes, due_date, due_time, project_id, folder_id, recurrence, task_id),
+                (clean_title, notes, due_date, due_time, project_id, folder_id, recurrence, priority, task_id),
             )
 
             # Tags: borrar y reinsertar
@@ -3963,7 +4068,7 @@ def folder_detail(folder_id: int):
 
     # Tareas asignadas directamente a la carpeta (no a proyectos)
     tasks = q(
-        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule "
+        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority "
         "FROM tasks t "
         "WHERE t.folder_id=%s AND t.project_id IS NULL AND t.archived=0 "
         "ORDER BY (t.completed_at IS NOT NULL) ASC, (t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC",
@@ -4396,7 +4501,7 @@ def filter_run(filter_id: int):
 
     # Página de resultados
     sql = (
-        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, "
+        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.name AS folder_name, fd.id AS folder_id "
         "FROM tasks t "
@@ -5585,7 +5690,7 @@ def review():
 
     # 1) Inbox
     inbox = q(
-        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, "
+        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.name AS folder_name, fd.id AS folder_id "
         "FROM tasks t "
@@ -5602,7 +5707,7 @@ def review():
     nextaction_exists = tag_exists("NextAction")
 
     nextactions_open = q(
-        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, "
+        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.name AS folder_name, fd.id AS folder_id "
         "FROM tasks t "
@@ -5619,7 +5724,7 @@ def review():
     ) if nextaction_exists else []
 
     nextactions_overdue = q(
-        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, "
+        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.name AS folder_name, fd.id AS folder_id "
         "FROM tasks t "
@@ -5641,7 +5746,7 @@ def review():
     agenda_exists = tag_exists("agenda")
 
     upcoming_7 = q(
-        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, "
+        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.name AS folder_name, fd.id AS folder_id "
         "FROM tasks t "
@@ -5660,7 +5765,7 @@ def review():
     ) if agenda_exists else []
 
     en_seguimiento_tasks = q(
-        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, "
+        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.name AS folder_name, fd.id AS folder_id "
         "FROM tasks t "
@@ -5680,7 +5785,7 @@ def review():
 
 
     agenda_overdue = q(
-        "SELECT t.id, t.title, t.due_date, t.notes, t.completed_at, t.recurrence_rule, "
+        "SELECT t.id, t.title, t.due_date, t.notes, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.name AS folder_name, fd.id AS folder_id "
         "FROM tasks t "
@@ -5702,7 +5807,7 @@ def review():
     en_espera_folder_exists = folder_exists("EnEspera")
 
     en_espera_tasks = q(
-        "SELECT t.id, t.title, t.due_date, t.notes, t.completed_at, t.recurrence_rule, "
+        "SELECT t.id, t.title, t.due_date, t.notes, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.name AS folder_name, fd.id AS folder_id "
         "FROM tasks t "
@@ -5829,7 +5934,7 @@ def review():
         if sometime_ids:
             placeholders = ",".join(["%s"] * len(sometime_ids))
             sometime_tasks_no_project = q(
-                "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, "
+                "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
                 "f.name AS folder_name, f.id AS folder_id "
                 "FROM tasks t "
                 "LEFT JOIN folders f ON f.id=t.folder_id "
@@ -5867,7 +5972,7 @@ def review():
             checklists_folder_id = checklists_folder['id']
             # Tareas directas en la carpeta (sin proyecto)
             checklist_tasks = q(
-                "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, "
+                "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
                 "p.name AS project_name, p.id AS project_id, "
                 "f.name AS folder_name, f.id AS folder_id "
                 "FROM tasks t "
@@ -5975,7 +6080,7 @@ def next_actions():
         offset = (page - 1) * per_page
 
         rows = q(
-            "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, "
+            "SELECT t.id, t.title, t.notes, t.due_date, t.recurrence_rule, t.completed_at, t.priority, "
             "p.name AS project_name, p.id AS project_id, "
             "fd.name AS folder_name, fd.id AS folder_id "
             "FROM tasks t "

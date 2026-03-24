@@ -148,6 +148,25 @@
     .db-tag-3 { background: #fef3c7; color: #92400e; }
     .db-tag-4 { background: #ede9fe; color: #5b21b6; }
     .db-tag-5 { background: #fde68a; color: #78350f; }
+
+    .db-check-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .db-priority-bar {
+      width: 4px;
+      min-height: 22px;
+      border-radius: 999px;
+      flex: 0 0 4px;
+    }
+
+    .db-priority-1 { background: #d9534f; }
+    .db-priority-2 { background: #f0ad4e; }
+    .db-priority-3 { background: #5cb85c; }
+
     @media (max-width: 1100px) {
       .db-kpis {
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -259,7 +278,7 @@
         {% if top_tags %}
           <div class="db-tag-list">
             {% for tag in top_tags %}
-              <span class="db-tag db-tag-{{ loop.index0 % 6 }}">@{{ tag.name }}</span>
+              <a class="db-tag db-tag-{{ loop.index0 % 6 }}" href="{{ url_for('tag_detail', tag_id=tag.id) }}">@{{ tag.name }}</a>
             {% endfor %}
           </div>
         {% else %}
@@ -277,7 +296,7 @@
       <table class="table">
         <thead>
           <tr>
-            <th style="width:42px;"></th>
+            <th style="width:58px;"></th>
             <th>Tarea</th>
             <th style="width:110px;">Fecha</th>
             <th style="width:180px;">Ubicación</th>
@@ -287,10 +306,15 @@
           {% for t in due_soon %}
             <tr>
               <td>
-                <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}">
-                  <input type="hidden" name="next" value="{{ url_for('dashboard', days=period_days) }}">
-                  <button class="radio" aria-label="toggle" title="Marcar como completada"></button>
-                </form>
+                <div class="db-check-wrap">
+                  {% if t.priority in [1, 2, 3] %}
+                    <span class="db-priority-bar db-priority-{{ t.priority }}" aria-hidden="true"></span>
+                  {% endif %}
+                  <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}">
+                    <input type="hidden" name="next" value="{{ url_for('dashboard', days=period_days) }}">
+                    <button class="radio" aria-label="toggle" title="Marcar como completada"></button>
+                  </form>
+                </div>
               </td>
               <td>
                 <a href="{{ url_for('task_edit', task_id=t.id) }}" style="font-weight:600; display:flex; align-items:center; gap:6px;">

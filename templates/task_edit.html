@@ -44,6 +44,14 @@
            <label class="label" style="margin-top:8px;">Hora (opcional)</label>
            <input class="input" type="time" name="due_time"
              value="{% if task.due_time %}{{ task.due_time.strftime('%H:%M') if task.due_time.strftime is defined else (task.due_time|string)[:5] }}{% endif %}">
+
+           <label class="label" style="margin-top:8px;">Prioridad</label>
+           <select class="input" name="priority">
+             <option value="" {% if task.priority is none %}selected{% endif %}>(sin prioridad)</option>
+             <option value="1" {% if task.priority == 1 %}selected{% endif %}>Alta</option>
+             <option value="2" {% if task.priority == 2 %}selected{% endif %}>Media</option>
+             <option value="3" {% if task.priority == 3 %}selected{% endif %}>Baja</option>
+           </select>
         </div>
 
       </div>

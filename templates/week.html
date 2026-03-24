@@ -40,6 +40,24 @@
   .week-day-card .table tbody tr:last-child td{
     padding-bottom:2px !important;
   }
+
+  .week-check-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .week-priority-bar {
+    width: 4px;
+    min-height: 22px;
+    border-radius: 999px;
+    flex: 0 0 4px;
+  }
+
+  .week-priority-1 { background: #d9534f; }
+  .week-priority-2 { background: #f0ad4e; }
+  .week-priority-3 { background: #5cb85c; }
 </style>
 
 {% set dias = ['lunes','martes','miércoles','jueves','viernes','sábado','domingo'] %}
@@ -81,7 +99,7 @@
         <table class="table">
           <thead>
             <tr>
-              <th style="width:42px;"></th>
+              <th style="width:58px;"></th>
               <th>Tarea</th>
               <th style="width:180px;">Ubicación</th>
               <th style="width:95px;"></th>
@@ -91,10 +109,15 @@
             {% for t in day_rows.list %}
               <tr class="{% if t.completed_at %}row-done{% endif %}">
                 <td>
-                  <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}">
-                    <input type="hidden" name="next" value="{{ url_for('week') }}">
-                    <button class="radio" aria-label="toggle" title="Marcar / desmarcar"></button>
-                  </form>
+                  <div class="week-check-wrap">
+                    {% if t.priority in [1, 2, 3] %}
+                      <span class="week-priority-bar week-priority-{{ t.priority }}" aria-hidden="true"></span>
+                    {% endif %}
+                    <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}">
+                      <input type="hidden" name="next" value="{{ url_for('week') }}">
+                      <button class="radio" aria-label="toggle" title="Marcar / desmarcar"></button>
+                    </form>
+                  </div>
                 </td>
 
                 <td>

@@ -79,8 +79,33 @@
           <td><code>Act. cuentas @Finanzas *+3 h:09:00 cada mes</code></td>
           <td>Crea una tarea con fecha dentro de 3 días, hora 09:00 y recurrencia mensual.</td>
         </tr>
+        <tr>
+          <td><code>Llamar proveedor ^alta @NextAction *hoy</code></td>
+          <td>Asigna prioridad Alta al crear la tarea (también existe <code>^media</code> y <code>^baja</code>).</td>
+        </tr>
       </tbody>
     </table>
+    <div class="hint" style="margin-top:10px;">
+      Si no indicas prioridad, la tarea queda sin prioridad (valor nulo).
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Prioridades y barra de color</div>
+        <div class="card-sub">Cómo funcionan las prioridades en las listas de tareas.</div>
+      </div>
+    </div>
+    <div class="list">
+      <div class="list-row">
+        <div>
+          <div class="hint"><strong>Alta</strong> = barra roja, <strong>Media</strong> = barra ámbar, <strong>Baja</strong> = barra verde.</div>
+          <div class="hint">La barra aparece a la izquierda del checkbox en las vistas de ejecución (por ejemplo: Today, Week, NextActions, Próximo, filtros y detalles).</div>
+          <div class="hint">Si una tarea no tiene prioridad, no se muestra barra.</div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div class="card">
@@ -150,6 +175,7 @@
           <div style="font-weight:600;">Filtros</div>
           <div class="hint">Consultas guardadas para localizar subconjuntos de tareas según reglas.</div>
           <div class="hint">Ejemplo: tareas con etiqueta @Finanzas y vencimiento esta semana.</div>
+          <div class="hint">También puedes filtrar por prioridad (ejemplo: <code>prioridad:alta</code>).</div>
           <div class="hint"><a class="manual-cta-link" href="{{ url_for('manual_filters') }}">Ver sintaxis completa de expresiones de filtros</a></div>
         </div>
       </div>

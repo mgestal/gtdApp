@@ -16,6 +16,8 @@ Aplicación personal de **Getting Things Done (GTD)** desarrollada en **Python +
 ### Gestión de tareas
 
 - Inbox, proyectos, carpetas jerárquicas, etiquetas, subtareas
+- Prioridades opcionales por tarea: Alta, Media, Baja o sin prioridad
+- Resaltado visual con barra vertical de color en listados de trabajo (cuando la prioridad está informada)
 - Fechas de vencimiento, hora y recurrencias (diaria, semanal, mensual, anual)
 - **Histórico de ejecuciones** de tareas periódicas accesible directamente desde el chip ⟲ periódica
 - Archivar tareas realizadas desde el Inbox con un solo clic
@@ -29,9 +31,15 @@ Aplicación personal de **Getting Things Done (GTD)** desarrollada en **Python +
 Llamar a Juan @NextAction *mañana
 Comprar tinta #Oficina *18-03
 Revisar cuentas @Finanzas *+3 h:09:00 cada mes
+Enviar propuesta ^alta @NextAction *hoy
 ```
 
-Formato: `nombre [@etiqueta] [*fecha] [h:HH:MM] [#proyecto] [cada día|semana|mes|año]`
+Formato: `nombre [@etiqueta] [^alta|^media|^baja] [*fecha] [h:HH:MM] [#proyecto] [cada día|semana|mes|año]`
+
+Notas sobre prioridad:
+
+- El token `^alta`, `^media` o `^baja` asigna prioridad al crear la tarea rápida.
+- Si no se indica prioridad, la tarea queda sin prioridad (`NULL`).
 
 ### Lenguaje de filtros avanzado
 
@@ -45,6 +53,7 @@ Filtros guardados con expresiones similares a Todoist / Things.
 | `fr:nombre` | carpeta directa + subcarpetas |
 | `fa:nombre` | carpeta anywhere (tarea o proyecto) |
 | `pf:valor` | búsqueda libre en proyecto/carpeta |
+| `prioridad:valor` | prioridad exacta (`alta`, `media`, `baja`, `1`, `2`, `3`, `null`) |
 | `fecha<hoy` | comparación de fecha (`fecha`/`due` + `<` `<=` `=` `>=` `>`) |
 
 Palabras clave: `inbox`, `done`, `hoy`, `null`  
@@ -56,6 +65,7 @@ Operadores: `&` (AND), `|` (OR), `!` (NOT), `( )` (agrupación). También se ace
 fa:Trabajo & (@Urgente | @Agenda)
 inbox | p:null
 fecha<hoy
+prioridad:alta & !done
 ```
 
 ### Sincronización Google Calendar (bidireccional)

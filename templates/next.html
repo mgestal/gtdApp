@@ -32,12 +32,30 @@
 
 <div class="card">
 
+  <style>
+    .next-toggle-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .next-priority-bar {
+      width: 6px;
+      height: 24px;
+      border-radius: 6px;
+      display: inline-block;
+      flex: 0 0 6px;
+    }
+    .next-priority-high { background: #ef4444; }
+    .next-priority-medium { background: #f59e0b; }
+    .next-priority-low { background: #22c55e; }
+  </style>
+
   {% if rows and rows|length > 0 %}
 
     <table class="table">
       <thead>
         <tr>
-          <th style="width:42px;"></th>
+          <th style="width:58px;"></th>
           <th>Tarea</th>
           <th style="width:90px;">Fecha</th>
           <th style="width:160px;">Ubicación</th>
@@ -49,10 +67,19 @@
       {% for t in rows %}
         <tr class="{% if t.completed_at %}row-done{% endif %}">
           <td>
-            <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}">
-              <input type="hidden" name="next" value="{{ url_for('next_actions', page=page) }}">
-              <button class="radio" aria-label="toggle" title="Marcar / desmarcar"></button>
-            </form>
+            <div class="next-toggle-wrap">
+              {% set prio = t.priority %}
+              {% if prio in [1, 2, 3] %}
+                <span
+                  class="next-priority-bar {% if prio == 1 %}next-priority-high{% elif prio == 3 %}next-priority-low{% else %}next-priority-medium{% endif %}"
+                  title="Prioridad {% if prio == 1 %}Alta{% elif prio == 3 %}Baja{% else %}Media{% endif %}"
+                ></span>
+              {% endif %}
+              <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}">
+                <input type="hidden" name="next" value="{{ url_for('next_actions', page=page) }}">
+                <button class="radio" aria-label="toggle" title="Marcar / desmarcar"></button>
+              </form>
+            </div>
           </td>
 
           <td>

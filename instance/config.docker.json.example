@@ -25,6 +25,9 @@
       "projects_per_page": 10,
       "archive_tasks_per_page": 25,
       "archive_projects_per_page": 25
+    },
+    "behavior": {
+      "promote_nextaction_on_complete": true
     }
   },
   "security": {

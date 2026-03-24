@@ -1230,6 +1230,33 @@ def cfg_int(path: list[str], default: int, min_v: int = 1, max_v: int = 500) -> 
         return default
 
 
+def cfg_bool(path: list[str], default: bool) -> bool:
+    """
+    Lee un booleano desde g.cfg usando una ruta tipo ["app","behavior","flag"].
+    Acepta bool, int y cadenas comunes (true/false, 1/0, yes/no, on/off).
+    """
+    try:
+        cur = getattr(g, "cfg", None) or load_config()
+        for k in path:
+            cur = cur.get(k, None) if isinstance(cur, dict) else None
+
+        if cur is None:
+            return default
+        if isinstance(cur, bool):
+            return cur
+        if isinstance(cur, (int, float)):
+            return bool(cur)
+        if isinstance(cur, str):
+            v = cur.strip().lower()
+            if v in ("1", "true", "yes", "on", "si", "sí"):
+                return True
+            if v in ("0", "false", "no", "off"):
+                return False
+        return default
+    except Exception:
+        return default
+
+
 class FilterParseError(Exception):
     pass
 
@@ -3625,7 +3652,12 @@ def task_toggle(task_id: int):
                 exec_sql("UPDATE tasks SET completed_at=%s WHERE id=%s", (now, task_id))
 
                 # Si tenía NextAction y pertenece a un proyecto, promocionar la siguiente
-                if has_nextaction and task.get("project_id"):
+                promote_nextaction = cfg_bool(
+                    ["app", "behavior", "promote_nextaction_on_complete"],
+                    default=True,
+                )
+
+                if promote_nextaction and has_nextaction and task.get("project_id"):
                     next_task = q1(
                         "SELECT id "
                         "FROM tasks "
@@ -4465,6 +4497,18 @@ def admin():
             
             save_config(cfg)
             flash("Configuración guardada.", "ok")
+            return redirect(url_for("admin"))
+
+        if action == "save_nextaction_behavior":
+            cfg = load_config()
+            appcfg = cfg.setdefault("app", {})
+            behavior = appcfg.setdefault("behavior", {})
+
+            raw = (request.form.get("promote_nextaction_on_complete") or "1").strip().lower()
+            behavior["promote_nextaction_on_complete"] = raw not in ("0", "false", "no", "off")
+
+            save_config(cfg)
+            flash("Ajuste de NextAction guardado.", "ok")
             return redirect(url_for("admin"))
 
         if action == "initialize_system":

@@ -114,6 +114,31 @@
             </button>
           </form>
         </div>
+
+        <div class="card" style="margin-top:20px;">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Flujo NextAction</div>
+              <div class="card-sub">Comportamiento al completar una tarea con etiqueta NextAction en un proyecto</div>
+            </div>
+          </div>
+
+          <form method="post" class="form">
+            <input type="hidden" name="action" value="save_nextaction_behavior">
+
+            <label class="label">Promocionar automáticamente la siguiente tarea del proyecto</label>
+            <select class="input" name="promote_nextaction_on_complete">
+              {% set promote_nextaction = cfg.get('app', {}).get('behavior', {}).get('promote_nextaction_on_complete', True) %}
+              <option value="1" {% if promote_nextaction %}selected{% endif %}>Sí (recomendado)</option>
+              <option value="0" {% if not promote_nextaction %}selected{% endif %}>No</option>
+            </select>
+            <div class="hint">Si está activado, al completar una NextAction se etiqueta automáticamente la siguiente tarea activa del mismo proyecto.</div>
+
+            <div class="row" style="margin-top:10px;">
+              <button class="btn btn-primary" type="submit">Guardar ajuste</button>
+            </div>
+          </form>
+        </div>
       </div>
         
 
@@ -177,7 +202,7 @@
             </div>
           </form>
         </div>
-        
+
         <div class="card">
           <div class="card-header">
             <div>

@@ -3940,29 +3940,45 @@ def task_edit(task_id: int):
             due_time = detected_due_time
 
         # ── Resolver proyecto / carpeta ──
-        project_id = None
-        folder_id = None
+        submitted_project_id = None
+        submitted_folder_id = None
 
         if project_raw:
             try:
-                project_id = int(project_raw)
+                submitted_project_id = int(project_raw)
             except ValueError:
-                project_id = None
+                submitted_project_id = None
         elif folder_raw:
             try:
-                folder_id = int(folder_raw)
+                submitted_folder_id = int(folder_raw)
             except ValueError:
+                submitted_folder_id = None
+
+        original_project_id = int(task.get("project_id")) if task.get("project_id") is not None else None
+        original_folder_id = int(task.get("folder_id")) if task.get("folder_id") is not None else None
+
+        form_selection_changed = (
+            submitted_project_id != original_project_id
+            or submitted_folder_id != original_folder_id
+        )
+
+        project_id = submitted_project_id
+        folder_id = submitted_folder_id
+
+        # Si el usuario no tocó los selects, el token rápido del título puede mover
+        # la tarea de carpeta/proyecto igual que en el alta rápida.
+        if not form_selection_changed:
+            if quick_folder_name:
+                folder_id = find_folder_by_name(quick_folder_name)
+                project_id = None
+            elif quick_project_name:
+                project_id = find_project_by_name_active(quick_project_name)
+                if project_id is None:
+                    project_id = exec_sql(
+                        "INSERT INTO projects(name, archived) VALUES(%s, %s)",
+                        (quick_project_name, 0),
+                    )
                 folder_id = None
-        elif quick_folder_name:
-            folder_id = find_folder_by_name(quick_folder_name)
-        elif quick_project_name:
-            # #Proyecto extraído del título
-            project_id = find_project_by_name_active(quick_project_name)
-            if project_id is None:
-                project_id = exec_sql(
-                    "INSERT INTO projects(name, archived) VALUES(%s, %s)",
-                    (quick_project_name, 0),
-                )
 
         if project_id:
             folder_id = None

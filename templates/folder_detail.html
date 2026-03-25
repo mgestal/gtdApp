@@ -94,8 +94,8 @@
 
         <form method="post" action="{{ url_for('folder_create') }}" class="form" style="gap:8px;">
           <input type="hidden" name="parent_id" value="{{ folder.id }}">
-          <div style="display:flex; gap:10px; align-items:center;">
-            <input class="input" name="name" placeholder="Nombre de la subcarpeta" required>
+          <div style="display:flex; gap:10px; align-items:center; width:100%;">
+            <input class="input" name="name" placeholder="Nombre de la subcarpeta" required style="flex:1; min-width:0;">
             <button class="btn btn-primary" type="submit">Crear</button>
           </div>
         </form>
@@ -108,8 +108,8 @@
 
         <form method="post" action="{{ url_for('project_create') }}" class="form" style="gap:8px;">
           <input type="hidden" name="folder_id" value="{{ folder.id }}">
-          <div style="display:flex; gap:10px; align-items:center;">
-            <input class="input" name="name" placeholder="Nombre del proyecto" required>
+          <div style="display:flex; gap:10px; align-items:center; width:100%;">
+            <input class="input" name="name" placeholder="Nombre del proyecto" required style="flex:1; min-width:0;">
             <button class="btn btn-primary" type="submit">Crear</button>
           </div>
         </form>
@@ -125,7 +125,7 @@
           <input type="hidden" name="next" value="{{ url_for('folder_detail', folder_id=folder.id) }}">
           <div style="display:flex; gap:10px; align-items:center; width:100%;">
             <input class="input" name="quick" placeholder="Ej: Tarea ^alta @tag #proy *hoy h:hh:mm" required style="flex:1; min-width:0;">
-            <button class="btn btn-primary" type="submit" style="margin-left:auto;">Añadir</button>
+            <button class="btn btn-primary" type="submit">Añadir</button>
           </div>
         </form>
       </div>

@@ -87,8 +87,9 @@ prioridad:alta & !done
 - GTD → Google: crea/actualiza eventos al sincronizar desde Admin
 - Las tareas sin fecha y sin hora no se envían a Google Calendar
 - Google → GTD: propaga cambios de título, fecha y hora a la tarea vinculada
-- Resolución de conflictos desde el panel Admin
-- Los conflictos se generan solo cuando hay cambios concurrentes en campos sincronizados: título, notas, fecha/hora, completada o archivada
+- Resolución de conflictos en vista dedicada: Admin -> Ir a conflictos (`/calendar/conflicts`)
+- Los conflictos se generan solo cuando hay cambios concurrentes en campos sincronizados: título, notas y fecha/hora
+- Marcar una tarea como realizada/no realizada o archivada/no archivada no genera conflicto
 - Cambios locales de carpeta, proyecto o etiquetas no generan conflicto
 - Borrado remoto: si se elimina un evento en Google, la tarea se archiva en GTD
 - Calendario objetivo configurable (`app.calendar_sync.calendar_id` en `config.json`)

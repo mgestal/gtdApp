@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% block content %}
+  <style>
+    @media (max-width: 980px) {
+      .calendar-conflicts-page-table-wrap {
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .calendar-conflicts-page-table-wrap .calendar-conflicts-page-table {
+        min-width: 900px;
+      }
+
+      .calendar-conflicts-toolbar {
+        align-items: flex-start !important;
+      }
+
+      .calendar-conflicts-toolbar-actions {
+        width: 100%;
+        flex-wrap: wrap;
+      }
+
+      .calendar-conflicts-pager {
+        align-items: flex-start !important;
+      }
+
+      .calendar-conflicts-pager .muted {
+        width: 100%;
+        overflow-wrap: anywhere;
+      }
+
+      .calendar-conflicts-pager-actions {
+        width: 100%;
+        flex-wrap: wrap;
+      }
+    }
+  </style>
+
+  <div class="page-title">
+    <h1>Conflictos de Calendar</h1>
+    <p class="subtitle">Resolución manual de conflictos entre GTD y Google Calendar.</p>
+  </div>
+
+  <div class="card" style="margin-bottom:12px;">
+    <div class="calendar-conflicts-toolbar" style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap;">
+      <div class="muted">
+        Estados: pending_push={{ calendar_sync_stats.pending_push }}, pending_delete={{ calendar_sync_stats.pending_delete }}, conflict={{ calendar_sync_stats.conflict }}, error={{ calendar_sync_stats.error }}
+      </div>
+      <div class="calendar-conflicts-toolbar-actions" style="display:flex; gap:8px; flex-wrap:wrap;">
+        <form method="post" style="margin:0;">
+          <input type="hidden" name="next" value="{{ request.full_path }}">
+          <input type="hidden" name="action" value="sync_calendar_now">
+          <button class="btn btn-primary" type="submit">Sincronizar ahora</button>
+        </form>
+        <a class="btn btn-soft" href="{{ url_for('admin') }}">Volver a Admin</a>
+      </div>
+    </div>
+
+    {% if calendar_sync_last_info %}
+      {% if calendar_sync_last_level == 'error' %}
+        <div style="margin-top:10px; border:1px solid var(--border); border-radius:12px; padding:10px 12px; background:#fff3f2; color:var(--text);">
+      {% else %}
+        <div style="margin-top:10px; border:1px solid var(--border); border-radius:12px; padding:10px 12px; background:#eef8f1; color:var(--text);">
+      {% endif %}
+          <div style="font-weight:600; margin-bottom:4px;">Resultado última sincronización</div>
+          <div class="hint" style="margin:0; color:inherit;">{{ calendar_sync_last_info }}</div>
+        </div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">Conflictos</div>
+      <div class="muted">{{ total }} resultados</div>
+    </div>
+
+    {% if calendar_conflicts %}
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin:0 0 10px 0;">
+        <form method="post" class="form" style="margin:0;">
+          <input type="hidden" name="next" value="{{ request.full_path }}">
+          <input type="hidden" name="action" value="resolve_calendar_conflicts_all">
+          <input type="hidden" name="resolution" value="keep_google">
+          <button class="btn btn-soft" type="submit" onclick="return confirm('¿Aplicar Usar Google en bloque (hasta 200 conflictos)?');">
+            Usar Google (bloque)
+          </button>
+        </form>
+        <form method="post" class="form" style="margin:0;">
+          <input type="hidden" name="next" value="{{ request.full_path }}">
+          <input type="hidden" name="action" value="resolve_calendar_conflicts_all">
+          <input type="hidden" name="resolution" value="keep_gtd">
+          <button class="btn btn-soft" type="submit" onclick="return confirm('¿Aplicar Usar GTD en bloque (hasta 200 conflictos)?');">
+            Usar GTD (bloque)
+          </button>
+        </form>
+      </div>
+
+      <div class="pager calendar-conflicts-pager" style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:10px;">
+        <div class="muted">
+          Mostrando {{ (page-1)*per_page + 1 }}–{{ [page*per_page, total]|min }} de {{ total }} · página {{ page }} de {{ pages }}
+        </div>
+        <div class="calendar-conflicts-pager-actions" style="display:flex; gap:8px; flex-wrap:wrap;">
+          {% if page > 1 %}
+            <a class="btn btn-soft" href="{{ url_for('calendar_conflicts_view', page=1) }}">« Primera</a>
+            <a class="btn btn-soft" href="{{ url_for('calendar_conflicts_view', page=page-1) }}">‹ Anterior</a>
+          {% else %}
+            <span class="btn btn-soft disabled">« Primera</span>
+            <span class="btn btn-soft disabled">‹ Anterior</span>
+          {% endif %}
+          {% if page < pages %}
+            <a class="btn btn-soft" href="{{ url_for('calendar_conflicts_view', page=page+1) }}">Siguiente ›</a>
+            <a class="btn btn-soft" href="{{ url_for('calendar_conflicts_view', page=pages) }}">Última »</a>
+          {% else %}
+            <span class="btn btn-soft disabled">Siguiente ›</span>
+            <span class="btn btn-soft disabled">Última »</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="calendar-conflicts-page-table-wrap">
+        <table class="table calendar-conflicts-page-table">
+          <thead>
+            <tr>
+              <th>Tarea</th>
+              <th style="width:120px;">Fecha</th>
+              <th style="width:90px;">Hora</th>
+              <th style="width:130px;">Conflicto</th>
+              <th style="width:230px;">Resolver</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for t in calendar_conflicts %}
+              <tr>
+                <td>
+                  <a href="{{ url_for('task_edit', task_id=t.id, next=request.full_path) }}">{{ t.title }}</a>
+                </td>
+                <td>{% if t.due_date %}{{ t.due_date.strftime('%d-%m-%Y') }}{% else %}<span class="muted">—</span>{% endif %}</td>
+                <td>{% if t.due_time_text %}{{ t.due_time_text }}{% elif t.due_time and t.due_time.strftime is defined %}{{ t.due_time.strftime('%H:%M') }}{% else %}<span class="muted">—</span>{% endif %}</td>
+                <td>{% if t.calendar_conflict_at %}{{ t.calendar_conflict_at.strftime('%d-%m %H:%M') }}{% else %}<span class="muted">—</span>{% endif %}</td>
+                <td>
+                  <div style="display:inline-flex; gap:6px; flex-wrap:wrap;">
+                    <form method="post" class="form" style="margin:0;">
+                      <input type="hidden" name="next" value="{{ request.full_path }}">
+                      <input type="hidden" name="action" value="resolve_calendar_conflict">
+                      <input type="hidden" name="task_id" value="{{ t.id }}">
+                      <input type="hidden" name="resolution" value="keep_google">
+                      <button class="btn btn-soft" type="submit">Usar Google</button>
+                    </form>
+                    <form method="post" class="form" style="margin:0;">
+                      <input type="hidden" name="next" value="{{ request.full_path }}">
+                      <input type="hidden" name="action" value="resolve_calendar_conflict">
+                      <input type="hidden" name="task_id" value="{{ t.id }}">
+                      <input type="hidden" name="resolution" value="keep_gtd">
+                      <button class="btn btn-soft" type="submit">Usar GTD</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty">No hay conflictos de sincronización.</div>
+    {% endif %}
+  </div>
+{% endblock %}

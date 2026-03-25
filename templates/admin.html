@@ -380,67 +380,11 @@
             <div class="list-row" style="align-items:flex-start;">
               <div style="flex:1; min-width:0;">
                 <div style="font-weight:600; margin-bottom:4px;">Conflictos</div>
-                {% if calendar_conflicts and calendar_conflicts|length > 0 %}
-                  <div style="display:flex; gap:8px; flex-wrap:wrap; margin:0 0 10px 0;">
-                    <form method="post" class="form" style="margin:0;">
-                      <input type="hidden" name="action" value="resolve_calendar_conflicts_all">
-                      <input type="hidden" name="resolution" value="keep_google">
-                      <button class="btn btn-soft" type="submit" onclick="return confirm('¿Aplicar "Usar Google" a todos los conflictos mostrados?');">
-                        Usar Google (todos)
-                      </button>
-                    </form>
-                    <form method="post" class="form" style="margin:0;">
-                      <input type="hidden" name="action" value="resolve_calendar_conflicts_all">
-                      <input type="hidden" name="resolution" value="keep_gtd">
-                      <button class="btn btn-soft" type="submit" onclick="return confirm('¿Aplicar "Usar GTD" a todos los conflictos mostrados?');">
-                        Usar GTD (todos)
-                      </button>
-                    </form>
-                  </div>
-                  <div class="admin-readable-table-wrap calendar-conflicts-table-wrap">
-                    <table class="table admin-readable-table calendar-conflicts-table">
-                      <thead>
-                        <tr>
-                          <th class="calendar-conflicts-col-title">Tarea</th>
-                          <th style="width:120px;">Fecha</th>
-                          <th style="width:90px;">Hora</th>
-                          <th style="width:120px;">Conflicto</th>
-                          <th style="width:220px;">Resolver</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {% for t in calendar_conflicts %}
-                          <tr>
-                            <td class="calendar-conflicts-col-title">
-                              <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('admin')) }}">{{ t.title }}</a>
-                            </td>
-                            <td>{% if t.due_date %}{{ t.due_date.strftime('%d-%m-%Y') }}{% else %}<span class="muted">—</span>{% endif %}</td>
-                            <td>{% if t.due_time_text %}{{ t.due_time_text }}{% elif t.due_time and t.due_time.strftime is defined %}{{ t.due_time.strftime('%H:%M') }}{% else %}<span class="muted">—</span>{% endif %}</td>
-                            <td>{% if t.calendar_conflict_at %}{{ t.calendar_conflict_at.strftime('%d-%m %H:%M') }}{% else %}<span class="muted">—</span>{% endif %}</td>
-                            <td>
-                              <div style="display:inline-flex; gap:6px; flex-wrap:wrap;">
-                                <form method="post" class="form" style="margin:0;">
-                                  <input type="hidden" name="action" value="resolve_calendar_conflict">
-                                  <input type="hidden" name="task_id" value="{{ t.id }}">
-                                  <input type="hidden" name="resolution" value="keep_google">
-                                  <button class="btn btn-soft" type="submit">Usar Google</button>
-                                </form>
-                                <form method="post" class="form" style="margin:0;">
-                                  <input type="hidden" name="action" value="resolve_calendar_conflict">
-                                  <input type="hidden" name="task_id" value="{{ t.id }}">
-                                  <input type="hidden" name="resolution" value="keep_gtd">
-                                  <button class="btn btn-soft" type="submit">Usar GTD</button>
-                                </form>
-                              </div>
-                            </td>
-                          </tr>
-                        {% endfor %}
-                      </tbody>
-                    </table>
-                  </div>
-                {% else %}
-                  <div class="empty" style="margin:0;">No hay conflictos de sincronización.</div>
-                {% endif %}
+                <div class="hint">Conflictos pendientes: {{ calendar_sync_stats.conflict }}</div>
+                <div class="hint" style="margin-top:6px;">Gestiona resolución individual o masiva en la vista dedicada.</div>
+              </div>
+              <div>
+                <a class="btn btn-soft" href="{{ url_for('calendar_conflicts_view') }}">Ir a conflictos</a>
               </div>
             </div>
           </div>

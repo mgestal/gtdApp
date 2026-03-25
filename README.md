@@ -21,6 +21,7 @@ Aplicación personal de **Getting Things Done (GTD)** desarrollada en **Python +
 - Fechas de vencimiento, hora y recurrencias (diaria, semanal, mensual, anual)
 - **Histórico de ejecuciones** de tareas periódicas accesible directamente desde el chip ⟲ periódica
 - Al completar una periódica caducada, la app permite elegir entre mantener la siguiente fecha calculada o saltar a la primera fecha válida posterior a hoy
+- Papelera para tareas y proyectos eliminados, con restauración y vaciado desde Admin
 - Archivar tareas realizadas desde el Inbox con un solo clic
 - Revisión semanal con bloque EnEspera separado en tareas etiquetadas y proyectos de la carpeta EnEspera
 - Creación rápida desde cualquier vista con sintaxis natural
@@ -87,8 +88,19 @@ prioridad:alta & !done
 - Las tareas sin fecha y sin hora no se envían a Google Calendar
 - Google → GTD: propaga cambios de título, fecha y hora a la tarea vinculada
 - Resolución de conflictos desde el panel Admin
+- Los conflictos se generan solo cuando hay cambios concurrentes en campos sincronizados: título, notas, fecha/hora, completada o archivada
+- Cambios locales de carpeta, proyecto o etiquetas no generan conflicto
 - Borrado remoto: si se elimina un evento en Google, la tarea se archiva en GTD
 - Calendario objetivo configurable (`app.calendar_sync.calendar_id` en `config.json`)
+
+### Papelera
+
+- Al borrar una tarea o proyecto, se envía a papelera en lugar de eliminarse definitivamente.
+- Los elementos en papelera no aparecen en búsquedas, filtros, enlaces de etiquetas ni archivo.
+- Desde Admin puedes:
+  - Restaurar tareas o proyectos individualmente.
+  - Borrar definitivamente tareas eliminadas hace más de 7 días.
+  - Vaciar toda la papelera.
 
 ### Importación Gmail
 

@@ -75,120 +75,7 @@
               <div style="flex:1;">
                 <div class="hint">Elementos en papelera: tareas={{ trash_counts.tasks }}, proyectos={{ trash_counts.projects }}</div>
               </div>
-              <form method="post" class="form" style="margin:0;">
-                <input type="hidden" name="action" value="trash_purge_tasks_old">
-                <button class="btn btn-soft" type="submit" onclick="return confirm('¿Borrar definitivamente tareas en papelera con más de 7 días?');">
-                  Borrar tareas > 7 días
-                </button>
-              </form>
-              <form method="post" class="form" style="margin:0;">
-                <input type="hidden" name="action" value="trash_purge_all">
-                <button class="btn btn-primary" type="submit" onclick="return confirm('¿Vaciar la papelera por completo? Esta acción es irreversible.');">
-                  Vaciar papelera
-                </button>
-              </form>
-            </div>
-
-            <div class="list-row" style="align-items:flex-start;">
-              <div style="flex:1; min-width:0;">
-                <div style="font-weight:600; margin-bottom:6px;">Tareas en papelera</div>
-                {% if trashed_tasks_preview %}
-                  <div style="max-height:220px; overflow:auto; border:1px solid var(--border); border-radius:12px;">
-                    <table class="table">
-                      <thead>
-                        <tr>
-                          <th>Título</th>
-                          <th style="width:160px;">Eliminada</th>
-                          <th style="width:180px;">Ubicación</th>
-                          <th style="width:120px;"></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {% for t in trashed_tasks_preview %}
-                          <tr>
-                            <td>{{ t.title }}</td>
-                            <td>
-                              {% if t.deleted_at %}
-                                {{ t.deleted_at.strftime('%d-%m-%Y %H:%M') }}
-                              {% else %}
-                                <span class="muted">—</span>
-                              {% endif %}
-                            </td>
-                            <td>
-                              {% if t.project_name %}
-                                💼 {{ t.project_name }}
-                              {% elif t.folder_name %}
-                                📂 {{ t.folder_name }}
-                              {% else %}
-                                📥 Inbox
-                              {% endif %}
-                            </td>
-                            <td>
-                              <form method="post" class="form" style="margin:0;">
-                                <input type="hidden" name="action" value="trash_restore_task">
-                                <input type="hidden" name="task_id" value="{{ t.id }}">
-                                <button class="btn btn-soft" type="submit">Restaurar</button>
-                              </form>
-                            </td>
-                          </tr>
-                        {% endfor %}
-                      </tbody>
-                    </table>
-                  </div>
-                {% else %}
-                  <div class="empty" style="margin:0;">No hay tareas en papelera.</div>
-                {% endif %}
-              </div>
-            </div>
-
-            <div class="list-row" style="align-items:flex-start;">
-              <div style="flex:1; min-width:0;">
-                <div style="font-weight:600; margin-bottom:6px;">Proyectos en papelera</div>
-                {% if trashed_projects_preview %}
-                  <div style="max-height:220px; overflow:auto; border:1px solid var(--border); border-radius:12px;">
-                    <table class="table">
-                      <thead>
-                        <tr>
-                          <th>Proyecto</th>
-                          <th style="width:160px;">Eliminado</th>
-                          <th style="width:180px;">Carpeta</th>
-                          <th style="width:120px;"></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {% for p in trashed_projects_preview %}
-                          <tr>
-                            <td>{{ p.name }}</td>
-                            <td>
-                              {% if p.deleted_at %}
-                                {{ p.deleted_at.strftime('%d-%m-%Y %H:%M') }}
-                              {% else %}
-                                <span class="muted">—</span>
-                              {% endif %}
-                            </td>
-                            <td>
-                              {% if p.folder_name %}
-                                📂 {{ p.folder_name }}
-                              {% else %}
-                                <span class="muted">—</span>
-                              {% endif %}
-                            </td>
-                            <td>
-                              <form method="post" class="form" style="margin:0;">
-                                <input type="hidden" name="action" value="trash_restore_project">
-                                <input type="hidden" name="project_id" value="{{ p.id }}">
-                                <button class="btn btn-soft" type="submit">Restaurar</button>
-                              </form>
-                            </td>
-                          </tr>
-                        {% endfor %}
-                      </tbody>
-                    </table>
-                  </div>
-                {% else %}
-                  <div class="empty" style="margin:0;">No hay proyectos en papelera.</div>
-                {% endif %}
-              </div>
+              <a class="btn btn-primary" href="{{ url_for('trash_view') }}">Ir a la papelera</a>
             </div>
           </div>
         </div>
@@ -382,10 +269,11 @@
 
                 <div style="padding:12px 14px; max-height:55vh; overflow:auto;">
                   {% if archive_orphans_preview %}
-                    <table class="table">
+                    <div class="admin-readable-table-wrap" style="max-height:220px; border:1px solid var(--border); border-radius:12px;">
+                    <table class="table admin-readable-table">
                       <thead>
                         <tr>
-                          <th>Título</th>
+                          <th class="admin-readable-col-title">Título</th>
                           <th style="width:140px;">Fecha</th>
                           <th style="width:180px;">Ubicación</th>
                         </tr>
@@ -393,7 +281,7 @@
                       <tbody>
                         {% for t in archive_orphans_preview %}
                           <tr>
-                            <td>{{ t.title }}</td>
+                            <td class="admin-readable-col-title">{{ t.title }}</td>
                             <td>
                               {% if t.completed_at %}
                                 {{ t.completed_at.strftime('%d-%m-%Y %H:%M') }}
@@ -412,6 +300,7 @@
                         {% endfor %}
                       </tbody>
                     </table>
+                    </div>
                   {% else %}
                     <div class="empty" style="margin:0;">No hay tareas candidatas para archivar.</div>
                   {% endif %}
@@ -492,45 +381,63 @@
               <div style="flex:1; min-width:0;">
                 <div style="font-weight:600; margin-bottom:4px;">Conflictos</div>
                 {% if calendar_conflicts and calendar_conflicts|length > 0 %}
-                  <table class="table">
-                    <thead>
-                      <tr>
-                        <th>Tarea</th>
-                        <th style="width:120px;">Fecha</th>
-                        <th style="width:90px;">Hora</th>
-                        <th style="width:120px;">Conflicto</th>
-                        <th style="width:220px;">Resolver</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {% for t in calendar_conflicts %}
+                  <div style="display:flex; gap:8px; flex-wrap:wrap; margin:0 0 10px 0;">
+                    <form method="post" class="form" style="margin:0;">
+                      <input type="hidden" name="action" value="resolve_calendar_conflicts_all">
+                      <input type="hidden" name="resolution" value="keep_google">
+                      <button class="btn btn-soft" type="submit" onclick="return confirm('¿Aplicar "Usar Google" a todos los conflictos mostrados?');">
+                        Usar Google (todos)
+                      </button>
+                    </form>
+                    <form method="post" class="form" style="margin:0;">
+                      <input type="hidden" name="action" value="resolve_calendar_conflicts_all">
+                      <input type="hidden" name="resolution" value="keep_gtd">
+                      <button class="btn btn-soft" type="submit" onclick="return confirm('¿Aplicar "Usar GTD" a todos los conflictos mostrados?');">
+                        Usar GTD (todos)
+                      </button>
+                    </form>
+                  </div>
+                  <div class="admin-readable-table-wrap calendar-conflicts-table-wrap">
+                    <table class="table admin-readable-table calendar-conflicts-table">
+                      <thead>
                         <tr>
-                          <td>
-                            <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('admin')) }}">{{ t.title }}</a>
-                          </td>
-                          <td>{% if t.due_date %}{{ t.due_date.strftime('%d-%m-%Y') }}{% else %}<span class="muted">—</span>{% endif %}</td>
-                          <td>{% if t.due_time_text %}{{ t.due_time_text }}{% elif t.due_time and t.due_time.strftime is defined %}{{ t.due_time.strftime('%H:%M') }}{% else %}<span class="muted">—</span>{% endif %}</td>
-                          <td>{% if t.calendar_conflict_at %}{{ t.calendar_conflict_at.strftime('%d-%m %H:%M') }}{% else %}<span class="muted">—</span>{% endif %}</td>
-                          <td>
-                            <div style="display:inline-flex; gap:6px; flex-wrap:wrap;">
-                              <form method="post" class="form" style="margin:0;">
-                                <input type="hidden" name="action" value="resolve_calendar_conflict">
-                                <input type="hidden" name="task_id" value="{{ t.id }}">
-                                <input type="hidden" name="resolution" value="keep_google">
-                                <button class="btn btn-soft" type="submit">Usar Google</button>
-                              </form>
-                              <form method="post" class="form" style="margin:0;">
-                                <input type="hidden" name="action" value="resolve_calendar_conflict">
-                                <input type="hidden" name="task_id" value="{{ t.id }}">
-                                <input type="hidden" name="resolution" value="keep_gtd">
-                                <button class="btn btn-soft" type="submit">Usar GTD</button>
-                              </form>
-                            </div>
-                          </td>
+                          <th class="calendar-conflicts-col-title">Tarea</th>
+                          <th style="width:120px;">Fecha</th>
+                          <th style="width:90px;">Hora</th>
+                          <th style="width:120px;">Conflicto</th>
+                          <th style="width:220px;">Resolver</th>
                         </tr>
-                      {% endfor %}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {% for t in calendar_conflicts %}
+                          <tr>
+                            <td class="calendar-conflicts-col-title">
+                              <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('admin')) }}">{{ t.title }}</a>
+                            </td>
+                            <td>{% if t.due_date %}{{ t.due_date.strftime('%d-%m-%Y') }}{% else %}<span class="muted">—</span>{% endif %}</td>
+                            <td>{% if t.due_time_text %}{{ t.due_time_text }}{% elif t.due_time and t.due_time.strftime is defined %}{{ t.due_time.strftime('%H:%M') }}{% else %}<span class="muted">—</span>{% endif %}</td>
+                            <td>{% if t.calendar_conflict_at %}{{ t.calendar_conflict_at.strftime('%d-%m %H:%M') }}{% else %}<span class="muted">—</span>{% endif %}</td>
+                            <td>
+                              <div style="display:inline-flex; gap:6px; flex-wrap:wrap;">
+                                <form method="post" class="form" style="margin:0;">
+                                  <input type="hidden" name="action" value="resolve_calendar_conflict">
+                                  <input type="hidden" name="task_id" value="{{ t.id }}">
+                                  <input type="hidden" name="resolution" value="keep_google">
+                                  <button class="btn btn-soft" type="submit">Usar Google</button>
+                                </form>
+                                <form method="post" class="form" style="margin:0;">
+                                  <input type="hidden" name="action" value="resolve_calendar_conflict">
+                                  <input type="hidden" name="task_id" value="{{ t.id }}">
+                                  <input type="hidden" name="resolution" value="keep_gtd">
+                                  <button class="btn btn-soft" type="submit">Usar GTD</button>
+                                </form>
+                              </div>
+                            </td>
+                          </tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </div>
                 {% else %}
                   <div class="empty" style="margin:0;">No hay conflictos de sincronización.</div>
                 {% endif %}

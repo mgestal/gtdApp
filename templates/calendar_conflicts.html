@@ -122,10 +122,10 @@
           <thead>
             <tr>
               <th>Tarea</th>
-              <th style="width:120px;">Fecha</th>
-              <th style="width:90px;">Hora</th>
-              <th style="width:130px;">Conflicto</th>
-              <th style="width:230px;">Resolver</th>
+              <th style="width:130px;">Fecha</th>
+              <th style="width:190px;">Motivo</th>
+              <th style="width:130px;">Detectado</th>
+              <th style="width:150px;">Resolver</th>
             </tr>
           </thead>
           <tbody>
@@ -134,11 +134,17 @@
                 <td>
                   <a href="{{ url_for('task_edit', task_id=t.id, next=request.full_path) }}">{{ t.title }}</a>
                 </td>
-                <td>{% if t.due_date %}{{ t.due_date.strftime('%d-%m-%Y') }}{% else %}<span class="muted">—</span>{% endif %}</td>
-                <td>{% if t.due_time_text %}{{ t.due_time_text }}{% elif t.due_time and t.due_time.strftime is defined %}{{ t.due_time.strftime('%H:%M') }}{% else %}<span class="muted">—</span>{% endif %}</td>
-                <td>{% if t.calendar_conflict_at %}{{ t.calendar_conflict_at.strftime('%d-%m %H:%M') }}{% else %}<span class="muted">—</span>{% endif %}</td>
                 <td>
-                  <div style="display:inline-flex; gap:6px; flex-wrap:wrap;">
+                  <div>{% if t.due_date %}{{ t.due_date.strftime('%d-%m-%Y') }}{% else %}<span class="muted">—</span>{% endif %}</div>
+                  <div class="muted" style="font-size:0.92em; margin-top:2px;">{% if t.due_time_text %}{{ t.due_time_text }}{% elif t.due_time and t.due_time.strftime is defined %}{{ t.due_time.strftime('%H:%M') }}{% else %}—{% endif %}</div>
+                </td>
+                <td>{{ t.conflict_reason }}</td>
+                <td>
+                  <div>{% if t.calendar_conflict_at %}{{ t.calendar_conflict_at.strftime('%d-%m-%Y') }}{% else %}<span class="muted">—</span>{% endif %}</div>
+                  <div class="muted" style="font-size:0.92em; margin-top:2px;">{% if t.calendar_conflict_at %}{{ t.calendar_conflict_at.strftime('%H:%M') }}{% else %}—{% endif %}</div>
+                </td>
+                <td>
+                  <div style="display:inline-flex; flex-direction:column; gap:6px; align-items:flex-start;">
                     <form method="post" class="form" style="margin:0;">
                       <input type="hidden" name="next" value="{{ request.full_path }}">
                       <input type="hidden" name="action" value="resolve_calendar_conflict">

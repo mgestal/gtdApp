@@ -275,6 +275,7 @@ CAL_SYNC_TIMEZONE = "Europe/Madrid"
 CAL_SYNC_DEFAULT_DURATION_MINUTES = 30
 CAL_SYNC_COOLDOWN_SECONDS = 120
 CAL_SYNC_AUTO_ENABLED = False
+CAL_SYNC_DB_LOCK_NAME = "gtdapp_calendar_sync"
 _calendar_last_auto_sync: Optional[datetime] = None
 
 
@@ -287,6 +288,28 @@ def calendar_sync_calendar_id() -> str:
     except Exception:
         pass
     return DEFAULT_CAL_SYNC_CALENDAR_ID
+
+
+def _is_retryable_db_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return (
+        "(1020" in text
+        or "record has changed since last read" in text
+        or "deadlock" in text
+        or "lock wait timeout" in text
+    )
+
+
+def _calendar_sync_lock_acquire(timeout_seconds: int = 1) -> bool:
+    row = q1("SELECT GET_LOCK(%s, %s) AS ok", (CAL_SYNC_DB_LOCK_NAME, timeout_seconds))
+    return bool(row and int(row.get("ok") or 0) == 1)
+
+
+def _calendar_sync_lock_release() -> None:
+    try:
+        q1("SELECT RELEASE_LOCK(%s) AS ok", (CAL_SYNC_DB_LOCK_NAME,))
+    except Exception:
+        pass
 
 
 def _parse_google_dt(raw: Optional[str]) -> Optional[datetime]:
@@ -456,7 +479,7 @@ def _mark_task_calendar_dirty(task_id: int, force_push_if_empty: bool = False) -
     )
 
 
-def _sync_task_push(task_id: int, service=None) -> bool:
+def _sync_task_push(task_id: int, service=None, force_remote_update: bool = False) -> bool:
     row = _task_calendar_row(task_id)
     if not row:
         return True
@@ -470,6 +493,8 @@ def _sync_task_push(task_id: int, service=None) -> bool:
     last_hash = (row.get("calendar_last_synced_hash") or "").strip()
     current_hash = _task_calendar_hash(row)
     if (
+        not force_remote_update
+        and
         row.get("calendar_sync_state") == "pending_push"
         and event_id
         and last_hash
@@ -611,6 +636,14 @@ def run_calendar_push_sync(limit: int = 100, service=None) -> Dict[str, int]:
 
 def _apply_google_to_task(task_id: int, ev: Dict[str, Any]) -> None:
     fields = _google_event_to_task_fields(ev)
+
+    # Si el payload remoto llega incompleto (sin start/end), evitamos perder fecha/hora local.
+    if fields.get("due_date") is None and fields.get("due_time") is None:
+        current = _task_calendar_row(task_id)
+        if current:
+            fields["due_date"] = current.get("due_date")
+            fields["due_time"] = current.get("due_time")
+
     exec_sql(
         "UPDATE tasks "
         "SET title=%s, notes=%s, due_date=%s, due_time=%s, "
@@ -990,7 +1023,12 @@ def maybe_run_calendar_autosync() -> None:
     if not CAL_SYNC_AUTO_ENABLED:
         return
 
+    acquired = False
     try:
+        acquired = _calendar_sync_lock_acquire(timeout_seconds=0)
+        if not acquired:
+            return
+
         pull_res = run_calendar_pull_sync(force=False)
         if pull_res.get("skipped"):
             return
@@ -1001,6 +1039,9 @@ def maybe_run_calendar_autosync() -> None:
         commit()
     except Exception:
         rollback()
+    finally:
+        if acquired:
+            _calendar_sync_lock_release()
 
 
 
@@ -5169,14 +5210,65 @@ def _load_calendar_conflicts_view_data(page: int) -> Dict[str, Any]:
     page = max(1, min(page, pages))
     offset = (page - 1) * per_page
 
+    def _norm_hhmm(value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, timedelta):
+            total_seconds = int(value.total_seconds()) % (24 * 3600)
+            hh = total_seconds // 3600
+            mm = (total_seconds % 3600) // 60
+            return f"{hh:02d}:{mm:02d}"
+        if hasattr(value, "strftime"):
+            try:
+                return value.strftime("%H:%M")
+            except Exception:
+                pass
+        txt = str(value).strip()
+        if len(txt) >= 5 and txt[2] == ":":
+            return txt[:5]
+        return txt
+
+    def _calendar_conflict_reason(row: Dict[str, Any]) -> str:
+        payload_raw = row.get("calendar_conflict_payload")
+        if not payload_raw:
+            return "No disponible"
+
+        try:
+            ev = json.loads(payload_raw)
+            remote = _google_event_to_task_fields(ev)
+        except Exception:
+            return "No disponible"
+
+        reasons: List[str] = []
+
+        if (row.get("title") or "").strip() != (remote.get("title") or "").strip():
+            reasons.append("título")
+
+        if (row.get("notes") or "").strip() != (remote.get("notes") or "").strip():
+            reasons.append("notas")
+
+        if str(row.get("due_date") or "") != str(remote.get("due_date") or ""):
+            reasons.append("fecha")
+
+        if _norm_hhmm(row.get("due_time")) != _norm_hhmm(remote.get("due_time")):
+            reasons.append("hora")
+
+        if not reasons:
+            return "Sin diferencias actuales (conflicto pendiente heredado)"
+        return ", ".join(reasons)
+
     calendar_conflicts = q(
-        "SELECT id, title, due_date, due_time, TIME_FORMAT(due_time, '%%H:%%i') AS due_time_text, calendar_conflict_at "
+        "SELECT id, title, notes, due_date, due_time, TIME_FORMAT(due_time, '%%H:%%i') AS due_time_text, "
+        "calendar_conflict_at, calendar_conflict_payload "
         "FROM tasks "
         "WHERE calendar_sync_state='conflict' "
         "ORDER BY calendar_conflict_at DESC, id DESC "
         "LIMIT %s OFFSET %s",
         (per_page, offset),
     )
+
+    for item in calendar_conflicts:
+        item["conflict_reason"] = _calendar_conflict_reason(item)
 
     calendar_sync_stats = {
         "pending_push": 0,
@@ -5222,21 +5314,46 @@ def _handle_calendar_conflicts_action(action: str, default_endpoint: str):
         return redirect(next_url)
 
     if action == "sync_calendar_now":
+        acquired = False
         try:
-            service = _calendar_sync_service()
-            if service is None:
-                session["calendar_sync_last_info"] = "No hay credenciales de Google Calendar disponibles."
+            acquired = _calendar_sync_lock_acquire(timeout_seconds=2)
+            if not acquired:
+                session["calendar_sync_last_info"] = "Ya hay una sincronización Calendar en curso. Inténtalo de nuevo en unos segundos."
                 session["calendar_sync_last_level"] = "error"
                 return redirect(next_url)
 
-            pull_res = run_calendar_pull_sync(
-                force=True,
-                service=service,
-                max_pages=4,
-                time_budget_seconds=12,
-            )
-            push_res = run_calendar_push_sync(limit=500, service=service)
-            commit()
+            last_exc: Optional[Exception] = None
+            pull_res: Dict[str, Any] = {}
+            push_res: Dict[str, Any] = {}
+
+            for attempt in range(2):
+                try:
+                    service = _calendar_sync_service()
+                    if service is None:
+                        session["calendar_sync_last_info"] = "No hay credenciales de Google Calendar disponibles."
+                        session["calendar_sync_last_level"] = "error"
+                        return redirect(next_url)
+
+                    pull_res = run_calendar_pull_sync(
+                        force=True,
+                        service=service,
+                        max_pages=4,
+                        time_budget_seconds=12,
+                    )
+                    push_res = run_calendar_push_sync(limit=500, service=service)
+                    commit()
+                    last_exc = None
+                    break
+                except Exception as e:
+                    rollback()
+                    last_exc = e
+                    if _is_retryable_db_error(e) and attempt == 0:
+                        continue
+                    raise
+
+            if last_exc is not None:
+                raise last_exc
+
             partial = " (parcial por límite de tiempo/páginas)" if pull_res.get("truncated") else ""
             session["calendar_sync_last_info"] = (
                 "Sync Calendar: "
@@ -5248,6 +5365,9 @@ def _handle_calendar_conflicts_action(action: str, default_endpoint: str):
             rollback()
             session["calendar_sync_last_info"] = f"No se pudo sincronizar con Google Calendar: {e}"
             session["calendar_sync_last_level"] = "error"
+        finally:
+            if acquired:
+                _calendar_sync_lock_release()
         return redirect(next_url)
 
     if action == "resolve_calendar_conflict":
@@ -5269,12 +5389,29 @@ def _handle_calendar_conflicts_action(action: str, default_endpoint: str):
             return redirect(next_url)
 
         try:
+            success_flash = ""
             if resolution == "keep_google":
                 payload = task.get("calendar_conflict_payload")
                 if not payload:
                     flash("No hay payload de conflicto en la tarea.", "error")
                     return redirect(next_url)
                 ev = json.loads(payload)
+
+                # Preferimos leer el evento actual en Google para evitar aplicar un snapshot obsoleto.
+                event_id = (ev.get("id") or "").strip()
+                if event_id:
+                    service = _calendar_sync_service()
+                    if service is not None:
+                        try:
+                            ev_live = service.events().get(
+                                calendarId=calendar_sync_calendar_id(),
+                                eventId=event_id,
+                            ).execute()
+                            if (ev_live.get("status") or "").strip().lower() != "cancelled":
+                                ev = ev_live
+                        except Exception:
+                            pass
+
                 _apply_google_to_task(task_id, ev)
                 exec_sql(
                     "UPDATE tasks "
@@ -5282,6 +5419,7 @@ def _handle_calendar_conflicts_action(action: str, default_endpoint: str):
                     "WHERE id=%s",
                     (task_id,),
                 )
+                success_flash = "Actualizado en GTD."
             elif resolution == "keep_gtd":
                 exec_sql(
                     "UPDATE tasks "
@@ -5290,13 +5428,15 @@ def _handle_calendar_conflicts_action(action: str, default_endpoint: str):
                     (task_id,),
                 )
                 service = _calendar_sync_service()
-                _sync_task_push(task_id, service=service)
+                if not _sync_task_push(task_id, service=service, force_remote_update=True):
+                    raise RuntimeError("No se pudo aplicar GTD en Google Calendar")
+                success_flash = "Actualizado en GCalendar."
             else:
                 flash("Resolución de conflicto inválida.", "error")
                 return redirect(next_url)
 
             commit()
-            flash("Conflicto resuelto.", "ok")
+            flash(success_flash or "Conflicto resuelto.", "ok")
         except Exception as e:
             rollback()
             flash(f"No se pudo resolver el conflicto: {e}", "error")
@@ -5349,7 +5489,7 @@ def _handle_calendar_conflicts_action(action: str, default_endpoint: str):
                         "WHERE id=%s",
                         (task_id,),
                     )
-                    if not _sync_task_push(task_id, service=service):
+                    if not _sync_task_push(task_id, service=service, force_remote_update=True):
                         failed += 1
                         continue
 
@@ -5358,8 +5498,9 @@ def _handle_calendar_conflicts_action(action: str, default_endpoint: str):
                 failed += 1
 
         commit()
+        target_label = "Actualizado en GTD" if resolution == "keep_google" else "Actualizado en GCalendar"
         flash(
-            f"Resolución masiva completada ({'Usar Google' if resolution == 'keep_google' else 'Usar GTD'}): "
+            f"Resolución masiva completada ({'Usar Google' if resolution == 'keep_google' else 'Usar GTD'} · {target_label}): "
             f"{resolved} resueltos, {failed} con error.",
             "ok" if failed == 0 else "error",
         )

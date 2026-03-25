@@ -77,9 +77,14 @@
 
     <div class="card-header">
       <div class="card-title">Tareas sin carpeta</div>
-      <form method="post" action="{{ url_for('inbox_archive_completed_tasks') }}">
-        <button class="btn btn-soft" onclick="return confirm('¿Archivar tareas realizadas del inbox?');">🗄 Archivar realizadas</button>
-      </form>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+        <form method="post" action="{{ url_for('inbox_archive_completed_tasks') }}">
+          <button class="btn btn-soft" onclick="return confirm('¿Archivar tareas realizadas del inbox?');">🗄 Archivar realizadas</button>
+        </form>
+        <form method="post" action="{{ url_for('inbox_empty') }}">
+          <button class="btn btn-danger" onclick="return confirm('¿Vaciar Inbox? Las tareas se enviarán a la papelera.');">🗑 Vaciar Inbox</button>
+        </form>
+      </div>
     </div>
 
     {% if inbox and inbox|length > 0 %}
@@ -173,7 +178,7 @@
     {% if orphan_projects and orphan_projects|length > 0 %}
       <div class="list">
         {% for p in orphan_projects %}
-          <div class="list-row">
+          <div class="list-row"{% if p.archived %} style="opacity:.78;"{% endif %}>
             <div>
               <a class="link" href="{{ url_for('project_detail', project_id=p.id) }}">
                 💼 {{ p.name }}
@@ -181,14 +186,22 @@
               {% if p.archived %}
                 <span class="pill">Archivado</span>
               {% endif %}
+              {% if p.archived and p.archived_at %}
+                <div class="muted" style="margin-top:4px; font-size:12px;">Archivado el {{ p.archived_at.strftime('%d-%m-%Y %H:%M') }}</div>
+              {% endif %}
             </div>
 
             <div class="actions">
               <a class="btn btn-soft" href="{{ url_for('project_edit', project_id=p.id) }}">✎</a>
-
-              <form method="post" action="{{ url_for('project_delete', project_id=p.id) }}">
-                <button class="btn btn-soft" onclick="return confirm('¿Borrar este proyecto?');">🗑</button>
-              </form>
+              {% if p.archived %}
+                <form method="post" action="{{ url_for('project_unarchive', project_id=p.id) }}" style="display:inline; margin:0;">
+                  <button class="btn btn-soft" type="submit" title="Desarchivar">↺</button>
+                </form>
+              {% else %}
+                <form method="post" action="{{ url_for('project_delete', project_id=p.id) }}">
+                  <button class="btn btn-soft" onclick="return confirm('¿Borrar este proyecto?');">🗑</button>
+                </form>
+              {% endif %}
             </div>
           </div>
         {% endfor %}

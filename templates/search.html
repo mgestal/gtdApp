@@ -96,7 +96,7 @@
         </thead>
         <tbody>
         {% for t in rows %}
-          <tr class="{% if t.completed_at %}row-done{% endif %}">
+          <tr class="{% if t.completed_at %}row-done{% endif %}"{% if t.archived %} style="opacity:.78;"{% endif %}>
             <td>
               <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}">
                 <button class="radio" aria-label="toggle"></button>
@@ -106,6 +106,9 @@
             <td>
               <div style="font-weight:600; display:flex; align-items:center; gap:6px;">
                 {{ t.title }}
+                {% if t.archived %}
+                  <span class="pill" style="font-size:10px;">archivada</span>
+                {% endif %}
                 {% if t.notes %}
                   <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('search', q=qtxt, type=search_type, page=page)) }}"
                      title="{{ t.notes }}"
@@ -118,6 +121,9 @@
                   <a class="tagchip taglink" style="margin:0; font-size:9px;" href="{{ url_for('tag_detail', tag_id=tag.id) }}">@{{ tag.name }}</a>
                 {% endfor %}
               </div>
+              {% if t.archived and t.archived_at %}
+                <div class="muted" style="margin-top:4px; font-size:12px;">Archivada el {{ t.archived_at.strftime('%d-%m-%Y %H:%M') }}</div>
+              {% endif %}
             </td>
 
             <td style="white-space:nowrap; font-size:13px;">
@@ -137,10 +143,17 @@
             <td style="text-align:right;">
               <div style="display:inline-flex; gap:5px;">
                 <a class="btn btn-soft" style="padding:5px 8px;" href="{{ url_for('task_edit', task_id=t.id, next=url_for('search', q=qtxt, type=search_type, page=page)) }}">✎</a>
-                <form method="post" action="{{ url_for('task_delete', task_id=t.id) }}" style="display:inline;">
-                  <input type="hidden" name="next" value="{{ url_for('search', q=qtxt, type=search_type, page=page) }}">
-                  <button class="btn btn-soft" style="padding:5px 8px;" onclick="return confirm('¿Borrar?');">🗑</button>
-                </form>
+                {% if t.archived %}
+                  <form method="post" action="{{ url_for('task_unarchive', task_id=t.id) }}" style="display:inline;">
+                    <input type="hidden" name="next" value="{{ url_for('search', q=qtxt, type=search_type, page=page) }}">
+                    <button class="btn btn-soft" style="padding:5px 8px;" type="submit" title="Desarchivar">↺</button>
+                  </form>
+                {% else %}
+                  <form method="post" action="{{ url_for('task_delete', task_id=t.id) }}" style="display:inline;">
+                    <input type="hidden" name="next" value="{{ url_for('search', q=qtxt, type=search_type, page=page) }}">
+                    <button class="btn btn-soft" style="padding:5px 8px;" onclick="return confirm('¿Borrar?');">🗑</button>
+                  </form>
+                {% endif %}
               </div>
             </td>
           </tr>
@@ -165,10 +178,17 @@
             </div>
             <div class="actions">
               <a class="btn btn-soft" href="{{ url_for('project_edit', project_id=p.id) }}">✎</a>
-              <form method="post" action="{{ url_for('project_delete', project_id=p.id) }}" style="display:inline;">
-                <input type="hidden" name="next" value="{{ url_for('search', q=qtxt, type=search_type, page=page) }}">
-                <button class="btn btn-soft" type="submit" onclick="return confirm('¿Borrar el proyecto {{ p.name }}?');">🗑</button>
-              </form>
+              {% if p.archived %}
+                <form method="post" action="{{ url_for('project_unarchive', project_id=p.id) }}" style="display:inline; margin:0;">
+                  <input type="hidden" name="next" value="{{ url_for('search', q=qtxt, type=search_type, page=page) }}">
+                  <button class="btn btn-soft" type="submit" title="Desarchivar">↺</button>
+                </form>
+              {% else %}
+                <form method="post" action="{{ url_for('project_delete', project_id=p.id) }}" style="display:inline;">
+                  <input type="hidden" name="next" value="{{ url_for('search', q=qtxt, type=search_type, page=page) }}">
+                  <button class="btn btn-soft" type="submit" onclick="return confirm('¿Borrar el proyecto {{ p.name }}?');">🗑</button>
+                </form>
+              {% endif %}
             </div>
           </div>
         {% endfor %}

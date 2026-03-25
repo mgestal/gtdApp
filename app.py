@@ -646,11 +646,103 @@ def _register_calendar_conflict(task_id: int, ev: Dict[str, Any]) -> None:
     )
 
 
+def _create_task_from_calendar_event(ev: Dict[str, Any], calendar_id: str) -> Optional[int]:
+    """Create a GTD task from a Google Calendar event when it is not linked yet."""
+    event_id = (ev.get("id") or "").strip()
+    if not event_id:
+        return None
+    if (ev.get("status") or "").strip().lower() == "cancelled":
+        return None
+
+    already = q1("SELECT id FROM tasks WHERE google_event_id=%s", (event_id,))
+    if already:
+        return int(already["id"])
+
+    payload = _google_event_to_task_fields(ev)
+    payload["google_event_id"] = event_id
+    payload["google_calendar_id"] = calendar_id
+
+    parsed_title, parsed_tags, quick_project_name, quick_folder_name = parse_task_quick_entry(
+        payload.get("title") or ""
+    )
+    final_title = parsed_title or (payload.get("title") or "(sin título)")
+
+    project_id = None
+    folder_id = None
+
+    if quick_folder_name:
+        folder_id = find_folder_by_name(quick_folder_name)
+    elif quick_project_name:
+        project_id = find_project_by_name_active(quick_project_name)
+        if project_id is None:
+            project_id = exec_sql(
+                "INSERT INTO projects(name, archived) VALUES(%s, %s)",
+                (quick_project_name, 0),
+            )
+
+    task_id = exec_sql(
+        "INSERT INTO tasks("
+        "title, notes, project_id, folder_id, due_date, due_time, recurrence_rule, "
+        "google_event_id, google_calendar_id, google_event_etag, "
+        "calendar_remote_updated_at, calendar_sync_state, calendar_last_synced_at"
+        ") "
+        "VALUES(%s,%s,%s,%s,%s,%s,NULL,%s,%s,%s,%s,'synced',NOW())",
+        (
+            final_title,
+            payload["notes"],
+            project_id,
+            folder_id,
+            payload["due_date"],
+            payload["due_time"],
+            payload["google_event_id"],
+            payload["google_calendar_id"],
+            payload.get("google_event_etag"),
+            payload.get("calendar_remote_updated_at"),
+        ),
+    )
+
+    # Etiquetas por defecto de importación Calendar.
+    tag_calendar_id = get_or_create_tag("inbox.calendar")
+    tag_agenda_id = get_or_create_tag("agenda")
+    exec_sql(
+        "INSERT IGNORE INTO task_tags(task_id, tag_id) VALUES(%s,%s)",
+        (task_id, tag_calendar_id),
+    )
+    exec_sql(
+        "INSERT IGNORE INTO task_tags(task_id, tag_id) VALUES(%s,%s)",
+        (task_id, tag_agenda_id),
+    )
+
+    for t in parsed_tags:
+        tag_id = get_or_create_tag(t)
+        exec_sql(
+            "INSERT IGNORE INTO task_tags(task_id, tag_id) VALUES(%s,%s)",
+            (task_id, tag_id),
+        )
+
+    ensure_imported_calendar_events_table()
+    exec_sql(
+        "INSERT IGNORE INTO imported_calendar_events(google_event_id, task_id) VALUES(%s,%s)",
+        (payload["google_event_id"], task_id),
+    )
+
+    row = _task_calendar_row(task_id)
+    if row:
+        exec_sql(
+            "UPDATE tasks SET calendar_last_synced_hash=%s WHERE id=%s",
+            (_task_calendar_hash(row), task_id),
+        )
+
+    return task_id
+
+
 def run_calendar_pull_sync(
     force: bool = False,
     service=None,
     max_pages: Optional[int] = None,
     time_budget_seconds: Optional[int] = None,
+    discover_mode: str = "event_date",
+    discover_range: Optional[str] = None,
 ) -> Dict[str, int]:
     global _calendar_last_auto_sync
 
@@ -673,6 +765,7 @@ def run_calendar_pull_sync(
         updated = 0
         conflicts = 0
         archived = 0
+        imported = 0
         seen = 0
 
         linked_rows = q(
@@ -744,11 +837,37 @@ def run_calendar_pull_sync(
             _apply_google_to_task(task_id, ev)
             updated += 1
 
+        # También importar eventos no enlazados aún, reutilizando el mismo criterio
+        # del desplegable de Inbox cuando se recibe desde /calendar/sync_now.
+        safe_mode = (discover_mode or "event_date").strip().lower()
+        safe_range = (discover_range or "15days").strip().lower()
+        if safe_range not in {"today", "7days", "15days"}:
+            safe_range = "15days"
+
+        if safe_mode == "created_date":
+            discover_events = list_recent_events_by_created(
+                service,
+                calendar_id=calendar_sync_calendar_id(),
+                created_range=safe_range,
+            )
+        else:
+            discover_events = list_upcoming_events(
+                service,
+                calendar_id=calendar_sync_calendar_id(),
+                days_range=safe_range,
+            )
+
+        for ev in discover_events:
+            tid = _create_task_from_calendar_event(ev, calendar_sync_calendar_id())
+            if tid:
+                imported += 1
+
         _calendar_last_auto_sync = datetime.now()
         return {
             "updated": updated,
             "conflicts": conflicts,
             "archived": archived,
+            "imported": imported,
             "seen": seen,
             "skipped": 0,
             "pages": 0,
@@ -758,6 +877,7 @@ def run_calendar_pull_sync(
     updated = 0
     conflicts = 0
     archived = 0
+    imported = 0
     seen = 0
     pages = 0
     truncated = 0
@@ -807,6 +927,9 @@ def run_calendar_pull_sync(
                 (eid,),
             )
             if not row:
+                tid = _create_task_from_calendar_event(ev, calendar_sync_calendar_id())
+                if tid:
+                    imported += 1
                 continue
 
             task_id = int(row["id"])
@@ -856,6 +979,7 @@ def run_calendar_pull_sync(
         "updated": updated,
         "conflicts": conflicts,
         "archived": archived,
+        "imported": imported,
         "seen": seen,
         "skipped": 0,
         "pages": pages,
@@ -1285,19 +1409,24 @@ def extract_due_time_from_quick(raw_text: str) -> Tuple[Optional[time], str]:
     return due_time, cleaned
 
 
-def parse_task_quick_entry(raw_title: str) -> Tuple[str, List[str], Optional[str]]:
+def parse_task_quick_entry(raw_title: str) -> Tuple[str, List[str], Optional[str], Optional[str]]:
     tags = TAG_RE.findall(raw_title or "")
     m = PROJ_RE.search(raw_title or "")
     project_name = (m.group(1) or m.group(2) or '').strip() if m else None
+    m_folder = FOLDER_RE.search(raw_title or "")
+    folder_name = (m_folder.group(1) or m_folder.group(2) or '').strip() if m_folder else None
 
     title = TAG_RE.sub("", raw_title)
     title = PROJ_RE.sub("", title)
+    title = FOLDER_RE.sub("", title)
     title = re.sub(r"\s+", " ", title).strip()
 
     tags = [normalize_name(t) for t in tags if normalize_name(t)]
     if project_name:
         project_name = normalize_name(project_name)
-    return title, tags, project_name
+    if folder_name:
+        folder_name = normalize_name(folder_name)
+    return title, tags, project_name, folder_name
     
   
     
@@ -2049,7 +2178,8 @@ def search():
         if search_type == "tasks":
             total_row = q1(
                 "SELECT COUNT(*) AS c FROM tasks t "
-                "WHERE MATCH(t.title, t.notes) AGAINST(%s IN BOOLEAN MODE)",
+                "WHERE t.deleted_at IS NULL "
+                "AND MATCH(t.title, t.notes) AGAINST(%s IN BOOLEAN MODE)",
                 (qtxt + "*",),
             )
             total = int(total_row["c"]) if total_row else 0
@@ -2057,14 +2187,15 @@ def search():
             page = min(page, pages)
             offset = (page - 1) * per_page
             rows = q(
-                "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, "
+                "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.archived, t.archived_at, "
                 "p.name AS project_name, p.id AS project_id, "
                 "fd.id AS folder_id, fd.name AS folder_name "
                 "FROM tasks t "
                 "LEFT JOIN projects p ON p.id=t.project_id "
                 "LEFT JOIN folders fd ON fd.id = COALESCE(t.folder_id, p.folder_id) "
-                "WHERE MATCH(t.title, t.notes) AGAINST(%s IN BOOLEAN MODE) "
-                "ORDER BY (t.completed_at IS NOT NULL) ASC, "
+                "WHERE t.deleted_at IS NULL "
+                "AND MATCH(t.title, t.notes) AGAINST(%s IN BOOLEAN MODE) "
+                "ORDER BY t.archived ASC, (t.completed_at IS NOT NULL) ASC, "
                 "(t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC "
                 "LIMIT %s OFFSET %s",
                 (qtxt + "*", per_page, offset),
@@ -2073,7 +2204,9 @@ def search():
 
         elif search_type == "projects":
             total_row = q1(
-                "SELECT COUNT(*) AS c FROM projects WHERE LOWER(name) LIKE %s OR LOWER(description) LIKE %s",
+                "SELECT COUNT(*) AS c FROM projects "
+                "WHERE deleted_at IS NULL "
+                "AND (LOWER(name) LIKE %s OR LOWER(description) LIKE %s)",
                 (like, like),
             )
             total = int(total_row["c"]) if total_row else 0
@@ -2083,9 +2216,10 @@ def search():
             rows = q(
                 "SELECT p.id, p.name, p.description, p.archived, "
                 "f.name AS folder_name, f.id AS folder_id, "
-                "(SELECT COUNT(*) FROM tasks t WHERE t.project_id=p.id AND t.completed_at IS NULL) AS pending "
+                "(SELECT COUNT(*) FROM tasks t WHERE t.project_id=p.id AND t.completed_at IS NULL AND t.deleted_at IS NULL) AS pending "
                 "FROM projects p LEFT JOIN folders f ON f.id=p.folder_id "
-                "WHERE LOWER(p.name) LIKE %s OR LOWER(p.description) LIKE %s "
+                "WHERE p.deleted_at IS NULL "
+                "AND (LOWER(p.name) LIKE %s OR LOWER(p.description) LIKE %s) "
                 "ORDER BY p.archived ASC, p.name ASC "
                 "LIMIT %s OFFSET %s",
                 (like, like, per_page, offset),
@@ -2121,7 +2255,7 @@ def search():
             offset = (page - 1) * per_page
             rows = q(
                 "SELECT tg.id, tg.name, tg.type, "
-                "(SELECT COUNT(*) FROM task_tags tt WHERE tt.tag_id=tg.id) AS task_count "
+                "(SELECT COUNT(*) FROM task_tags tt JOIN tasks t ON t.id=tt.task_id WHERE tt.tag_id=tg.id AND t.deleted_at IS NULL) AS task_count "
                 "FROM tags tg "
                 "WHERE LOWER(tg.name) LIKE %s "
                 "ORDER BY tg.name ASC "
@@ -2302,16 +2436,16 @@ def home():
     inbox = q(
         "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule "
         "FROM tasks t "
-        "WHERE t.project_id IS NULL AND t.folder_id IS NULL AND t.archived=0 "
+        "WHERE t.project_id IS NULL AND t.folder_id IS NULL AND t.archived=0 AND t.deleted_at IS NULL "
         "ORDER BY (t.due_date IS NULL), t.due_date ASC, t.id DESC "
         "LIMIT 200"
     )
 
     # proyectos sin carpeta
     orphan_projects = q(
-        "SELECT id, name, archived "
+        "SELECT id, name, archived, archived_at "
         "FROM projects "
-        "WHERE folder_id IS NULL "
+        "WHERE folder_id IS NULL AND deleted_at IS NULL "
         "ORDER BY archived ASC, name ASC"
     )
 
@@ -2351,6 +2485,7 @@ def proximo():
         "SELECT COUNT(*) AS c FROM tasks t "
         "LEFT JOIN projects p ON p.id=t.project_id "
         "WHERE t.due_date IS NOT NULL AND t.completed_at IS NULL "
+        "AND t.deleted_at IS NULL "
         "AND (t.project_id IS NULL OR p.archived = 0)"
     )
     total = int(total_row["c"]) if total_row else 0
@@ -2365,6 +2500,7 @@ def proximo():
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "WHERE t.due_date IS NOT NULL "
         "AND t.completed_at IS NULL "
+        "AND t.deleted_at IS NULL "
         "AND (t.project_id IS NULL OR p.archived = 0) "
         "ORDER BY (t.completed_at IS NOT NULL) ASC, t.due_date ASC, (t.due_time IS NULL) ASC, t.due_time ASC, t.id DESC "
         "LIMIT %s OFFSET %s",
@@ -2401,6 +2537,7 @@ def today():
         "LEFT JOIN projects p ON p.id=t.project_id "
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "WHERE t.due_date=%s AND t.completed_at IS NULL "
+        "AND t.deleted_at IS NULL "
         "AND (t.project_id IS NULL OR p.archived = 0) "
         "ORDER BY t.id DESC",
         (today_d,)
@@ -2414,6 +2551,7 @@ def today():
         "LEFT JOIN projects p ON p.id=t.project_id "
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "WHERE t.due_date < %s AND t.completed_at IS NULL "
+        "AND t.deleted_at IS NULL "
         "AND (t.project_id IS NULL OR p.archived = 0) "
         "ORDER BY t.due_date ASC, t.id DESC",
         (today_d,)
@@ -2427,6 +2565,7 @@ def today():
         "LEFT JOIN projects p ON p.id=t.project_id "
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "WHERE t.completed_at IS NOT NULL AND DATE(t.completed_at)=%s "
+        "AND t.deleted_at IS NULL "
         "AND (t.project_id IS NULL OR p.archived = 0) "
         "ORDER BY t.completed_at DESC, t.id DESC",
         (today_d,)
@@ -2467,6 +2606,7 @@ def week():
         "WHERE t.due_date IS NOT NULL "
         "AND t.due_date >= %s "
         "AND t.due_date <= %s "
+        "AND t.deleted_at IS NULL "
         "AND (t.project_id IS NULL OR p.archived = 0) "
         "ORDER BY (t.completed_at IS NOT NULL) ASC, t.due_date ASC, t.id DESC",
         (monday_d, sunday_d)
@@ -2551,6 +2691,7 @@ def calendar_view():
         "AND t.due_date >= %s "
         "AND t.due_date <= %s "
         "AND t.completed_at IS NULL "
+        "AND t.deleted_at IS NULL "
         "AND (t.project_id IS NULL OR p.archived = 0) "
         "ORDER BY t.due_date ASC, t.id DESC",
         (start_date, end_date),
@@ -2565,6 +2706,7 @@ def calendar_view():
         "LEFT JOIN projects p ON p.id=t.project_id "
         "LEFT JOIN folders fd ON fd.id=COALESCE(t.folder_id, p.folder_id) "
         "WHERE t.completed_at IS NOT NULL "
+        "AND t.deleted_at IS NULL "
         "AND DATE(t.completed_at) >= %s "
         "AND DATE(t.completed_at) <= %s "
         "AND (t.project_id IS NULL OR p.archived = 0) "
@@ -2697,7 +2839,7 @@ def projects():
 
 @app.route("/projects/<int:project_id>")
 def project_detail(project_id: int):
-    project = q1("SELECT id, name, description, archived, folder_id FROM projects WHERE id=%s", (project_id,))
+    project = q1("SELECT id, name, description, archived, archived_at, folder_id FROM projects WHERE id=%s", (project_id,))
     if not project:
         abort(404)
 
@@ -2706,7 +2848,7 @@ def project_detail(project_id: int):
     active_tasks = q(
         "SELECT id, title, notes, due_date, completed_at, recurrence_rule, priority "
         "FROM tasks "
-        "WHERE project_id=%s AND completed_at IS NULL "
+        "WHERE project_id=%s AND completed_at IS NULL AND deleted_at IS NULL "
         "ORDER BY (due_date IS NULL) ASC, due_date ASC, id",
         (project_id,),
     )
@@ -2714,7 +2856,7 @@ def project_detail(project_id: int):
     done_tasks = q(
         "SELECT id, title, notes, due_date, completed_at, recurrence_rule, priority "
         "FROM tasks "
-        "WHERE project_id=%s AND completed_at IS NOT NULL "
+        "WHERE project_id=%s AND completed_at IS NOT NULL AND deleted_at IS NULL "
         "ORDER BY completed_at DESC, id",
         (project_id,),
     )
@@ -3206,31 +3348,32 @@ def dashboard():
     first_of_month = today.replace(day=1)
 
     # Estadísticas básicas existentes
-    total = q1("SELECT COUNT(*) AS c FROM tasks")["c"]
-    open_tasks = q1("SELECT COUNT(*) AS c FROM tasks WHERE completed_at IS NULL")["c"]
-    completed = q1("SELECT COUNT(*) AS c FROM tasks WHERE completed_at IS NOT NULL")["c"]
-    inbox = q1("SELECT COUNT(*) AS c FROM tasks WHERE project_id IS NULL AND completed_at IS NULL")["c"]
-    projects_cnt = q1("SELECT COUNT(*) AS c FROM projects WHERE archived=0")["c"]
-    archived_cnt = q1("SELECT COUNT(*) AS c FROM projects WHERE archived=1")["c"]
+    total = q1("SELECT COUNT(*) AS c FROM tasks WHERE deleted_at IS NULL")["c"]
+    open_tasks = q1("SELECT COUNT(*) AS c FROM tasks WHERE completed_at IS NULL AND deleted_at IS NULL")["c"]
+    completed = q1("SELECT COUNT(*) AS c FROM tasks WHERE completed_at IS NOT NULL AND deleted_at IS NULL")["c"]
+    inbox = q1("SELECT COUNT(*) AS c FROM tasks WHERE project_id IS NULL AND completed_at IS NULL AND deleted_at IS NULL")["c"]
+    projects_cnt = q1("SELECT COUNT(*) AS c FROM projects WHERE archived=0 AND deleted_at IS NULL")["c"]
+    archived_cnt = q1("SELECT COUNT(*) AS c FROM projects WHERE archived=1 AND deleted_at IS NULL")["c"]
     pending_active = q1(
         "SELECT COUNT(*) AS c "
         "FROM tasks t "
         "LEFT JOIN projects p ON p.id=t.project_id "
         "WHERE t.completed_at IS NULL "
         "AND t.archived=0 "
+        "AND t.deleted_at IS NULL "
         "AND (t.project_id IS NULL OR p.archived=0)"
     )["c"]
 
     # --- NUEVAS ESTADÍSTICAS DE COMPLETADOS ---
-    comp_today = q1("SELECT COUNT(*) AS c FROM tasks WHERE DATE(completed_at) = %s", (today,))["c"]
-    comp_week = q1("SELECT COUNT(*) AS c FROM tasks WHERE DATE(completed_at) >= %s", (monday,))["c"]
-    comp_month = q1("SELECT COUNT(*) AS c FROM tasks WHERE DATE(completed_at) >= %s", (first_of_month,))["c"]
+    comp_today = q1("SELECT COUNT(*) AS c FROM tasks WHERE DATE(completed_at) = %s AND deleted_at IS NULL", (today,))["c"]
+    comp_week = q1("SELECT COUNT(*) AS c FROM tasks WHERE DATE(completed_at) >= %s AND deleted_at IS NULL", (monday,))["c"]
+    comp_month = q1("SELECT COUNT(*) AS c FROM tasks WHERE DATE(completed_at) >= %s AND deleted_at IS NULL", (first_of_month,))["c"]
     comp_period = q1(
-        "SELECT COUNT(*) AS c FROM tasks WHERE completed_at IS NOT NULL AND DATE(completed_at) >= %s",
+        "SELECT COUNT(*) AS c FROM tasks WHERE completed_at IS NOT NULL AND deleted_at IS NULL AND DATE(completed_at) >= %s",
         (period_start,),
     )["c"]
     created_period = q1(
-        "SELECT COUNT(*) AS c FROM tasks WHERE DATE(created_at) >= %s",
+        "SELECT COUNT(*) AS c FROM tasks WHERE deleted_at IS NULL AND DATE(created_at) >= %s",
         (period_start,),
     )["c"]
     close_rate = int(round((comp_period / created_period) * 100)) if created_period else 0
@@ -3240,6 +3383,7 @@ def dashboard():
         "SELECT DATE(completed_at) AS d, COUNT(*) AS c "
         "FROM tasks "
         "WHERE completed_at IS NOT NULL "
+        "AND deleted_at IS NULL "
         "AND DATE(completed_at) >= %s "
         "GROUP BY DATE(completed_at) "
         "ORDER BY d ASC",
@@ -3293,6 +3437,7 @@ def dashboard():
         "FROM tasks t "
         "LEFT JOIN projects p ON p.id=t.project_id "
         "WHERE t.completed_at IS NOT NULL "
+        "AND t.deleted_at IS NULL "
         "AND DATE(t.completed_at) >= %s "
         "GROUP BY COALESCE(p.name, 'Inbox') "
         "ORDER BY c DESC, name ASC "
@@ -3308,6 +3453,7 @@ def dashboard():
         "INNER JOIN tags tg ON tg.id=tt.tag_id "
         "INNER JOIN tasks t ON t.id=tt.task_id "
         "WHERE t.completed_at IS NOT NULL "
+        "AND t.deleted_at IS NULL "
         "AND DATE(t.completed_at) >= %s "
         "GROUP BY tg.id, tg.name "
         "ORDER BY c DESC, tg.name ASC "
@@ -3325,6 +3471,7 @@ def dashboard():
         LEFT JOIN folders f ON t.folder_id = f.id
         WHERE t.completed_at IS NULL 
                     AND t.archived = 0
+                    AND t.deleted_at IS NULL
           AND t.due_date IS NOT NULL 
           AND t.due_date <= %s 
                     AND (t.project_id IS NULL OR p.archived = 0)
@@ -3599,10 +3746,10 @@ def task_quick_add():
     if detected_priority is not None:
         priority = detected_priority
 
-    title, tags, quick_project_name = parse_task_quick_entry(raw)
+    title, tags, quick_project_name, quick_folder_name = parse_task_quick_entry(raw)
     
     if not title:
-        flash("No se detectó un título válido (deja texto fuera de @etiquetas y #proyecto).", "error")
+        flash("No se detectó un título válido (deja texto fuera de @etiquetas, #proyecto y f:carpeta).", "error")
         return redirect(request.form.get("next") or request.referrer or url_for("home"))
 
     project_id_raw = (request.form.get("project_id") or "").strip()
@@ -3626,20 +3773,23 @@ def task_quick_add():
         project_id = None
 
     try:
-        # 1) Si NO viene project_id explícito pero sí #Proyecto en el texto,
-        #    resolverlo o crearlo dentro de la carpeta actual.
-        if project_id is None and quick_project_name:
-            existing_project_id = find_project_by_name_active(quick_project_name)
+        # 1) Resolver asignación textual si no viene selección explícita.
+        #    Prioridad: f:carpeta > #proyecto
+        if project_id is None and folder_id is None:
+            if quick_folder_name:
+                folder_id = find_folder_by_name(quick_folder_name)
+            elif quick_project_name:
+                existing_project_id = find_project_by_name_active(quick_project_name)
 
-            if existing_project_id is not None:
-                project_id = existing_project_id
-                folder_id = None
-            else:
-                project_id = exec_sql(
-                    "INSERT INTO projects(name, folder_id, archived) VALUES(%s,%s,%s)",
-                    (quick_project_name, folder_id, 0),
-                )
-                folder_id = None
+                if existing_project_id is not None:
+                    project_id = existing_project_id
+                    folder_id = None
+                else:
+                    project_id = exec_sql(
+                        "INSERT INTO projects(name, folder_id, archived) VALUES(%s,%s,%s)",
+                        (quick_project_name, folder_id, 0),
+                    )
+                    folder_id = None
 
         # 2) Insertar tarea:
         #    - si hay project_id => la tarea va al proyecto
@@ -3736,9 +3886,6 @@ def task_edit(task_id: int):
 
         raw_work = raw_title
 
-        # 1) Extraer etiquetas @etiqueta del título
-        parsed_tags = re.findall(r'@([^\s@#]+)', raw_work)
-
         # 2) Extraer fecha del título (solo si el campo due_date está vacío)
         detected_due_date = None
         detected_due_time = None
@@ -3763,22 +3910,9 @@ def task_edit(task_id: int):
                     raw_work = re.sub(pattern, '', raw_work, flags=re.IGNORECASE)
                     break
 
-        # 4) Extraer #Proyecto del título (solo si no se seleccionó proyecto/carpeta en el formulario)
-        quick_project_name = None
-        if not project_raw and not folder_raw:
-            project_candidates = re.findall(r'#([^\s#]+)', raw_work)
-            for candidate in project_candidates:
-                if re.fullmatch(r'\d{2}-\d{2}-\d{4}', candidate):
-                    continue
-                quick_project_name = candidate.strip()
-                break
-
-        # 5) Limpiar el título de tokens parseados
-        clean_title = raw_work
-        clean_title = re.sub(r'@([^\s@#]+)', '', clean_title)
-        clean_title = re.sub(r'#([^\s#]+)', '', clean_title)
-        clean_title = re.sub(TIME_TOKEN_RE, '', clean_title)
-        clean_title = re.sub(r'\s+', ' ', clean_title).strip(" -_,.;:")
+        # 4) Extraer @etiquetas, #proyecto y f:carpeta con el mismo parser que alta rápida.
+        clean_title, parsed_tags, quick_project_name, quick_folder_name = parse_task_quick_entry(raw_work)
+        clean_title = clean_title.strip(" -_,.;:")
 
         if not clean_title:
             flash("No se detectó un título válido tras extraer etiquetas, fecha y proyecto.", "error")
@@ -3819,6 +3953,8 @@ def task_edit(task_id: int):
                 folder_id = int(folder_raw)
             except ValueError:
                 folder_id = None
+        elif quick_folder_name:
+            folder_id = find_folder_by_name(quick_folder_name)
         elif quick_project_name:
             # #Proyecto extraído del título
             project_id = find_project_by_name_active(quick_project_name)
@@ -4381,6 +4517,7 @@ def inbox_archive_completed_tasks():
             "WHERE folder_id IS NULL "
             "AND project_id IS NULL "
             "AND archived=0 "
+            "AND deleted_at IS NULL "
             "AND completed_at IS NOT NULL",
         )
         total_to_archive = int(total_row["c"]) if total_row else 0
@@ -4392,6 +4529,7 @@ def inbox_archive_completed_tasks():
                 "WHERE folder_id IS NULL "
                 "AND project_id IS NULL "
                 "AND archived=0 "
+                "AND deleted_at IS NULL "
                 "AND completed_at IS NOT NULL",
             )
 
@@ -4400,6 +4538,41 @@ def inbox_archive_completed_tasks():
     except Exception as e:
         rollback()
         flash(f"No se pudieron archivar las tareas realizadas: {e}", "error")
+
+    return redirect(url_for("home"))
+
+
+@app.route("/inbox/empty", methods=["POST"])
+def inbox_empty():
+    try:
+        total_row = q1(
+            "SELECT COUNT(*) AS c "
+            "FROM tasks "
+            "WHERE folder_id IS NULL "
+            "AND project_id IS NULL "
+            "AND deleted_at IS NULL",
+        )
+        total_to_trash = int(total_row["c"]) if total_row else 0
+
+        if total_to_trash > 0:
+            exec_sql(
+                "UPDATE tasks "
+                "SET deleted_prev_archived=archived, "
+                "deleted_at=NOW(), "
+                "archived=1, "
+                "archived_at=COALESCE(archived_at, NOW()), "
+                "calendar_local_changed_at=NOW(), "
+                "calendar_sync_state=CASE WHEN google_event_id IS NOT NULL THEN 'pending_delete' ELSE 'none' END "
+                "WHERE folder_id IS NULL "
+                "AND project_id IS NULL "
+                "AND deleted_at IS NULL",
+            )
+
+        commit()
+        flash(f"{total_to_trash} tareas del Inbox enviadas a la papelera.", "ok")
+    except Exception as e:
+        rollback()
+        flash(f"No se pudo vaciar el Inbox: {e}", "error")
 
     return redirect(url_for("home"))
 
@@ -4610,7 +4783,7 @@ def filter_run(filter_id: int):
         "LEFT JOIN projects p ON p.id=t.project_id "
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "LEFT JOIN folders pf ON pf.id=p.folder_id "
-        f"WHERE {where_sql} AND t.archived=0 AND (t.project_id IS NULL OR p.archived = 0)",
+        f"WHERE {where_sql} AND t.archived=0 AND t.deleted_at IS NULL AND (t.project_id IS NULL OR p.archived = 0)",
         tuple(params),
     )
     total = int(total_row["c"]) if total_row else 0
@@ -4625,7 +4798,7 @@ def filter_run(filter_id: int):
         "LEFT JOIN projects p ON p.id=t.project_id "
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "LEFT JOIN folders pf ON pf.id=p.folder_id "
-        f"WHERE {where_sql} AND t.archived=0 AND (t.project_id IS NULL OR p.archived = 0) "
+        f"WHERE {where_sql} AND t.archived=0 AND t.deleted_at IS NULL AND (t.project_id IS NULL OR p.archived = 0) "
         "ORDER BY (t.completed_at IS NOT NULL) ASC, (t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC "
         "LIMIT %s OFFSET %s"
     )
@@ -4781,11 +4954,173 @@ def _restore_project_from_trash(project_id: int) -> bool:
 
     return True
 
+
+def _handle_trash_action(action: str, default_endpoint: str):
+    handled = {
+        "trash_purge_all",
+        "trash_purge_tasks_old",
+        "trash_restore_task",
+        "trash_restore_project",
+    }
+    if action not in handled:
+        return None
+
+    next_url = safe_next_url(request.form.get("next"), default_endpoint)
+
+    if not admin_required():
+        flash("No autorizado.", "error")
+        return redirect(next_url)
+
+    if action == "trash_purge_all":
+        try:
+            _hard_delete_trashed_tasks(older_than_days=None)
+            _hard_delete_trashed_projects()
+            commit()
+            flash("Papelera vaciada por completo.", "ok")
+        except Exception as e:
+            rollback()
+            flash(f"No se pudo vaciar la papelera: {e}", "error")
+        return redirect(next_url)
+
+    if action == "trash_purge_tasks_old":
+        try:
+            _hard_delete_trashed_tasks(older_than_days=7)
+            commit()
+            flash("Tareas eliminadas hace más de una semana borradas definitivamente.", "ok")
+        except Exception as e:
+            rollback()
+            flash(f"No se pudieron limpiar tareas antiguas de papelera: {e}", "error")
+        return redirect(next_url)
+
+    if action == "trash_restore_task":
+        task_id_raw = (request.form.get("task_id") or "").strip()
+        try:
+            task_id = int(task_id_raw)
+        except Exception:
+            flash("task_id inválido.", "error")
+            return redirect(next_url)
+
+        try:
+            restored = _restore_task_from_trash(task_id)
+            if restored:
+                commit()
+                flash("Tarea restaurada desde papelera.", "ok")
+            else:
+                rollback()
+                flash("La tarea no existe en papelera.", "error")
+        except Exception as e:
+            rollback()
+            flash(f"No se pudo restaurar la tarea: {e}", "error")
+        return redirect(next_url)
+
+    project_id_raw = (request.form.get("project_id") or "").strip()
+    try:
+        project_id = int(project_id_raw)
+    except Exception:
+        flash("project_id inválido.", "error")
+        return redirect(next_url)
+
+    try:
+        restored = _restore_project_from_trash(project_id)
+        if restored:
+            commit()
+            flash("Proyecto (y sus tareas) restaurado desde papelera.", "ok")
+        else:
+            rollback()
+            flash("El proyecto no existe en papelera.", "error")
+    except Exception as e:
+        rollback()
+        flash(f"No se pudo restaurar el proyecto: {e}", "error")
+    return redirect(next_url)
+
+
+def _load_trash_view_data(task_page: int, project_page: int) -> Dict[str, Any]:
+    task_per_page = cfg_int(["app", "pagination", "archive_tasks_per_page"], default=25, min_v=5, max_v=500)
+    project_per_page = cfg_int(["app", "pagination", "archive_projects_per_page"], default=25, min_v=5, max_v=500)
+
+    total_tasks_row = q1("SELECT COUNT(*) AS c FROM tasks WHERE deleted_at IS NOT NULL")
+    total_projects_row = q1("SELECT COUNT(*) AS c FROM projects WHERE deleted_at IS NOT NULL")
+
+    total_tasks = int(total_tasks_row["c"]) if total_tasks_row else 0
+    total_projects = int(total_projects_row["c"]) if total_projects_row else 0
+
+    task_pages = max(1, (total_tasks + task_per_page - 1) // task_per_page)
+    project_pages = max(1, (total_projects + project_per_page - 1) // project_per_page)
+
+    task_page = max(1, min(task_page, task_pages))
+    project_page = max(1, min(project_page, project_pages))
+
+    task_offset = (task_page - 1) * task_per_page
+    project_offset = (project_page - 1) * project_per_page
+
+    trashed_tasks = q(
+        "SELECT t.id, t.title, t.deleted_at, p.name AS project_name, p.id AS project_id, "
+        "fd.name AS folder_name, fd.id AS folder_id "
+        "FROM tasks t "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+        "LEFT JOIN folders fd ON fd.id=COALESCE(t.folder_id, p.folder_id) "
+        "WHERE t.deleted_at IS NOT NULL "
+        "ORDER BY t.deleted_at DESC, t.id DESC "
+        "LIMIT %s OFFSET %s",
+        (task_per_page, task_offset),
+    )
+
+    trashed_projects = q(
+        "SELECT p.id, p.name, p.deleted_at, f.name AS folder_name, f.id AS folder_id "
+        "FROM projects p "
+        "LEFT JOIN folders f ON f.id=p.folder_id "
+        "WHERE p.deleted_at IS NOT NULL "
+        "ORDER BY p.deleted_at DESC, p.id DESC "
+        "LIMIT %s OFFSET %s",
+        (project_per_page, project_offset),
+    )
+
+    return {
+        "trash_counts": {"tasks": total_tasks, "projects": total_projects},
+        "trashed_tasks": trashed_tasks,
+        "trashed_projects": trashed_projects,
+        "task_page": task_page,
+        "task_pages": task_pages,
+        "total_tasks": total_tasks,
+        "task_per_page": task_per_page,
+        "project_page": project_page,
+        "project_pages": project_pages,
+        "total_projects": total_projects,
+        "project_per_page": project_per_page,
+    }
+
 def admin_required() -> bool:
     pwd = os.environ.get("GTD_ADMIN_PASSWORD", "")
     if not pwd:
         return False
     return session.get("is_admin") is True
+
+
+@app.route("/trash", methods=["GET", "POST"])
+def trash_view():
+    if not admin_required():
+        flash("No autorizado.", "error")
+        return redirect(url_for("admin"))
+
+    if request.method == "POST":
+        action = (request.form.get("action") or "").strip()
+        handled = _handle_trash_action(action, "trash_view")
+        if handled is not None:
+            return handled
+        flash("Acción de papelera no válida.", "error")
+        return redirect(url_for("trash_view"))
+
+    try:
+        task_page = int(request.args.get("task_page", "1"))
+    except ValueError:
+        task_page = 1
+    try:
+        project_page = int(request.args.get("project_page", "1"))
+    except ValueError:
+        project_page = 1
+
+    context = _load_trash_view_data(task_page=task_page, project_page=project_page)
+    return render_template("trash.html", **context)
 
 @app.route("/admin", methods=["GET", "POST"])
 def admin():
@@ -4976,88 +5311,9 @@ def admin():
 
             return redirect(url_for("admin"))
 
-        if action == "trash_purge_all":
-            if not admin_required():
-                flash("No autorizado.", "error")
-                return redirect(url_for("admin"))
-
-            try:
-                _hard_delete_trashed_tasks(older_than_days=None)
-                _hard_delete_trashed_projects()
-                commit()
-                flash("Papelera vaciada por completo.", "ok")
-            except Exception as e:
-                rollback()
-                flash(f"No se pudo vaciar la papelera: {e}", "error")
-
-            return redirect(url_for("admin"))
-
-        if action == "trash_purge_tasks_old":
-            if not admin_required():
-                flash("No autorizado.", "error")
-                return redirect(url_for("admin"))
-
-            try:
-                _hard_delete_trashed_tasks(older_than_days=7)
-                commit()
-                flash("Tareas eliminadas hace más de una semana borradas definitivamente.", "ok")
-            except Exception as e:
-                rollback()
-                flash(f"No se pudieron limpiar tareas antiguas de papelera: {e}", "error")
-
-            return redirect(url_for("admin"))
-
-        if action == "trash_restore_task":
-            if not admin_required():
-                flash("No autorizado.", "error")
-                return redirect(url_for("admin"))
-
-            task_id_raw = (request.form.get("task_id") or "").strip()
-            try:
-                task_id = int(task_id_raw)
-            except Exception:
-                flash("task_id inválido.", "error")
-                return redirect(url_for("admin"))
-
-            try:
-                restored = _restore_task_from_trash(task_id)
-                if restored:
-                    commit()
-                    flash("Tarea restaurada desde papelera.", "ok")
-                else:
-                    rollback()
-                    flash("La tarea no existe en papelera.", "error")
-            except Exception as e:
-                rollback()
-                flash(f"No se pudo restaurar la tarea: {e}", "error")
-
-            return redirect(url_for("admin"))
-
-        if action == "trash_restore_project":
-            if not admin_required():
-                flash("No autorizado.", "error")
-                return redirect(url_for("admin"))
-
-            project_id_raw = (request.form.get("project_id") or "").strip()
-            try:
-                project_id = int(project_id_raw)
-            except Exception:
-                flash("project_id inválido.", "error")
-                return redirect(url_for("admin"))
-
-            try:
-                restored = _restore_project_from_trash(project_id)
-                if restored:
-                    commit()
-                    flash("Proyecto (y sus tareas) restaurado desde papelera.", "ok")
-                else:
-                    rollback()
-                    flash("El proyecto no existe en papelera.", "error")
-            except Exception as e:
-                rollback()
-                flash(f"No se pudo restaurar el proyecto: {e}", "error")
-
-            return redirect(url_for("admin"))
+        handled_trash = _handle_trash_action(action, "admin")
+        if handled_trash is not None:
+            return handled_trash
             
         if action == "purge_completed_tasks":
             if not admin_required():
@@ -5155,7 +5411,7 @@ def admin():
                 partial = " (parcial por límite de tiempo/páginas)" if pull_res.get("truncated") else ""
                 session["calendar_sync_last_info"] = (
                     "Sync Calendar: "
-                    f"en GTD (updated={pull_res['updated']}, conflicts={pull_res['conflicts']}, archived={pull_res['archived']}) "
+                    f"en GTD (updated={pull_res['updated']}, imported={pull_res.get('imported', 0)}, conflicts={pull_res['conflicts']}, archived={pull_res['archived']}) "
                     f"en GCalendar (ok={push_res['ok']}, fail={push_res['fail']}).{partial}"
                 )
                 session["calendar_sync_last_level"] = "ok"
@@ -5215,6 +5471,73 @@ def admin():
             except Exception as e:
                 rollback()
                 flash(f"No se pudo resolver el conflicto: {e}", "error")
+
+            return redirect(url_for("admin"))
+
+        if action == "resolve_calendar_conflicts_all":
+            resolution = (request.form.get("resolution") or "").strip()
+            if resolution not in ("keep_google", "keep_gtd"):
+                flash("Resolución masiva inválida.", "error")
+                return redirect(url_for("admin"))
+
+            rows = q(
+                "SELECT id, calendar_conflict_payload "
+                "FROM tasks "
+                "WHERE calendar_sync_state='conflict' "
+                "ORDER BY calendar_conflict_at DESC, id DESC "
+                "LIMIT 200"
+            )
+
+            if not rows:
+                flash("No hay conflictos para resolver.", "ok")
+                return redirect(url_for("admin"))
+
+            resolved = 0
+            failed = 0
+
+            try:
+                service = _calendar_sync_service() if resolution == "keep_gtd" else None
+
+                for row in rows:
+                    task_id = int(row["id"])
+                    try:
+                        if resolution == "keep_google":
+                            payload = row.get("calendar_conflict_payload")
+                            if not payload:
+                                failed += 1
+                                continue
+                            ev = json.loads(payload)
+                            _apply_google_to_task(task_id, ev)
+                            exec_sql(
+                                "UPDATE tasks "
+                                "SET calendar_sync_state='synced', calendar_conflict_payload=NULL, calendar_conflict_at=NULL "
+                                "WHERE id=%s",
+                                (task_id,),
+                            )
+                        else:
+                            exec_sql(
+                                "UPDATE tasks "
+                                "SET calendar_sync_state='pending_push', calendar_conflict_payload=NULL, calendar_conflict_at=NULL, calendar_local_changed_at=NOW() "
+                                "WHERE id=%s",
+                                (task_id,),
+                            )
+                            if not _sync_task_push(task_id, service=service):
+                                failed += 1
+                                continue
+
+                        resolved += 1
+                    except Exception:
+                        failed += 1
+
+                commit()
+                flash(
+                    f"Resolución masiva completada ({'Usar Google' if resolution == 'keep_google' else 'Usar GTD'}): "
+                    f"{resolved} resueltos, {failed} con error.",
+                    "ok" if failed == 0 else "error",
+                )
+            except Exception as e:
+                rollback()
+                flash(f"No se pudo resolver en bloque: {e}", "error")
 
             return redirect(url_for("admin"))
 
@@ -5280,8 +5603,6 @@ def admin():
             return redirect(url_for("admin"))
     cfg = load_config()
     archive_orphans_preview = []
-    trashed_tasks_preview = []
-    trashed_projects_preview = []
     trash_counts = {"tasks": 0, "projects": 0}
     calendar_conflicts = []
     calendar_sync_stats = {
@@ -5305,30 +5626,7 @@ def admin():
             "LIMIT 200"
         )
 
-        trashed_tasks_preview = q(
-            "SELECT t.id, t.title, t.deleted_at, p.name AS project_name, "
-            "fd.name AS folder_name "
-            "FROM tasks t "
-            "LEFT JOIN projects p ON p.id=t.project_id "
-            "LEFT JOIN folders fd ON fd.id=COALESCE(t.folder_id, p.folder_id) "
-            "WHERE t.deleted_at IS NOT NULL "
-            "ORDER BY t.deleted_at DESC, t.id DESC "
-            "LIMIT 200"
-        )
-
-        trashed_projects_preview = q(
-            "SELECT p.id, p.name, p.deleted_at, f.name AS folder_name "
-            "FROM projects p "
-            "LEFT JOIN folders f ON f.id=p.folder_id "
-            "WHERE p.deleted_at IS NOT NULL "
-            "ORDER BY p.deleted_at DESC, p.id DESC "
-            "LIMIT 200"
-        )
-
-        c_tasks = q1("SELECT COUNT(*) AS c FROM tasks WHERE deleted_at IS NOT NULL")
-        c_projects = q1("SELECT COUNT(*) AS c FROM projects WHERE deleted_at IS NOT NULL")
-        trash_counts["tasks"] = int(c_tasks.get("c") or 0) if c_tasks else 0
-        trash_counts["projects"] = int(c_projects.get("c") or 0) if c_projects else 0
+        trash_counts = _load_trash_view_data(task_page=1, project_page=1)["trash_counts"]
 
         calendar_conflicts = q(
             "SELECT id, title, due_date, due_time, TIME_FORMAT(due_time, '%%H:%%i') AS due_time_text, calendar_conflict_at "
@@ -5359,8 +5657,6 @@ def admin():
         env_pwd_set=env_pwd_set,
         backups=list_backups(),
         archive_orphans_preview=archive_orphans_preview,
-        trashed_tasks_preview=trashed_tasks_preview,
-        trashed_projects_preview=trashed_projects_preview,
         trash_counts=trash_counts,
         calendar_conflicts=calendar_conflicts,
         calendar_sync_stats=calendar_sync_stats,
@@ -5944,7 +6240,7 @@ def filter_run_expression():
         "LEFT JOIN projects p ON p.id=t.project_id "
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "LEFT JOIN folders pf ON pf.id=p.folder_id "
-        f"WHERE {where_sql} AND t.archived=0 AND (t.project_id IS NULL OR p.archived = 0)",
+        f"WHERE {where_sql} AND t.archived=0 AND t.deleted_at IS NULL AND (t.project_id IS NULL OR p.archived = 0)",
         tuple(params),
     )
 
@@ -5959,7 +6255,7 @@ def filter_run_expression():
         "LEFT JOIN projects p ON p.id=t.project_id "
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "LEFT JOIN folders pf ON pf.id=p.folder_id "
-        f"WHERE {where_sql} AND t.archived=0 AND (t.project_id IS NULL OR p.archived = 0) "
+        f"WHERE {where_sql} AND t.archived=0 AND t.deleted_at IS NULL AND (t.project_id IS NULL OR p.archived = 0) "
         "ORDER BY (t.completed_at IS NOT NULL) ASC, (t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC "
         "LIMIT %s OFFSET %s"
     )
@@ -6002,6 +6298,7 @@ def review():
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "WHERE t.completed_at IS NULL "
         "AND t.archived = 0 "
+        "AND t.deleted_at IS NULL "
         "AND t.project_id IS NULL "
         "AND t.folder_id IS NULL "
         "ORDER BY t.id DESC"
@@ -6020,6 +6317,7 @@ def review():
         "LEFT JOIN projects p ON p.id=t.project_id "
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "WHERE t.completed_at IS NULL "
+        "AND t.deleted_at IS NULL "
         "AND tg.name=%s "
         "AND (t.due_date IS NULL OR t.due_date >= CURDATE()) "
         "AND (t.project_id IS NULL OR p.archived = 0) "
@@ -6037,6 +6335,7 @@ def review():
         "LEFT JOIN projects p ON p.id=t.project_id "
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "WHERE t.completed_at IS NULL "
+        "AND t.deleted_at IS NULL "
         "AND tg.name=%s "
         "AND t.due_date IS NOT NULL "
         "AND t.due_date < CURDATE() "
@@ -6059,6 +6358,7 @@ def review():
         "LEFT JOIN projects p ON p.id=t.project_id "
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "WHERE t.completed_at IS NULL "
+        "AND t.deleted_at IS NULL "
         "AND tg.name=%s "
         "AND t.due_date IS NOT NULL "
         "AND t.due_date >= CURDATE() "
@@ -6078,6 +6378,7 @@ def review():
         "LEFT JOIN projects p ON p.id=t.project_id "
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "WHERE t.completed_at IS NULL "
+        "AND t.deleted_at IS NULL "
         "AND tg.name=%s "
         "AND t.due_date <= DATE_ADD(CURDATE(), INTERVAL 15 DAY) "
         "AND (t.project_id IS NULL OR p.archived = 0) "
@@ -6098,6 +6399,7 @@ def review():
         "LEFT JOIN projects p ON p.id=t.project_id "
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "WHERE t.completed_at IS NULL "
+        "AND t.deleted_at IS NULL "
         "AND tg.name=%s "
         "AND t.due_date IS NOT NULL "
         "AND t.due_date < CURDATE() "
@@ -6120,6 +6422,7 @@ def review():
         "LEFT JOIN projects p ON p.id=t.project_id "
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "WHERE t.completed_at IS NULL "
+        "AND t.deleted_at IS NULL "
         "AND tg.name=%s "
         "AND (t.project_id IS NULL OR p.archived = 0) "
         "ORDER BY (t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC",
@@ -6138,6 +6441,7 @@ def review():
                 "FROM projects p "
                 "LEFT JOIN folders f ON f.id=p.folder_id "
                 "WHERE p.archived=0 "
+                "AND p.deleted_at IS NULL "
                 "AND p.folder_id=%s "
                 "ORDER BY p.name",
                 (en_espera_folder["id"],),
@@ -6172,6 +6476,7 @@ def review():
             f"FROM projects p "
             f"LEFT JOIN folders f ON f.id=p.folder_id "
             f"WHERE p.archived=0 "
+            f"AND p.deleted_at IS NULL "
             f"AND (p.folder_id IS NULL OR p.folder_id NOT IN ({ids_placeholder})) "
             f"ORDER BY p.name"
         ) or []
@@ -6181,6 +6486,7 @@ def review():
             "FROM projects p "
             "LEFT JOIN folders f ON f.id=p.folder_id "
             "WHERE p.archived=0 "
+            "AND p.deleted_at IS NULL "
             "ORDER BY p.name"
         ) or []
 
@@ -6190,8 +6496,9 @@ def review():
             f"SELECT p.id, p.name, p.description, p.archived, f.name AS folder_name "
             f"FROM projects p "
             f"LEFT JOIN folders f ON f.id=p.folder_id "
-            f"LEFT JOIN tasks t ON t.project_id = p.id AND t.completed_at IS NULL "
+            f"LEFT JOIN tasks t ON t.project_id = p.id AND t.completed_at IS NULL AND t.deleted_at IS NULL "
             f"WHERE p.archived = 0 "
+            f"AND p.deleted_at IS NULL "
             f"AND (p.folder_id IS NULL OR p.folder_id NOT IN ({ids_placeholder})) "
             f"GROUP BY p.id, p.name, p.description, p.archived, f.name "
             f"HAVING COUNT(t.id) = 0 "
@@ -6202,8 +6509,9 @@ def review():
             "SELECT p.id, p.name, p.description, p.archived, f.name AS folder_name "
             "FROM projects p "
             "LEFT JOIN folders f ON f.id=p.folder_id "
-            "LEFT JOIN tasks t ON t.project_id = p.id AND t.completed_at IS NULL "
+            "LEFT JOIN tasks t ON t.project_id = p.id AND t.completed_at IS NULL AND t.deleted_at IS NULL "
             "WHERE p.archived = 0 "
+            "AND p.deleted_at IS NULL "
             "GROUP BY p.id, p.name, p.description, p.archived, f.name "
             "HAVING COUNT(t.id) = 0 "
             "ORDER BY p.name"
@@ -6242,7 +6550,7 @@ def review():
                 "f.name AS folder_name, f.id AS folder_id "
                 "FROM tasks t "
                 "LEFT JOIN folders f ON f.id=t.folder_id "
-                f"WHERE t.completed_at IS NULL AND t.project_id IS NULL AND t.folder_id IN ({placeholders}) "
+                f"WHERE t.completed_at IS NULL AND t.deleted_at IS NULL AND t.project_id IS NULL AND t.folder_id IN ({placeholders}) "
                 "ORDER BY (t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC",
                 tuple(sometime_ids),
             ) or []
@@ -6251,7 +6559,7 @@ def review():
         "SELECT p.id, p.name, p.description, p.archived, f.name AS folder_name "
         "FROM projects p "
         "JOIN folders f ON f.id=p.folder_id "
-        "WHERE p.archived=0 AND f.name=%s "
+        "WHERE p.archived=0 AND p.deleted_at IS NULL AND f.name=%s "
         "ORDER BY p.name",
         ("ADTV",)
     ) if adtv_folder_exists else []
@@ -6260,7 +6568,7 @@ def review():
         "SELECT p.id, p.name, p.description, p.archived, f.name AS folder_name "
         "FROM projects p "
         "JOIN folders f ON f.id=p.folder_id "
-        "WHERE p.archived=0 AND f.name=%s "
+        "WHERE p.archived=0 AND p.deleted_at IS NULL AND f.name=%s "
         "ORDER BY p.name",
         ("🔜 EstaSemanaNo",)
     ) if esta_semana_no_folder_exists else []
@@ -6283,6 +6591,7 @@ def review():
                 "LEFT JOIN projects p ON p.id=t.project_id "
                 "LEFT JOIN folders f ON f.id=t.folder_id "
                 "WHERE t.completed_at IS NULL "
+                "AND t.deleted_at IS NULL "
                 "AND t.folder_id=%s "
                 "AND t.project_id IS NULL "
                 "ORDER BY t.id DESC",
@@ -6294,6 +6603,7 @@ def review():
                 "FROM projects p "
                 "LEFT JOIN folders f ON f.id=p.folder_id "
                 "WHERE p.archived=0 "
+                "AND p.deleted_at IS NULL "
                 "AND p.folder_id=%s "
                 "ORDER BY p.name",
                 (checklists_folder_id,)
@@ -6372,6 +6682,7 @@ def next_actions():
             "LEFT JOIN projects p ON p.id=t.project_id "
             "WHERE tt.tag_id=%s "
             "AND t.completed_at IS NULL "
+            "AND t.deleted_at IS NULL "
             "AND (t.project_id IS NULL OR p.archived = 0)",
             (tag["id"],)
         )
@@ -6393,6 +6704,7 @@ def next_actions():
             "LEFT JOIN folders fd ON fd.id = COALESCE(t.folder_id, p.folder_id) "
             "WHERE tt.tag_id=%s "
             "AND t.completed_at IS NULL "
+            "AND t.deleted_at IS NULL "
             "AND (t.project_id IS NULL OR p.archived = 0) "
             "ORDER BY (t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC "
             "LIMIT %s OFFSET %s",
@@ -6761,16 +7073,37 @@ def calendar_import_to_inbox():
             payload["google_event_id"] = ev.get("id")
             payload["google_calendar_id"] = calendar_id
 
+            # Parseo rápido también en títulos importados desde Calendar.
+            parsed_title, parsed_tags, quick_project_name, quick_folder_name = parse_task_quick_entry(
+                payload.get("title") or ""
+            )
+            final_title = parsed_title or (payload.get("title") or "(sin título)")
+
+            project_id = None
+            folder_id = None
+
+            if quick_folder_name:
+                folder_id = find_folder_by_name(quick_folder_name)
+            elif quick_project_name:
+                project_id = find_project_by_name_active(quick_project_name)
+                if project_id is None:
+                    project_id = exec_sql(
+                        "INSERT INTO projects(name, archived) VALUES(%s, %s)",
+                        (quick_project_name, 0),
+                    )
+
             task_id = exec_sql(
                 "INSERT INTO tasks("
                 "title, notes, project_id, folder_id, due_date, due_time, recurrence_rule, "
                 "google_event_id, google_calendar_id, google_event_etag, "
                 "calendar_remote_updated_at, calendar_sync_state, calendar_last_synced_at"
                 ") "
-                "VALUES(%s,%s,NULL,NULL,%s,%s,NULL,%s,%s,%s,%s,'synced',NOW())",
+                "VALUES(%s,%s,%s,%s,%s,%s,NULL,%s,%s,%s,%s,'synced',NOW())",
                 (
-                    payload["title"],
+                    final_title,
                     payload["notes"],
+                    project_id,
+                    folder_id,
                     payload["due_date"],
                     payload["due_time"],
                     payload["google_event_id"],
@@ -6788,6 +7121,13 @@ def calendar_import_to_inbox():
                 "INSERT IGNORE INTO task_tags(task_id, tag_id) VALUES(%s,%s)",
                 (task_id, tag_agenda_id),
             )
+
+            for t in parsed_tags:
+                tag_id = get_or_create_tag(t)
+                exec_sql(
+                    "INSERT IGNORE INTO task_tags(task_id, tag_id) VALUES(%s,%s)",
+                    (task_id, tag_id),
+                )
 
             exec_sql(
                 "INSERT INTO imported_calendar_events(google_event_id, task_id) VALUES(%s,%s)",
@@ -6838,20 +7178,39 @@ def calendar_sync_now():
             flash(msg, "error")
             return redirect(next_url)
 
+        import_mode = (request.form.get("import_mode") or "event_date").strip().lower()
+        range_value = (request.form.get("range_value") or "15days").strip().lower()
+
+        if import_mode not in {"event_date", "created_date"}:
+            import_mode = "event_date"
+        if range_value not in {"today", "7days", "15days"}:
+            range_value = "15days"
+
         pull_res = run_calendar_pull_sync(
             force=True,
             service=service,
             max_pages=4,
             time_budget_seconds=12,
+            discover_mode=import_mode,
+            discover_range=range_value,
         )
         push_res = run_calendar_push_sync(limit=500, service=service)
         commit()
 
         partial = " (parcial por límite de tiempo/páginas)" if pull_res.get("truncated") else ""
+        mode_txt = "fecha de creación" if import_mode == "created_date" else "fecha del evento"
+        range_labels = {
+            "today": "hoy",
+            "7days": "7 días",
+            "15days": "15 días",
+        }
+        range_txt = range_labels.get(range_value, range_value)
+
         msg = (
             "Sync Calendar: "
-            f"en GTD (updated={pull_res['updated']}, conflicts={pull_res['conflicts']}, archived={pull_res['archived']}) "
-            f"en GCalendar (ok={push_res['ok']}, fail={push_res['fail']}).{partial}"
+            f"en GTD (updated={pull_res['updated']}, imported={pull_res.get('imported', 0)}, conflicts={pull_res['conflicts']}, archived={pull_res['archived']}) "
+            f"en GCalendar (ok={push_res['ok']}, fail={push_res['fail']}) "
+            f"[importación no enlazados: {mode_txt}, {range_txt}].{partial}"
         )
         session["calendar_sync_last_info"] = msg
         session["calendar_sync_last_level"] = "ok"

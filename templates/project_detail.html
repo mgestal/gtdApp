@@ -30,10 +30,22 @@
     {% endif %}
     <h1>💼 {{ project.name }}</h1>
     {% if project.description %}<p class="subtitle">{{ project.description }}</p>{% endif %}
-    {% if project.archived %}<p class="subtitle"><span class="pill">Archivado</span></p>{% endif %}
+    {% if project.archived %}
+      <p class="subtitle">
+        <span class="pill">Archivado</span>
+        {% if project.archived_at %}
+          <span class="muted" style="margin-left:8px;">{{ project.archived_at.strftime('%d-%m-%Y %H:%M') }}</span>
+        {% endif %}
+      </p>
+    {% endif %}
   </div>
 
   <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px; align-items:center;">
+    {% if project.archived %}
+      <form method="post" action="{{ url_for('project_unarchive', project_id=project.id) }}" style="margin:0;">
+        <button class="btn btn-primary" type="submit">Desarchivar proyecto</button>
+      </form>
+    {% endif %}
     <div class="dropdown" id="projActions">
       <button type="button" class="btn btn-soft" onclick="toggleProjActions(event)">
         Acciones ▾
@@ -45,7 +57,9 @@
             <button class="dropdown-item" onclick="return confirm('¿Archivar este proyecto?');">Archivar proyecto</button>
           </form>
         {% else %}
-          <span class="dropdown-item disabled">Archivar proyecto</span>
+          <form method="post" action="{{ url_for('project_unarchive', project_id=project.id) }}">
+            <button class="dropdown-item" type="submit">Desarchivar proyecto</button>
+          </form>
         {% endif %}
         <form method="post" action="{{ url_for('project_delete', project_id=project.id) }}">
           <button class="dropdown-item danger" onclick="return confirm('¿Borrar el proyecto {{ project.name|e }}?');">Borrar proyecto</button>

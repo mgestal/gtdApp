@@ -284,6 +284,89 @@ code{
   grid-template-columns: 1fr 1fr;
   gap: 12px;
 }
+
+/* Evita desbordes horizontales en grids cuando el contenido interno es ancho. */
+.grid2 > *{ min-width: 0; }
+
+.admin-col-left,
+.admin-col-right{ min-width: 0; }
+
+.admin-col-left .card,
+.admin-col-right .card{ overflow: hidden; }
+
+.admin-col-left .list-row,
+.admin-col-right .list-row{ flex-wrap: wrap; }
+
+.admin-col-left .table,
+.admin-col-right .table{ width: 100%; table-layout: fixed; }
+
+.admin-col-left .table td,
+.admin-col-right .table td,
+.admin-col-left .table th,
+.admin-col-right .table th{
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.admin-col-left .btn,
+.admin-col-right .btn{ max-width: 100%; }
+
+.admin-readable-table-wrap{
+  overflow-x: auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.admin-readable-table{
+  width: 100%;
+  table-layout: auto;
+}
+
+.admin-readable-table th,
+.admin-readable-table td{
+  word-break: normal;
+  overflow-wrap: normal;
+  white-space: normal;
+}
+
+.admin-readable-table .admin-readable-col-title,
+.trash-table .trash-col-title,
+.calendar-conflicts-table .calendar-conflicts-col-title{
+  min-width: 240px;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+.admin-readable-table thead th{
+  white-space: nowrap;
+}
+
+.admin-readable-table td:not(.admin-readable-col-title),
+.admin-readable-table th:not(.admin-readable-col-title){
+  white-space: nowrap;
+}
+
+.trash-table-wrap{
+  overflow-y: auto;
+}
+
+.calendar-conflicts-table-wrap{
+  overflow-y: hidden;
+}
+
+.calendar-conflicts-table{
+  min-width: 760px;
+}
+
+.calendar-conflicts-table .calendar-conflicts-col-title{
+  min-width: 220px;
+}
+
+.trash-table{
+  min-width: 680px;
+}
+
 .grid3{
   display:grid;
   grid-template-columns: repeat(3, 1fr);

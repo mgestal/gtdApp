@@ -1509,14 +1509,14 @@ def _parse_date_ref(ref: str) -> Tuple[Optional[date], bool]:
         return None, True
     if r.lower() == "hoy":
         return _today_madrid(), False
-    # integer days from today
-    if re.fullmatch(r"-?\d+", r):
+    # integer days from today: N, +N, -N
+    if re.fullmatch(r"[+-]?\d+", r):
         return _today_madrid() + timedelta(days=int(r)), False
     # dd-mm-aaaa
     try:
         return datetime.strptime(r, "%d-%m-%Y").date(), False
     except ValueError:
-        raise FilterParseError(f"Referencia de fecha inválida: '{ref}'. Usa hoy, NULL, N o dd-mm-aaaa.")
+        raise FilterParseError(f"Referencia de fecha inválida: '{ref}'. Usa hoy, NULL, N, +N, -N o dd-mm-aaaa.")
 
 
 

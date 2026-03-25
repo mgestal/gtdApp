@@ -56,12 +56,15 @@ Filtros guardados con expresiones similares a Todoist / Things.
 | `prioridad:valor` | prioridad exacta (`alta`, `media`, `baja`, `1`, `2`, `3`, `null`) |
 | `fecha<hoy` | comparación de fecha (`fecha`/`due` + `<` `<=` `=` `>=` `>`) |
 
+Referencias de fecha admitidas en comparadores: `hoy`, `null`, `N`, `+N`, `-N`, `dd-mm-aaaa`.
+
 Palabras clave: `inbox`, `done`, `hoy`, `null`  
 Operadores: `&` (AND), `|` (OR), `!` (NOT), `( )` (agrupación). También se acepta `and`/`or`.
 
 **Ejemplos:**
 ```
 @NextAction & !done & due<=+3
+due>=+7
 fa:Trabajo & (@Urgente | @Agenda)
 inbox | p:null
 fecha<hoy

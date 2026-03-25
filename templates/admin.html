@@ -64,6 +64,137 @@
 
         <div class="card" style="margin-top:20px;">
           <div class="card-header">
+            <div>
+              <div class="card-title">Papelera</div>
+              <div class="card-sub">Tareas y proyectos eliminados (no visibles en búsquedas, filtros, enlaces de etiquetas ni archivo).</div>
+            </div>
+          </div>
+
+          <div class="list" style="gap:12px;">
+            <div class="list-row" style="align-items:flex-start;">
+              <div style="flex:1;">
+                <div class="hint">Elementos en papelera: tareas={{ trash_counts.tasks }}, proyectos={{ trash_counts.projects }}</div>
+              </div>
+              <form method="post" class="form" style="margin:0;">
+                <input type="hidden" name="action" value="trash_purge_tasks_old">
+                <button class="btn btn-soft" type="submit" onclick="return confirm('¿Borrar definitivamente tareas en papelera con más de 7 días?');">
+                  Borrar tareas > 7 días
+                </button>
+              </form>
+              <form method="post" class="form" style="margin:0;">
+                <input type="hidden" name="action" value="trash_purge_all">
+                <button class="btn btn-primary" type="submit" onclick="return confirm('¿Vaciar la papelera por completo? Esta acción es irreversible.');">
+                  Vaciar papelera
+                </button>
+              </form>
+            </div>
+
+            <div class="list-row" style="align-items:flex-start;">
+              <div style="flex:1; min-width:0;">
+                <div style="font-weight:600; margin-bottom:6px;">Tareas en papelera</div>
+                {% if trashed_tasks_preview %}
+                  <div style="max-height:220px; overflow:auto; border:1px solid var(--border); border-radius:12px;">
+                    <table class="table">
+                      <thead>
+                        <tr>
+                          <th>Título</th>
+                          <th style="width:160px;">Eliminada</th>
+                          <th style="width:180px;">Ubicación</th>
+                          <th style="width:120px;"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {% for t in trashed_tasks_preview %}
+                          <tr>
+                            <td>{{ t.title }}</td>
+                            <td>
+                              {% if t.deleted_at %}
+                                {{ t.deleted_at.strftime('%d-%m-%Y %H:%M') }}
+                              {% else %}
+                                <span class="muted">—</span>
+                              {% endif %}
+                            </td>
+                            <td>
+                              {% if t.project_name %}
+                                💼 {{ t.project_name }}
+                              {% elif t.folder_name %}
+                                📂 {{ t.folder_name }}
+                              {% else %}
+                                📥 Inbox
+                              {% endif %}
+                            </td>
+                            <td>
+                              <form method="post" class="form" style="margin:0;">
+                                <input type="hidden" name="action" value="trash_restore_task">
+                                <input type="hidden" name="task_id" value="{{ t.id }}">
+                                <button class="btn btn-soft" type="submit">Restaurar</button>
+                              </form>
+                            </td>
+                          </tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </div>
+                {% else %}
+                  <div class="empty" style="margin:0;">No hay tareas en papelera.</div>
+                {% endif %}
+              </div>
+            </div>
+
+            <div class="list-row" style="align-items:flex-start;">
+              <div style="flex:1; min-width:0;">
+                <div style="font-weight:600; margin-bottom:6px;">Proyectos en papelera</div>
+                {% if trashed_projects_preview %}
+                  <div style="max-height:220px; overflow:auto; border:1px solid var(--border); border-radius:12px;">
+                    <table class="table">
+                      <thead>
+                        <tr>
+                          <th>Proyecto</th>
+                          <th style="width:160px;">Eliminado</th>
+                          <th style="width:180px;">Carpeta</th>
+                          <th style="width:120px;"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {% for p in trashed_projects_preview %}
+                          <tr>
+                            <td>{{ p.name }}</td>
+                            <td>
+                              {% if p.deleted_at %}
+                                {{ p.deleted_at.strftime('%d-%m-%Y %H:%M') }}
+                              {% else %}
+                                <span class="muted">—</span>
+                              {% endif %}
+                            </td>
+                            <td>
+                              {% if p.folder_name %}
+                                📂 {{ p.folder_name }}
+                              {% else %}
+                                <span class="muted">—</span>
+                              {% endif %}
+                            </td>
+                            <td>
+                              <form method="post" class="form" style="margin:0;">
+                                <input type="hidden" name="action" value="trash_restore_project">
+                                <input type="hidden" name="project_id" value="{{ p.id }}">
+                                <button class="btn btn-soft" type="submit">Restaurar</button>
+                              </form>
+                            </td>
+                          </tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </div>
+                {% else %}
+                  <div class="empty" style="margin:0;">No hay proyectos en papelera.</div>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:20px;">
+          <div class="card-header">
             <div class="card-title">Copias de seguridad</div>
           </div>
 

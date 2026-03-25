@@ -915,6 +915,14 @@ def ensure_schema_updates() -> None:
     )
     exec_sql(
         "ALTER TABLE tasks "
+        "ADD COLUMN IF NOT EXISTS deleted_at DATETIME NULL AFTER archived_at"
+    )
+    exec_sql(
+        "ALTER TABLE tasks "
+        "ADD COLUMN IF NOT EXISTS deleted_prev_archived TINYINT(1) NOT NULL DEFAULT 0 AFTER deleted_at"
+    )
+    exec_sql(
+        "ALTER TABLE tasks "
         "ADD COLUMN IF NOT EXISTS priority TINYINT NULL DEFAULT NULL AFTER recurrence_rule"
     )
     exec_sql(
@@ -926,6 +934,14 @@ def ensure_schema_updates() -> None:
         "ADD COLUMN IF NOT EXISTS archived_at DATETIME NULL AFTER archived"
     )
     exec_sql(
+        "ALTER TABLE projects "
+        "ADD COLUMN IF NOT EXISTS deleted_at DATETIME NULL AFTER archived_at"
+    )
+    exec_sql(
+        "ALTER TABLE projects "
+        "ADD COLUMN IF NOT EXISTS deleted_prev_archived TINYINT(1) NOT NULL DEFAULT 0 AFTER deleted_at"
+    )
+    exec_sql(
         "ALTER TABLE tasks "
         "ADD INDEX IF NOT EXISTS idx_tasks_archived (archived)"
     )
@@ -935,11 +951,19 @@ def ensure_schema_updates() -> None:
     )
     exec_sql(
         "ALTER TABLE tasks "
+        "ADD INDEX IF NOT EXISTS idx_tasks_deleted_at (deleted_at)"
+    )
+    exec_sql(
+        "ALTER TABLE tasks "
         "ADD INDEX IF NOT EXISTS idx_tasks_priority (priority)"
     )
     exec_sql(
         "ALTER TABLE projects "
         "ADD INDEX IF NOT EXISTS idx_projects_archived_at (archived_at)"
+    )
+    exec_sql(
+        "ALTER TABLE projects "
+        "ADD INDEX IF NOT EXISTS idx_projects_deleted_at (deleted_at)"
     )
 
     # Calendar sync metadata (bidireccional)
@@ -1867,6 +1891,19 @@ def next_due_date(current_due: date, rule: RRule) -> date:
 
     return current_due + timedelta(weeks=1)
 
+
+def next_due_date_after_today(current_due: date, rule: RRule, today_d: date) -> date:
+    """Return the first recurrence date strictly after today."""
+    due = next_due_date(current_due, rule)
+    guard = 0
+    while due <= today_d and guard < 512:
+        nxt = next_due_date(due, rule)
+        if nxt <= due:
+            break
+        due = nxt
+        guard += 1
+    return due
+
 # -----------------------------------------------
 # ---------------- Sidebar folder tree ----------------
 # -----------------------------------------------
@@ -2117,7 +2154,7 @@ def inject_common():
         "APP_TITLE": cfg.get("app", {}).get("title", "GTD App"),
         "folder_tree": load_folder_tree(include_archived=False),
         "all_folders": q("SELECT id, name FROM folders ORDER BY name"),
-        "all_projects": q("SELECT id, name FROM projects WHERE archived=0 ORDER BY name"),
+        "all_projects": q("SELECT id, name FROM projects WHERE archived=0 AND deleted_at IS NULL ORDER BY name"),
         "TAG_SEARCH_URL": url_for("api_tags_search"),
         "PROJECT_SEARCH_URL": url_for("api_projects_search"),
         "FOLDER_SEARCH_URL": url_for("api_folders_search"),
@@ -2720,7 +2757,12 @@ def project_move(project_id: int):
 @app.route("/projects/<int:project_id>/unarchive", methods=["POST"])
 def project_unarchive(project_id: int):
     try:
-        exec_sql("UPDATE projects SET archived=0, archived_at=NULL, updated_at=NOW() WHERE id=%s", (project_id,))
+        exec_sql(
+            "UPDATE projects "
+            "SET archived=0, archived_at=NULL, deleted_at=NULL, deleted_prev_archived=0, updated_at=NOW() "
+            "WHERE id=%s",
+            (project_id,),
+        )
         commit()
         flash("Proyecto desarchivado (activo de nuevo).", "ok")
     except Exception as e:
@@ -2737,22 +2779,42 @@ def project_delete(project_id: int):
     - Confirmación por UI (JS confirm)
     - Borra primero tareas -> por FK ON DELETE CASCADE se limpian task_tags
     """
-    proj = q1("SELECT id, name FROM projects WHERE id=%s", (project_id,))
+    proj = q1("SELECT id, name, archived FROM projects WHERE id=%s", (project_id,))
     if not proj:
         abort(404)
 
     try:
-        # 1) Borrar tareas del proyecto (y sus task_tags por cascade)
-        exec_sql("DELETE FROM tasks WHERE project_id=%s", (project_id,))
+        prev_archived = int(proj.get("archived") or 0)
 
-        # 2) Borrar el proyecto
-        exec_sql("DELETE FROM projects WHERE id=%s", (project_id,))
+        # Enviar todas las tareas del proyecto a papelera conservando su historial/etiquetas/subtareas.
+        exec_sql(
+            "UPDATE tasks "
+            "SET deleted_prev_archived=archived, deleted_at=NOW(), archived=1, archived_at=COALESCE(archived_at, NOW()) "
+            "WHERE project_id=%s",
+            (project_id,),
+        )
+
+        # Marcar para borrado remoto en Calendar las tareas del proyecto que tengan evento vinculado.
+        exec_sql(
+            "UPDATE tasks "
+            "SET calendar_sync_state='pending_delete', calendar_local_changed_at=NOW() "
+            "WHERE project_id=%s AND google_event_id IS NOT NULL",
+            (project_id,),
+        )
+
+        # Enviar el proyecto a papelera.
+        exec_sql(
+            "UPDATE projects "
+            "SET deleted_prev_archived=%s, deleted_at=NOW(), archived=1, archived_at=COALESCE(archived_at, NOW()), updated_at=NOW() "
+            "WHERE id=%s",
+            (prev_archived, project_id),
+        )
 
         commit()
-        flash(f"Proyecto '{proj['name']}' y sus tareas han sido borrados.", "ok")
+        flash(f"Proyecto '{proj['name']}' y sus tareas enviados a la papelera.", "ok")
     except Exception as e:
         rollback()
-        flash(f"No se pudo borrar el proyecto: {e}", "error")
+        flash(f"No se pudo enviar el proyecto a papelera: {e}", "error")
 
     next_url = safe_next_url(request.form.get("next"), "projects")
     return redirect(next_url)
@@ -3785,33 +3847,22 @@ def task_edit(task_id: int):
 
 @app.route("/tasks/<int:task_id>/delete", methods=["POST"])
 def task_delete(task_id: int):
-    task = q1("SELECT id, google_event_id, google_calendar_id FROM tasks WHERE id=%s", (task_id,))
+    task = q1("SELECT id, archived FROM tasks WHERE id=%s", (task_id,))
     if not task:
         abort(404)
 
     try:
-        # Si estaba vinculada a Calendar, intentamos borrar el evento remoto (best effort).
-        event_id = task.get("google_event_id")
-        if event_id:
-            try:
-                service = _calendar_sync_service()
-                if service is not None:
-                    service.events().delete(
-                        calendarId=(task.get("google_calendar_id") or calendar_sync_calendar_id()),
-                        eventId=event_id,
-                    ).execute()
-            except Exception:
-                pass
-
-        # Borra primero dependencias conocidas (si no existen tablas, fallará y lo verás claro en el log)
-        exec_sql("DELETE FROM task_tags WHERE task_id=%s", (task_id,))
-        exec_sql("DELETE FROM subtasks WHERE task_id=%s", (task_id,))  # <- clave si hay subtareas
-
-        # Por último la tarea
-        exec_sql("DELETE FROM tasks WHERE id=%s", (task_id,))
+        prev_archived = int(task.get("archived") or 0)
+        exec_sql(
+            "UPDATE tasks "
+            "SET deleted_prev_archived=%s, deleted_at=NOW(), archived=1, archived_at=COALESCE(archived_at, NOW()) "
+            "WHERE id=%s",
+            (prev_archived, task_id),
+        )
+        _mark_task_calendar_dirty(task_id)
 
         commit()
-        flash("Tarea borrada.", "ok")
+        flash("Tarea enviada a la papelera.", "ok")
     except Exception as e:
         rollback()
         # Esto hace que el error real aparezca en error.log de Apache/mod_wsgi
@@ -3819,7 +3870,7 @@ def task_delete(task_id: int):
             app.logger.exception("task_delete failed for task_id=%s", task_id)
         except Exception:
             pass
-        flash(f"No se pudo borrar la tarea: {e}", "error")
+        flash(f"No se pudo enviar la tarea a papelera: {e}", "error")
 
     next_url = safe_next_url(request.form.get("next"), "home")
     return redirect(next_url)
@@ -3849,6 +3900,11 @@ def task_toggle(task_id: int):
                 rule = parse_rrule(task["recurrence_rule"])
                 previous_due = task["due_date"]
                 next_due = next_due_date(task["due_date"], rule)
+                recurrence_due_choice = (request.form.get("recurrence_due_choice") or "").strip().lower()
+                today_d = now.date()
+
+                if next_due <= today_d and recurrence_due_choice == "future":
+                    next_due = next_due_date_after_today(task["due_date"], rule, today_d)
                 exec_sql(
                     "UPDATE tasks SET last_completed_at=%s, due_date=%s, completed_at=NULL WHERE id=%s",
                     (now, next_due, task_id),
@@ -3942,7 +3998,12 @@ def task_unarchive(task_id: int):
         abort(404)
 
     try:
-        exec_sql("UPDATE tasks SET archived=0, archived_at=NULL WHERE id=%s", (task_id,))
+        exec_sql(
+            "UPDATE tasks "
+            "SET archived=0, archived_at=NULL, deleted_at=NULL, deleted_prev_archived=0 "
+            "WHERE id=%s",
+            (task_id,),
+        )
         _mark_task_calendar_dirty(task_id)
         commit()
         flash("Tarea desarchivada.", "ok")
@@ -4606,6 +4667,83 @@ def filter_delete(filter_id: int):
 
 # ---------------- Admin ----------------
 
+def _restore_task_from_trash(task_id: int) -> bool:
+    row = q1("SELECT id, deleted_prev_archived FROM tasks WHERE id=%s AND deleted_at IS NOT NULL", (task_id,))
+    if not row:
+        return False
+
+    prev_archived = int(row.get("deleted_prev_archived") or 0)
+    archived_at = "NULL" if prev_archived == 0 else "COALESCE(archived_at, NOW())"
+    exec_sql(
+        "UPDATE tasks "
+        f"SET deleted_at=NULL, archived=%s, archived_at={archived_at}, deleted_prev_archived=0 "
+        "WHERE id=%s",
+        (prev_archived, task_id),
+    )
+    _mark_task_calendar_dirty(task_id)
+    return True
+
+
+def _hard_delete_trashed_tasks(older_than_days: Optional[int] = None) -> None:
+    where = "t.deleted_at IS NOT NULL"
+    params: List[Any] = []
+    if older_than_days is not None:
+        where += " AND t.deleted_at < (NOW() - INTERVAL %s DAY)"
+        params.append(int(older_than_days))
+
+    exec_sql(
+        "DELETE tt FROM task_tags tt "
+        "JOIN tasks t ON t.id=tt.task_id "
+        "WHERE " + where,
+        tuple(params),
+    )
+    exec_sql(
+        "DELETE st FROM subtasks st "
+        "JOIN tasks t ON t.id=st.task_id "
+        "WHERE " + where,
+        tuple(params),
+    )
+    exec_sql(
+        "DELETE rr FROM recurring_task_runs rr "
+        "JOIN tasks t ON t.id=rr.task_id "
+        "WHERE " + where,
+        tuple(params),
+    )
+    exec_sql(
+        "DELETE t FROM tasks t WHERE " + where,
+        tuple(params),
+    )
+
+
+def _hard_delete_trashed_projects() -> None:
+    exec_sql("DELETE FROM projects WHERE deleted_at IS NOT NULL")
+
+
+def _restore_project_from_trash(project_id: int) -> bool:
+    row = q1("SELECT id, deleted_prev_archived FROM projects WHERE id=%s AND deleted_at IS NOT NULL", (project_id,))
+    if not row:
+        return False
+
+    prev_archived = int(row.get("deleted_prev_archived") or 0)
+    archived_at = "NULL" if prev_archived == 0 else "COALESCE(archived_at, NOW())"
+    exec_sql(
+        "UPDATE projects "
+        f"SET deleted_at=NULL, archived=%s, archived_at={archived_at}, deleted_prev_archived=0, updated_at=NOW() "
+        "WHERE id=%s",
+        (prev_archived, project_id),
+    )
+
+    # Restaurar también tareas del proyecto que estén en papelera.
+    rows = q(
+        "SELECT id, deleted_prev_archived FROM tasks "
+        "WHERE project_id=%s AND deleted_at IS NOT NULL",
+        (project_id,),
+    )
+    for t in rows:
+        _restore_task_from_trash(int(t["id"]))
+
+    return True
+
 def admin_required() -> bool:
     pwd = os.environ.get("GTD_ADMIN_PASSWORD", "")
     if not pwd:
@@ -4788,15 +4926,99 @@ def admin():
 
             try:
                 exec_sql(
-                    "DELETE p FROM projects p "
-                    "LEFT JOIN tasks t ON t.project_id = p.id "
-                    "WHERE t.id IS NULL"
+                    "UPDATE projects p "
+                    "LEFT JOIN tasks t ON t.project_id = p.id AND t.deleted_at IS NULL "
+                    "SET p.deleted_prev_archived=p.archived, p.deleted_at=NOW(), p.archived=1, p.archived_at=COALESCE(p.archived_at, NOW()), p.updated_at=NOW() "
+                    "WHERE t.id IS NULL AND p.deleted_at IS NULL"
                 )
                 commit()
-                flash("Proyectos vacíos borrados.", "ok")
+                flash("Proyectos vacíos enviados a papelera.", "ok")
             except Exception as e:
                 rollback()
-                flash(f"No se pudieron borrar los proyectos vacíos: {e}", "error")
+                flash(f"No se pudieron enviar a papelera los proyectos vacíos: {e}", "error")
+
+            return redirect(url_for("admin"))
+
+        if action == "trash_purge_all":
+            if not admin_required():
+                flash("No autorizado.", "error")
+                return redirect(url_for("admin"))
+
+            try:
+                _hard_delete_trashed_tasks(older_than_days=None)
+                _hard_delete_trashed_projects()
+                commit()
+                flash("Papelera vaciada por completo.", "ok")
+            except Exception as e:
+                rollback()
+                flash(f"No se pudo vaciar la papelera: {e}", "error")
+
+            return redirect(url_for("admin"))
+
+        if action == "trash_purge_tasks_old":
+            if not admin_required():
+                flash("No autorizado.", "error")
+                return redirect(url_for("admin"))
+
+            try:
+                _hard_delete_trashed_tasks(older_than_days=7)
+                commit()
+                flash("Tareas eliminadas hace más de una semana borradas definitivamente.", "ok")
+            except Exception as e:
+                rollback()
+                flash(f"No se pudieron limpiar tareas antiguas de papelera: {e}", "error")
+
+            return redirect(url_for("admin"))
+
+        if action == "trash_restore_task":
+            if not admin_required():
+                flash("No autorizado.", "error")
+                return redirect(url_for("admin"))
+
+            task_id_raw = (request.form.get("task_id") or "").strip()
+            try:
+                task_id = int(task_id_raw)
+            except Exception:
+                flash("task_id inválido.", "error")
+                return redirect(url_for("admin"))
+
+            try:
+                restored = _restore_task_from_trash(task_id)
+                if restored:
+                    commit()
+                    flash("Tarea restaurada desde papelera.", "ok")
+                else:
+                    rollback()
+                    flash("La tarea no existe en papelera.", "error")
+            except Exception as e:
+                rollback()
+                flash(f"No se pudo restaurar la tarea: {e}", "error")
+
+            return redirect(url_for("admin"))
+
+        if action == "trash_restore_project":
+            if not admin_required():
+                flash("No autorizado.", "error")
+                return redirect(url_for("admin"))
+
+            project_id_raw = (request.form.get("project_id") or "").strip()
+            try:
+                project_id = int(project_id_raw)
+            except Exception:
+                flash("project_id inválido.", "error")
+                return redirect(url_for("admin"))
+
+            try:
+                restored = _restore_project_from_trash(project_id)
+                if restored:
+                    commit()
+                    flash("Proyecto (y sus tareas) restaurado desde papelera.", "ok")
+                else:
+                    rollback()
+                    flash("El proyecto no existe en papelera.", "error")
+            except Exception as e:
+                rollback()
+                flash(f"No se pudo restaurar el proyecto: {e}", "error")
 
             return redirect(url_for("admin"))
             
@@ -4815,37 +5037,30 @@ def admin():
             days = int(days_raw)
 
             try:
-                # Borrar primero relaciones de etiquetas de las tareas afectadas
                 exec_sql(
-                    "DELETE tt FROM task_tags tt "
-                    "JOIN tasks t ON t.id = tt.task_id "
+                    "UPDATE tasks t "
+                    "SET t.deleted_prev_archived=t.archived, t.deleted_at=NOW(), t.archived=1, t.archived_at=COALESCE(t.archived_at, NOW()) "
                     "WHERE t.completed_at IS NOT NULL "
+                    "AND t.deleted_at IS NULL "
                     "AND t.completed_at < (NOW() - INTERVAL %s DAY)",
                     (days,),
                 )
 
-                # Si tienes subtareas, borrarlas también para esas tareas
                 exec_sql(
-                    "DELETE st FROM subtasks st "
-                    "JOIN tasks t ON t.id = st.task_id "
+                    "UPDATE tasks t "
+                    "SET t.calendar_sync_state='pending_delete', t.calendar_local_changed_at=NOW() "
                     "WHERE t.completed_at IS NOT NULL "
+                    "AND t.deleted_at IS NOT NULL "
+                    "AND t.google_event_id IS NOT NULL "
                     "AND t.completed_at < (NOW() - INTERVAL %s DAY)",
-                    (days,),
-                )
-
-                # Finalmente borrar las tareas completadas antiguas
-                exec_sql(
-                    "DELETE FROM tasks "
-                    "WHERE completed_at IS NOT NULL "
-                    "AND completed_at < (NOW() - INTERVAL %s DAY)",
                     (days,),
                 )
 
                 commit()
-                flash(f"Tareas realizadas con antigüedad superior a {days} días borradas.", "ok")
+                flash(f"Tareas realizadas con antigüedad superior a {days} días enviadas a papelera.", "ok")
             except Exception as e:
                 rollback()
-                flash(f"No se pudieron borrar las tareas realizadas: {e}", "error")
+                flash(f"No se pudieron enviar a papelera las tareas realizadas: {e}", "error")
 
             return redirect(url_for("admin"))
 
@@ -4859,6 +5074,7 @@ def admin():
                     "SELECT COUNT(*) AS c "
                     "FROM tasks "
                     "WHERE archived=0 "
+                    "AND deleted_at IS NULL "
                     "AND project_id IS NULL "
                     "AND completed_at IS NOT NULL "
                     "AND completed_at < (NOW() - INTERVAL 7 DAY)"
@@ -4870,6 +5086,7 @@ def admin():
                         "UPDATE tasks "
                         "SET archived=1, archived_at=NOW() "
                         "WHERE archived=0 "
+                        "AND deleted_at IS NULL "
                         "AND project_id IS NULL "
                         "AND completed_at IS NOT NULL "
                         "AND completed_at < (NOW() - INTERVAL 7 DAY)"
@@ -5024,9 +5241,11 @@ def admin():
             save_config(cfg)
             flash("Paginación guardada.", "ok")
             return redirect(url_for("admin"))
-
     cfg = load_config()
     archive_orphans_preview = []
+    trashed_tasks_preview = []
+    trashed_projects_preview = []
+    trash_counts = {"tasks": 0, "projects": 0}
     calendar_conflicts = []
     calendar_sync_stats = {
         "pending_push": 0,
@@ -5041,12 +5260,38 @@ def admin():
             "FROM tasks t "
             "LEFT JOIN folders f ON f.id=t.folder_id "
             "WHERE t.archived=0 "
+            "AND t.deleted_at IS NULL "
             "AND t.project_id IS NULL "
             "AND t.completed_at IS NOT NULL "
             "AND t.completed_at < (NOW() - INTERVAL 7 DAY) "
             "ORDER BY t.completed_at ASC, t.id ASC "
             "LIMIT 200"
         )
+
+        trashed_tasks_preview = q(
+            "SELECT t.id, t.title, t.deleted_at, p.name AS project_name, "
+            "fd.name AS folder_name "
+            "FROM tasks t "
+            "LEFT JOIN projects p ON p.id=t.project_id "
+            "LEFT JOIN folders fd ON fd.id=COALESCE(t.folder_id, p.folder_id) "
+            "WHERE t.deleted_at IS NOT NULL "
+            "ORDER BY t.deleted_at DESC, t.id DESC "
+            "LIMIT 200"
+        )
+
+        trashed_projects_preview = q(
+            "SELECT p.id, p.name, p.deleted_at, f.name AS folder_name "
+            "FROM projects p "
+            "LEFT JOIN folders f ON f.id=p.folder_id "
+            "WHERE p.deleted_at IS NOT NULL "
+            "ORDER BY p.deleted_at DESC, p.id DESC "
+            "LIMIT 200"
+        )
+
+        c_tasks = q1("SELECT COUNT(*) AS c FROM tasks WHERE deleted_at IS NOT NULL")
+        c_projects = q1("SELECT COUNT(*) AS c FROM projects WHERE deleted_at IS NOT NULL")
+        trash_counts["tasks"] = int(c_tasks.get("c") or 0) if c_tasks else 0
+        trash_counts["projects"] = int(c_projects.get("c") or 0) if c_projects else 0
 
         calendar_conflicts = q(
             "SELECT id, title, due_date, due_time, TIME_FORMAT(due_time, '%%H:%%i') AS due_time_text, calendar_conflict_at "
@@ -5077,6 +5322,9 @@ def admin():
         env_pwd_set=env_pwd_set,
         backups=list_backups(),
         archive_orphans_preview=archive_orphans_preview,
+        trashed_tasks_preview=trashed_tasks_preview,
+        trashed_projects_preview=trashed_projects_preview,
+        trash_counts=trash_counts,
         calendar_conflicts=calendar_conflicts,
         calendar_sync_stats=calendar_sync_stats,
         calendar_sync_last_info=calendar_sync_last_info,
@@ -5116,9 +5364,9 @@ def archive_view():
     project_offset = (project_page - 1) * project_per_page
 
     params_tasks: List[Any] = []
-    where_tasks = ["t.archived=1"]
+    where_tasks = ["t.archived=1", "t.deleted_at IS NULL"]
     params_projects: List[Any] = []
-    where_projects = ["p.archived=1"]
+    where_projects = ["p.archived=1", "p.deleted_at IS NULL"]
 
     if qtxt:
         like = f"%{qtxt.lower()}%"
@@ -6159,7 +6407,7 @@ def api_projects_search():
 
     if not qtxt:
         rows = q(
-            "SELECT id, name FROM projects WHERE archived=0 ORDER BY name LIMIT 8"
+            "SELECT id, name FROM projects WHERE archived=0 AND deleted_at IS NULL ORDER BY name LIMIT 8"
         )
         return jsonify({"items": rows})
 
@@ -6168,7 +6416,7 @@ def api_projects_search():
     rows = q(
         "SELECT id, name "
         "FROM projects "
-        "WHERE archived=0 AND LOWER(name) LIKE %s "
+        "WHERE archived=0 AND deleted_at IS NULL AND LOWER(name) LIKE %s "
         "ORDER BY name "
         "LIMIT 8",
         (f"%{qtxt}%",),
@@ -6199,6 +6447,43 @@ def api_folders_search():
     )
 
     return jsonify({"items": rows})
+
+
+@app.route("/api/tasks/<int:task_id>/toggle_preview")
+def api_task_toggle_preview(task_id: int):
+    task = q1(
+        "SELECT id, title, completed_at, due_date, recurrence_rule "
+        "FROM tasks WHERE id=%s",
+        (task_id,),
+    )
+    if not task:
+        abort(404)
+
+    # Si está completada o no es periódica con fecha, no hay nada que decidir.
+    if task.get("completed_at") or not task.get("recurrence_rule") or not task.get("due_date"):
+        return jsonify({"requires_choice": False})
+
+    rule = parse_rrule(task["recurrence_rule"])
+    if not rule:
+        return jsonify({"requires_choice": False})
+
+    today_d = datetime.now(ZoneInfo("Europe/Madrid")).date()
+    keep_due = next_due_date(task["due_date"], rule)
+
+    if keep_due > today_d:
+        return jsonify({"requires_choice": False})
+
+    future_due = next_due_date_after_today(task["due_date"], rule, today_d)
+    return jsonify(
+        {
+            "requires_choice": True,
+            "task_id": int(task["id"]),
+            "title": task.get("title") or "",
+            "today": today_d.isoformat(),
+            "keep_due": keep_due.isoformat(),
+            "future_due": future_due.isoformat(),
+        }
+    )
     
 
 @app.route("/gmail/import_to_inbox", methods=["POST"])

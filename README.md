@@ -20,6 +20,7 @@ Aplicación personal de **Getting Things Done (GTD)** desarrollada en **Python +
 - Resaltado visual con barra vertical de color en listados de trabajo (cuando la prioridad está informada)
 - Fechas de vencimiento, hora y recurrencias (diaria, semanal, mensual, anual)
 - **Histórico de ejecuciones** de tareas periódicas accesible directamente desde el chip ⟲ periódica
+- Al completar una periódica caducada, la app permite elegir entre mantener la siguiente fecha calculada o saltar a la primera fecha válida posterior a hoy
 - Archivar tareas realizadas desde el Inbox con un solo clic
 - Revisión semanal con bloque EnEspera separado en tareas etiquetadas y proyectos de la carpeta EnEspera
 - Creación rápida desde cualquier vista con sintaxis natural
@@ -30,16 +31,25 @@ Aplicación personal de **Getting Things Done (GTD)** desarrollada en **Python +
 ```
 Llamar a Juan @NextAction *mañana
 Comprar tinta #Oficina *18-03
+Revisar plan #"Area Personal"
+Revisar rutina f:"GTD Folders"
 Revisar cuentas @Finanzas *+3 h:09:00 cada mes
 Enviar propuesta ^alta @NextAction *hoy
 ```
 
-Formato: `nombre [@etiqueta] [^alta|^media|^baja] [*fecha] [h:HH:MM] [#proyecto] [cada día|semana|mes|año]`
+Formato: `nombre [@etiqueta] [^alta|^media|^baja] [*fecha] [h:HH:MM] [#proyecto | #"proyecto con espacios"] [f:carpeta | f:"carpeta con espacios"] [cada día|semana|mes|año]`
 
 Notas sobre prioridad:
 
 - El token `^alta`, `^media` o `^baja` asigna prioridad al crear la tarea rápida.
 - Si no se indica prioridad, la tarea queda sin prioridad (`NULL`).
+
+Notas sobre tareas periódicas caducadas:
+
+- Al marcar como realizada una tarea periódica cuyo siguiente vencimiento quedaría en el pasado, aparece un modal con tres opciones.
+- `Cancelar`: no marca la tarea.
+- `Mantener fecha`: usa la siguiente fecha calculada por la regla, aunque siga en pasado.
+- `Usar fecha válida`: salta automáticamente al primer vencimiento posterior a hoy.
 
 ### Lenguaje de filtros avanzado
 

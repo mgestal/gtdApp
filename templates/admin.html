@@ -234,7 +234,7 @@
             <div class="list-row" style="align-items:flex-start;">
               <div style="flex:1;">
                 <div style="font-weight:600; margin-bottom:4px;">Limpiar tareas realizadas</div>
-                <div class="hint">Borra tareas con <code>completed_at</code> anterior al límite indicado.</div>
+                <div class="hint">Borra tareas no periódicas con <code>completed_at</code> anterior al límite indicado.</div>
               </div>
 
               <form method="post" class="form" style="min-width:230px; gap:8px; margin:0;">
@@ -254,7 +254,7 @@
             <div class="list-row" style="align-items:flex-start;">
               <div style="flex:1;">
                 <div style="font-weight:600; margin-bottom:4px;">Archivar tareas sin proyecto realizadas</div>
-                <div class="hint">Archiva tareas completadas hace más de 7 días y sin proyecto.</div>
+                <div class="hint">Archiva tareas no periódicas completadas hace más de 7 días y sin proyecto.</div>
               </div>
 
               <button class="btn btn-soft" type="button" onclick="document.getElementById('archiveOrphansDialog').showModal();">

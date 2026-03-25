@@ -2848,7 +2848,7 @@ def project_detail(project_id: int):
     active_tasks = q(
         "SELECT id, title, notes, due_date, completed_at, recurrence_rule, priority "
         "FROM tasks "
-        "WHERE project_id=%s AND completed_at IS NULL AND deleted_at IS NULL "
+        "WHERE project_id=%s AND completed_at IS NULL AND archived=0 AND deleted_at IS NULL "
         "ORDER BY (due_date IS NULL) ASC, due_date ASC, id",
         (project_id,),
     )
@@ -2856,7 +2856,7 @@ def project_detail(project_id: int):
     done_tasks = q(
         "SELECT id, title, notes, due_date, completed_at, recurrence_rule, priority "
         "FROM tasks "
-        "WHERE project_id=%s AND completed_at IS NOT NULL AND deleted_at IS NULL "
+        "WHERE project_id=%s AND completed_at IS NOT NULL AND archived=0 AND deleted_at IS NULL "
         "ORDER BY completed_at DESC, id",
         (project_id,),
     )
@@ -3140,7 +3140,12 @@ def tag_detail(tag_id: int):
     total_row = q1(
         "SELECT COUNT(*) AS c "
         "FROM task_tags tt "
-        "WHERE tt.tag_id=%s",
+        "JOIN tasks t ON t.id=tt.task_id "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+        "WHERE tt.tag_id=%s "
+        "AND t.archived=0 "
+        "AND t.deleted_at IS NULL "
+        "AND (t.project_id IS NULL OR p.archived=0)",
         (tag_id,),
     )
     total = int(total_row["c"]) if total_row else 0
@@ -3156,6 +3161,9 @@ def tag_detail(tag_id: int):
         "LEFT JOIN projects p ON p.id=t.project_id "
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "WHERE tt.tag_id=%s "
+        "AND t.archived=0 "
+        "AND t.deleted_at IS NULL "
+        "AND (t.project_id IS NULL OR p.archived=0) "
         "ORDER BY (t.completed_at IS NOT NULL) ASC, (t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC "
         "LIMIT %s OFFSET %s",
         (tag_id, per_page, offset),
@@ -4331,7 +4339,7 @@ def folder_detail(folder_id: int):
 
     # Proyectos dentro de la carpeta (activos)
     projects = q(
-        "SELECT id, name FROM projects WHERE folder_id=%s AND archived=0 ORDER BY name",
+        "SELECT id, name FROM projects WHERE folder_id=%s AND archived=0 AND deleted_at IS NULL ORDER BY name",
         (folder_id,)
     )
 
@@ -4339,7 +4347,7 @@ def folder_detail(folder_id: int):
     tasks = q(
         "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority "
         "FROM tasks t "
-        "WHERE t.folder_id=%s AND t.project_id IS NULL AND t.archived=0 "
+        "WHERE t.folder_id=%s AND t.project_id IS NULL AND t.archived=0 AND t.deleted_at IS NULL "
         "ORDER BY (t.completed_at IS NOT NULL) ASC, (t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC",
         (folder_id,)
     )
@@ -4526,15 +4534,24 @@ def folder_purge_tasks(folder_id: int):
 
 @app.route("/inbox/archive_completed_tasks", methods=["POST"])
 def inbox_archive_completed_tasks():
+    periodic_names = ("periodica", "periódica", "periodicas", "periódicas")
     try:
         total_row = q1(
             "SELECT COUNT(*) AS c "
-            "FROM tasks "
-            "WHERE folder_id IS NULL "
-            "AND project_id IS NULL "
-            "AND archived=0 "
-            "AND deleted_at IS NULL "
-            "AND completed_at IS NOT NULL",
+            "FROM tasks t "
+            "WHERE t.folder_id IS NULL "
+            "AND t.project_id IS NULL "
+            "AND t.archived=0 "
+            "AND t.deleted_at IS NULL "
+            "AND t.completed_at IS NOT NULL "
+            "AND (t.recurrence_rule IS NULL OR TRIM(t.recurrence_rule)='') "
+            "AND NOT EXISTS ("
+            "  SELECT 1 FROM task_tags tt "
+            "  JOIN tags tg ON tg.id=tt.tag_id "
+            "  WHERE tt.task_id=t.id "
+            "  AND LOWER(tg.name) IN (LOWER(%s), LOWER(%s), LOWER(%s), LOWER(%s))"
+            ")",
+            periodic_names,
         )
         total_to_archive = int(total_row["c"]) if total_row else 0
 
@@ -4542,11 +4559,25 @@ def inbox_archive_completed_tasks():
             exec_sql(
                 "UPDATE tasks "
                 "SET archived=1, archived_at=NOW() "
-                "WHERE folder_id IS NULL "
-                "AND project_id IS NULL "
-                "AND archived=0 "
-                "AND deleted_at IS NULL "
-                "AND completed_at IS NOT NULL",
+                "WHERE id IN ("
+                "  SELECT id FROM ("
+                "    SELECT t.id "
+                "    FROM tasks t "
+                "    WHERE t.folder_id IS NULL "
+                "    AND t.project_id IS NULL "
+                "    AND t.archived=0 "
+                "    AND t.deleted_at IS NULL "
+                "    AND t.completed_at IS NOT NULL "
+                "    AND (t.recurrence_rule IS NULL OR TRIM(t.recurrence_rule)='') "
+                "    AND NOT EXISTS ("
+                "      SELECT 1 FROM task_tags tt "
+                "      JOIN tags tg ON tg.id=tt.tag_id "
+                "      WHERE tt.task_id=t.id "
+                "      AND LOWER(tg.name) IN (LOWER(%s), LOWER(%s), LOWER(%s), LOWER(%s))"
+                "    )"
+                "  ) AS eligible"
+                ")",
+                periodic_names,
             )
 
         commit()
@@ -4598,16 +4629,25 @@ def folder_archive_completed_tasks(folder_id: int):
     folder = q1("SELECT id, name FROM folders WHERE id=%s", (folder_id,))
     if not folder:
         abort(404)
+    periodic_names = ("periodica", "periódica", "periodicas", "periódicas")
 
     try:
         total_row = q1(
             "SELECT COUNT(*) AS c "
-            "FROM tasks "
-            "WHERE folder_id=%s "
-            "AND project_id IS NULL "
-            "AND archived=0 "
-            "AND completed_at IS NOT NULL",
-            (folder_id,),
+            "FROM tasks t "
+            "WHERE t.folder_id=%s "
+            "AND t.project_id IS NULL "
+            "AND t.archived=0 "
+            "AND t.deleted_at IS NULL "
+            "AND t.completed_at IS NOT NULL "
+            "AND (t.recurrence_rule IS NULL OR TRIM(t.recurrence_rule)='') "
+            "AND NOT EXISTS ("
+            "  SELECT 1 FROM task_tags tt "
+            "  JOIN tags tg ON tg.id=tt.tag_id "
+            "  WHERE tt.task_id=t.id "
+            "  AND LOWER(tg.name) IN (LOWER(%s), LOWER(%s), LOWER(%s), LOWER(%s))"
+            ")",
+            (folder_id, *periodic_names),
         )
         total_to_archive = int(total_row["c"]) if total_row else 0
 
@@ -4615,11 +4655,25 @@ def folder_archive_completed_tasks(folder_id: int):
             exec_sql(
                 "UPDATE tasks "
                 "SET archived=1, archived_at=NOW() "
-                "WHERE folder_id=%s "
-                "AND project_id IS NULL "
-                "AND archived=0 "
-                "AND completed_at IS NOT NULL",
-                (folder_id,),
+                "WHERE id IN ("
+                "  SELECT id FROM ("
+                "    SELECT t.id "
+                "    FROM tasks t "
+                "    WHERE t.folder_id=%s "
+                "    AND t.project_id IS NULL "
+                "    AND t.archived=0 "
+                "    AND t.deleted_at IS NULL "
+                "    AND t.completed_at IS NOT NULL "
+                "    AND (t.recurrence_rule IS NULL OR TRIM(t.recurrence_rule)='') "
+                "    AND NOT EXISTS ("
+                "      SELECT 1 FROM task_tags tt "
+                "      JOIN tags tg ON tg.id=tt.tag_id "
+                "      WHERE tt.task_id=t.id "
+                "      AND LOWER(tg.name) IN (LOWER(%s), LOWER(%s), LOWER(%s), LOWER(%s))"
+                "    )"
+                "  ) AS eligible"
+                ")",
+                (folder_id, *periodic_names),
             )
 
         commit()
@@ -5344,6 +5398,7 @@ def admin():
                 return redirect(url_for("admin"))
 
             days = int(days_raw)
+            periodic_names = ("periodica", "periódica", "periodicas", "periódicas")
 
             try:
                 exec_sql(
@@ -5351,8 +5406,15 @@ def admin():
                     "SET t.deleted_prev_archived=t.archived, t.deleted_at=NOW(), t.archived=1, t.archived_at=COALESCE(t.archived_at, NOW()) "
                     "WHERE t.completed_at IS NOT NULL "
                     "AND t.deleted_at IS NULL "
-                    "AND t.completed_at < (NOW() - INTERVAL %s DAY)",
-                    (days,),
+                    "AND t.completed_at < (NOW() - INTERVAL %s DAY) "
+                    "AND (t.recurrence_rule IS NULL OR TRIM(t.recurrence_rule)='') "
+                    "AND NOT EXISTS ("
+                    "  SELECT 1 FROM task_tags tt "
+                    "  JOIN tags tg ON tg.id=tt.tag_id "
+                    "  WHERE tt.task_id=t.id "
+                    "  AND LOWER(tg.name) IN (LOWER(%s), LOWER(%s), LOWER(%s), LOWER(%s))"
+                    ")",
+                    (days, *periodic_names),
                 )
 
                 exec_sql(
@@ -5361,8 +5423,15 @@ def admin():
                     "WHERE t.completed_at IS NOT NULL "
                     "AND t.deleted_at IS NOT NULL "
                     "AND t.google_event_id IS NOT NULL "
-                    "AND t.completed_at < (NOW() - INTERVAL %s DAY)",
-                    (days,),
+                    "AND t.completed_at < (NOW() - INTERVAL %s DAY) "
+                    "AND (t.recurrence_rule IS NULL OR TRIM(t.recurrence_rule)='') "
+                    "AND NOT EXISTS ("
+                    "  SELECT 1 FROM task_tags tt "
+                    "  JOIN tags tg ON tg.id=tt.tag_id "
+                    "  WHERE tt.task_id=t.id "
+                    "  AND LOWER(tg.name) IN (LOWER(%s), LOWER(%s), LOWER(%s), LOWER(%s))"
+                    ")",
+                    (days, *periodic_names),
                 )
 
                 commit()
@@ -5377,16 +5446,25 @@ def admin():
             if not admin_required():
                 flash("No autorizado.", "error")
                 return redirect(url_for("admin"))
+            periodic_names = ("periodica", "periódica", "periodicas", "periódicas")
 
             try:
                 total_row = q1(
                     "SELECT COUNT(*) AS c "
-                    "FROM tasks "
-                    "WHERE archived=0 "
-                    "AND deleted_at IS NULL "
-                    "AND project_id IS NULL "
-                    "AND completed_at IS NOT NULL "
-                    "AND completed_at < (NOW() - INTERVAL 7 DAY)"
+                    "FROM tasks t "
+                    "WHERE t.archived=0 "
+                    "AND t.deleted_at IS NULL "
+                    "AND t.project_id IS NULL "
+                    "AND t.completed_at IS NOT NULL "
+                    "AND t.completed_at < (NOW() - INTERVAL 7 DAY) "
+                    "AND (t.recurrence_rule IS NULL OR TRIM(t.recurrence_rule)='') "
+                    "AND NOT EXISTS ("
+                    "  SELECT 1 FROM task_tags tt "
+                    "  JOIN tags tg ON tg.id=tt.tag_id "
+                    "  WHERE tt.task_id=t.id "
+                    "  AND LOWER(tg.name) IN (LOWER(%s), LOWER(%s), LOWER(%s), LOWER(%s))"
+                    ")",
+                    periodic_names,
                 )
                 total_to_archive = int(total_row["c"]) if total_row else 0
 
@@ -5394,11 +5472,25 @@ def admin():
                     exec_sql(
                         "UPDATE tasks "
                         "SET archived=1, archived_at=NOW() "
-                        "WHERE archived=0 "
-                        "AND deleted_at IS NULL "
-                        "AND project_id IS NULL "
-                        "AND completed_at IS NOT NULL "
-                        "AND completed_at < (NOW() - INTERVAL 7 DAY)"
+                        "WHERE id IN ("
+                        "  SELECT id FROM ("
+                        "    SELECT t.id "
+                        "    FROM tasks t "
+                        "    WHERE t.archived=0 "
+                        "    AND t.deleted_at IS NULL "
+                        "    AND t.project_id IS NULL "
+                        "    AND t.completed_at IS NOT NULL "
+                        "    AND t.completed_at < (NOW() - INTERVAL 7 DAY) "
+                        "    AND (t.recurrence_rule IS NULL OR TRIM(t.recurrence_rule)='') "
+                        "    AND NOT EXISTS ("
+                        "      SELECT 1 FROM task_tags tt "
+                        "      JOIN tags tg ON tg.id=tt.tag_id "
+                        "      WHERE tt.task_id=t.id "
+                        "      AND LOWER(tg.name) IN (LOWER(%s), LOWER(%s), LOWER(%s), LOWER(%s))"
+                        "    )"
+                        "  ) AS eligible"
+                        ")",
+                        periodic_names,
                     )
                 commit()
                 flash(f"{total_to_archive} tareas archivadas.", "ok")
@@ -5629,6 +5721,7 @@ def admin():
     }
 
     if admin_required():
+        periodic_names = ("periodica", "periódica", "periodicas", "periódicas")
         archive_orphans_preview = q(
             "SELECT t.id, t.title, t.completed_at, f.name AS folder_name "
             "FROM tasks t "
@@ -5637,9 +5730,17 @@ def admin():
             "AND t.deleted_at IS NULL "
             "AND t.project_id IS NULL "
             "AND t.completed_at IS NOT NULL "
+            "AND (t.recurrence_rule IS NULL OR TRIM(t.recurrence_rule)='') "
+            "AND NOT EXISTS ("
+            "  SELECT 1 FROM task_tags tt "
+            "  JOIN tags tg ON tg.id=tt.tag_id "
+            "  WHERE tt.task_id=t.id "
+            "  AND LOWER(tg.name) IN (LOWER(%s), LOWER(%s), LOWER(%s), LOWER(%s))"
+            ") "
             "AND t.completed_at < (NOW() - INTERVAL 7 DAY) "
             "ORDER BY t.completed_at ASC, t.id ASC "
-            "LIMIT 200"
+            "LIMIT 200",
+            periodic_names,
         )
 
         trash_counts = _load_trash_view_data(task_page=1, project_page=1)["trash_counts"]

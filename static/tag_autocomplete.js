@@ -1,9 +1,36 @@
 (function () {
   "use strict";
 
-  const TAG_TRIGGER = "@";
-  const MIN_QUERY_LEN = 1;
   const MAX_ITEMS = 8;
+
+  // Configuración de cada trigger:
+  //   trigger  → texto que abre el autocompletado (1 o 2 chars)
+  //   getUrl   → función que devuelve la URL del endpoint
+  //   display  → prefijo que se muestra en el desplegable
+  //   minQuery → longitud mínima de consulta para disparar búsqueda
+  const TRIGGER_CONFIGS = [
+    {
+      type: "tag",
+      trigger: "@",
+      getUrl: () => window.TAG_SEARCH_URL,
+      display: "@",
+      minQuery: 1,
+    },
+    {
+      type: "project",
+      trigger: "#",
+      getUrl: () => window.PROJECT_SEARCH_URL,
+      display: "#",
+      minQuery: 0,
+    },
+    {
+      type: "folder",
+      trigger: "f:",
+      getUrl: () => window.FOLDER_SEARCH_URL,
+      display: "f:",
+      minQuery: 0,
+    },
+  ];
 
   function debounce(fn, wait) {
     let t = null;
@@ -59,43 +86,62 @@
     return input.selectionStart;
   }
 
-  function findActiveTagToken(input) {
+  // Busca el trigger activo más cercano al cursor.
+  // Devuelve { config, start, end, query, quoted } o null.
+  function findActiveToken(input) {
     const value = input.value || "";
     const caret = getCaretPosition(input);
     const before = value.slice(0, caret);
 
-    const atIndex = before.lastIndexOf(TAG_TRIGGER);
-    if (atIndex < 0) return null;
+    let best = null;
 
-    if (atIndex > 0) {
-      const prevChar = before.charAt(atIndex - 1);
-      if (!/\s|,|\(|\[|\{/.test(prevChar)) {
-        return null;
+    for (const config of TRIGGER_CONFIGS) {
+      const trig = config.trigger;
+      const idx = before.lastIndexOf(trig);
+      if (idx < 0) continue;
+
+      // El trigger debe estar precedido por espacio, inicio de línea o separadores.
+      if (idx > 0) {
+        const prevChar = before.charAt(idx - 1);
+        if (!/[\s,(\[{]/.test(prevChar)) continue;
+      }
+
+      const afterTrig = before.slice(idx + trig.length);
+      let query;
+      let quoted = false;
+
+      if (afterTrig.startsWith('"')) {
+        // Modo entrecomillado: permitir espacios hasta comilla de cierre
+        const closeIdx = afterTrig.indexOf('"', 1);
+        if (closeIdx >= 0) continue; // ya tiene comilla de cierre → token completado
+        quoted = true;
+        query = afterTrig.slice(1); // sin la comilla de apertura
+      } else {
+        // Modo normal: sin espacios
+        if (/\s/.test(afterTrig)) continue;
+        query = afterTrig.trim();
+      }
+
+      // Tomamos el candidato más tardío (más cercano al cursor).
+      if (best === null || idx > best.start) {
+        best = { config, start: idx, end: caret, query, quoted };
       }
     }
 
-    const token = before.slice(atIndex + 1);
-
-    if (/\s/.test(token)) return null;
-
-    return {
-      start: atIndex,
-      end: caret,
-      query: token.trim(),
-    };
+    return best;
   }
 
-  async function fetchTags(query) {
-    const baseUrl = window.TAG_SEARCH_URL;
+  async function fetchItems(query, config) {
+    const baseUrl = config.getUrl();
     if (!baseUrl) {
-      throw new Error("TAG_SEARCH_URL no está definido.");
+      throw new Error(`URL de búsqueda no definida para tipo "${config.type}".`);
     }
 
     const url = `${baseUrl}?q=${encodeURIComponent(query)}`;
     const response = await fetch(url, {
       headers: {
         "X-Requested-With": "XMLHttpRequest",
-        "Accept": "application/json",
+        Accept: "application/json",
       },
       credentials: "same-origin",
     });
@@ -110,9 +156,11 @@
 
   function renderItems(input, items, tokenInfo) {
     const box = getDropdown(input);
+    const display = tokenInfo.config.display;
 
     if (!items.length) {
-      box.innerHTML = '<div class="tag-autocomplete-empty">Sin coincidencias</div>';
+      box.innerHTML =
+        '<div class="tag-autocomplete-empty">Sin coincidencias</div>';
       box.hidden = false;
       input._tagAutocompleteState = {
         items: [],
@@ -129,9 +177,9 @@
           <button
             type="button"
             class="tag-autocomplete-item${idx === 0 ? " active" : ""}"
-            data-tag-name="${escapeHtml(name)}"
+            data-item-name="${escapeHtml(name)}"
             data-idx="${idx}"
-          >@${escapeHtml(name)}</button>
+          >${escapeHtml(display)}${escapeHtml(name)}</button>
         `;
       })
       .join("");
@@ -150,7 +198,7 @@
       });
 
       btn.addEventListener("click", function () {
-        applySelectedTag(input, this.dataset.tagName);
+        applySelected(input, this.dataset.itemName);
       });
     });
   }
@@ -173,17 +221,22 @@
     state.activeIndex = newIndex;
   }
 
-  function applySelectedTag(input, tagName) {
+  function applySelected(input, itemName) {
     const state = input._tagAutocompleteState;
     if (!state || !state.tokenInfo) return;
 
     const value = input.value || "";
-    const { start, end } = state.tokenInfo;
+    const { start, end, config, quoted } = state.tokenInfo;
 
     const before = value.slice(0, start);
     const after = value.slice(end);
 
-    const insertion = `@${tagName}`;
+    // Si el nombre contiene espacios o estaba en modo quoted, usar forma entrecomillada
+    const insertion =
+      itemName.includes(" ") || quoted
+        ? `${config.trigger}"${itemName}"`
+        : `${config.trigger}${itemName}`;
+
     const needsSpace = after.length === 0 || !after.startsWith(" ");
     const finalInsert = needsSpace ? `${insertion} ` : insertion;
 
@@ -202,18 +255,18 @@
   }
 
   const debouncedLookup = debounce(async function (input) {
-    const tokenInfo = findActiveTagToken(input);
+    const tokenInfo = findActiveToken(input);
 
-    if (!tokenInfo || tokenInfo.query.length < MIN_QUERY_LEN) {
+    if (!tokenInfo || tokenInfo.query.length < tokenInfo.config.minQuery) {
       closeDropdown(input);
       return;
     }
 
     try {
-      const items = await fetchTags(tokenInfo.query);
+      const items = await fetchItems(tokenInfo.query, tokenInfo.config);
       renderItems(input, items, tokenInfo);
     } catch (err) {
-      console.error("Autocomplete de etiquetas:", err);
+      console.error("Autocomplete:", err);
       closeDropdown(input);
     }
   }, 120);
@@ -237,7 +290,8 @@
       const isOpen = state && !getDropdown(input).hidden;
 
       if (!isOpen) {
-        if (ev.key === "@") {
+        // Disparar inmediatamente al escribir los chars de trigger
+        if (ev.key === "@" || ev.key === "#" || ev.key === ":" || ev.key === '"') {
           debouncedLookup(input);
         }
         return;
@@ -259,7 +313,7 @@
         const active = state.items[state.activeIndex];
         if (active && active.name) {
           ev.preventDefault();
-          applySelectedTag(input, active.name);
+          applySelected(input, active.name);
         }
         return;
       }

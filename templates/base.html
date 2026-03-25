@@ -515,9 +515,11 @@
   
 <script>
   window.TAG_SEARCH_URL = "{{ TAG_SEARCH_URL }}";
+  window.PROJECT_SEARCH_URL = "{{ PROJECT_SEARCH_URL }}";
+  window.FOLDER_SEARCH_URL = "{{ FOLDER_SEARCH_URL }}";
 </script>
 
-<script src="{{ url_for('static', filename='tag_autocomplete.js') }}"></script>
+<script src="{{ url_for('static', filename='tag_autocomplete.js') }}?v=3"></script>
 
 
 <script>

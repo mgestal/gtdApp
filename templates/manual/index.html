@@ -57,7 +57,7 @@
       </div>
     </div>
     <div class="hint" style="margin-bottom:10px;">
-      Sintaxis rápida: nombre + [@etiquetas] + [*fecha] + [h:HH:MM] + [#proyecto] + [cada {día|semana|mes|año}]
+      Sintaxis rápida: nombre + [@etiquetas] + [*fecha] + [h:HH:MM] + [#proyecto | #"proyecto con espacios"] + [f:carpeta | f:"carpeta con espacios"] + [cada {día|semana|mes|año}]
     </div>
     <table class="table">
       <thead>
@@ -76,6 +76,18 @@
           <td>Crea una tarea asociada al proyecto Jardin.</td>
         </tr>
         <tr>
+          <td><code>Revisar plan #"Area Personal"</code></td>
+          <td>Asocia la tarea al proyecto "Area Personal" (nombre con espacios, entre comillas).</td>
+        </tr>
+        <tr>
+          <td><code>Tarea de rutina f:Rutinas</code></td>
+          <td>Asigna la tarea directamente a la carpeta Rutinas.</td>
+        </tr>
+        <tr>
+          <td><code>Revisar agenda f:"GTD Folders"</code></td>
+          <td>Asigna la tarea a la carpeta "GTD Folders" (nombre con espacios, entre comillas).</td>
+        </tr>
+        <tr>
           <td><code>Act. cuentas @Finanzas *+3 h:09:00 cada mes</code></td>
           <td>Crea una tarea con fecha dentro de 3 días, hora 09:00 y recurrencia mensual.</td>
         </tr>
@@ -87,6 +99,9 @@
     </table>
     <div class="hint" style="margin-top:10px;">
       Si no indicas prioridad, la tarea queda sin prioridad (valor nulo).
+    </div>
+    <div class="hint" style="margin-top:6px;">
+      <strong>Autocompletado en el campo de texto:</strong> al escribir <code>@</code> se sugieren etiquetas, al escribir <code>#</code> se sugieren proyectos y al escribir <code>f:</code> se sugieren carpetas. Usa las teclas ↑↓ para navegar y Enter o clic para insertar. Los nombres con espacios se insertan automáticamente entrecomillados.
     </div>
   </div>
 

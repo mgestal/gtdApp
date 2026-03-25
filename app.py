@@ -1048,7 +1048,9 @@ register_subtask_routes(app, subdb)
 # -----------------------------------------------
 
 TAG_RE = re.compile(r"@([A-Za-z0-9_\-áéíóúÁÉÍÓÚñÑ]+)")
-PROJ_RE = re.compile(r"#([A-Za-z0-9_\-áéíóúÁÉÍÓÚñÑ][A-Za-z0-9_\- áéíóúÁÉÍÓÚñÑ]*)")
+# Grupo 1 = nombre entrecomillado (con espacios), grupo 2 = nombre sin comillas (sin espacios)
+PROJ_RE = re.compile(r'#(?:"([^"]+)"|([A-Za-z0-9_\-áéíóúÁÉÍÓÚñÑ][A-Za-z0-9_\-áéíóúÁÉÍÓÚñÑ]*))')
+FOLDER_RE = re.compile(r'(?<![a-zA-Z])f:(?:"([^"]+)"|([A-Za-z0-9_\-áéíóúÁÉÍÓÚñÑ][A-Za-z0-9_\-áéíóúÁÉÍÓÚñÑ]*))')
 
 def normalize_name(s: str) -> str:
     return (s or "").strip()
@@ -1225,7 +1227,7 @@ def extract_due_time_from_quick(raw_text: str) -> Tuple[Optional[time], str]:
 def parse_task_quick_entry(raw_title: str) -> Tuple[str, List[str], Optional[str]]:
     tags = TAG_RE.findall(raw_title or "")
     m = PROJ_RE.search(raw_title or "")
-    project_name = m.group(1).strip() if m else None
+    project_name = (m.group(1) or m.group(2) or '').strip() if m else None
 
     title = TAG_RE.sub("", raw_title)
     title = PROJ_RE.sub("", title)
@@ -1249,6 +1251,12 @@ def get_or_create_tag(tag_name: str) -> int:
 def find_project_by_name_active(project_name: str) -> Optional[int]:
     project_name = normalize_name(project_name)
     row = q1("SELECT id FROM projects WHERE name=%s AND archived=0", (project_name,))
+    return int(row["id"]) if row else None
+
+
+def find_folder_by_name(folder_name: str) -> Optional[int]:
+    folder_name = normalize_name(folder_name)
+    row = q1("SELECT id FROM folders WHERE name=%s", (folder_name,))
     return int(row["id"]) if row else None
 
 def parse_tags_csv(tags_csv: str) -> List[str]:
@@ -2111,6 +2119,8 @@ def inject_common():
         "all_folders": q("SELECT id, name FROM folders ORDER BY name"),
         "all_projects": q("SELECT id, name FROM projects WHERE archived=0 ORDER BY name"),
         "TAG_SEARCH_URL": url_for("api_tags_search"),
+        "PROJECT_SEARCH_URL": url_for("api_projects_search"),
+        "FOLDER_SEARCH_URL": url_for("api_folders_search"),
         "SCRIPT_ROOT": request.script_root or "",
     }
 
@@ -3335,14 +3345,19 @@ def task_create():
                 recurrence = rule
                 break
 
-    # 4) Extraer posible proyecto desde #texto, excluyendo la fecha
+    # 4) Extraer posible proyecto desde #texto o #"texto con espacios"
     project_name = None
-    project_candidates = re.findall(r'#([^\s#]+)', raw_work)
-    for candidate in project_candidates:
-        if re.fullmatch(r'\d{2}-\d{2}-\d{4}', candidate):
-            continue
-        project_name = candidate.strip()
-        break
+    m_proj = PROJ_RE.search(raw_work)
+    if m_proj:
+        candidate_name = (m_proj.group(1) or m_proj.group(2) or '').strip()
+        if not re.fullmatch(r'\d{2}-\d{2}-\d{4}', candidate_name):
+            project_name = candidate_name
+
+    # 4b) Extraer posible carpeta desde f:texto o f:"texto con espacios"
+    folder_name_quick = None
+    m_folder = FOLDER_RE.search(raw_work)
+    if m_folder:
+        folder_name_quick = (m_folder.group(1) or m_folder.group(2) or '').strip()
 
     # 5) Limpiar el texto para obtener el título real
     title = raw_work
@@ -3352,7 +3367,8 @@ def task_create():
     title = re.sub(r'\bcada\s+semana\b', '', title, flags=re.IGNORECASE)
     title = re.sub(r'\bcada\s+mes\b', '', title, flags=re.IGNORECASE)
     title = re.sub(r'\bcada\s+año\b', '', title, flags=re.IGNORECASE)
-    title = re.sub(r'#([^\s#]+)', '', title)
+    title = PROJ_RE.sub('', title)
+    title = FOLDER_RE.sub('', title)
     title = re.sub(r'\s+', ' ', title).strip(" -_,.;:")
 
     if not title:
@@ -3402,8 +3418,11 @@ def task_create():
                 folder_id = None
 
         else:
-            # fallback: #Proyecto en texto
-            if project_name:
+            # fallback: #Proyecto o f:Carpeta en texto
+            if folder_name_quick:
+                folder_id = find_folder_by_name(folder_name_quick)
+                # Si no existe la carpeta, no la creamos (a diferencia de proyectos)
+            elif project_name:
                 project_id = find_project_by_name_active(project_name)
 
                 # Si no existe, lo creamos automáticamente
@@ -6125,6 +6144,54 @@ def api_tags_search():
     rows = q(
         "SELECT id, name "
         "FROM tags "
+        "WHERE LOWER(name) LIKE %s "
+        "ORDER BY name "
+        "LIMIT 8",
+        (f"%{qtxt}%",),
+    )
+
+    return jsonify({"items": rows})
+
+
+@app.route("/api/projects/search")
+def api_projects_search():
+    qtxt = (request.args.get("q") or "").strip().lower()
+
+    if not qtxt:
+        rows = q(
+            "SELECT id, name FROM projects WHERE archived=0 ORDER BY name LIMIT 8"
+        )
+        return jsonify({"items": rows})
+
+    qtxt = qtxt[:50]
+
+    rows = q(
+        "SELECT id, name "
+        "FROM projects "
+        "WHERE archived=0 AND LOWER(name) LIKE %s "
+        "ORDER BY name "
+        "LIMIT 8",
+        (f"%{qtxt}%",),
+    )
+
+    return jsonify({"items": rows})
+
+
+@app.route("/api/folders/search")
+def api_folders_search():
+    qtxt = (request.args.get("q") or "").strip().lower()
+
+    if not qtxt:
+        rows = q(
+            "SELECT id, name FROM folders ORDER BY name LIMIT 8"
+        )
+        return jsonify({"items": rows})
+
+    qtxt = qtxt[:50]
+
+    rows = q(
+        "SELECT id, name "
+        "FROM folders "
         "WHERE LOWER(name) LIKE %s "
         "ORDER BY name "
         "LIMIT 8",

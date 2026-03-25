@@ -345,6 +345,18 @@ def _task_calendar_hash(row: Dict[str, Any]) -> str:
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
 
 
+def _task_calendar_relevant_changed(task_id: int) -> bool:
+    """True when local edits changed fields that are actually synced with Google Calendar."""
+    row = _task_calendar_row(task_id)
+    if not row:
+        return False
+    last_hash = (row.get("calendar_last_synced_hash") or "").strip()
+    if not last_hash:
+        # Sin baseline no podemos distinguir; asumimos que sí hubo cambio relevante.
+        return True
+    return _task_calendar_hash(row) != last_hash
+
+
 def _task_has_calendar_datetime(row: Dict[str, Any]) -> bool:
     return bool(row.get("due_date") or row.get("due_time"))
 
@@ -452,6 +464,25 @@ def _sync_task_push(task_id: int, service=None) -> bool:
 
     if row.get("calendar_sync_state") == "conflict":
         return False
+
+    # Si solo cambió metadata local no sincronizada (carpeta/proyecto/etiquetas),
+    # no hay nada que empujar a Google Calendar.
+    event_id = row.get("google_event_id")
+    last_hash = (row.get("calendar_last_synced_hash") or "").strip()
+    current_hash = _task_calendar_hash(row)
+    if (
+        row.get("calendar_sync_state") == "pending_push"
+        and event_id
+        and last_hash
+        and current_hash == last_hash
+    ):
+        exec_sql(
+            "UPDATE tasks "
+            "SET calendar_sync_state='synced', calendar_sync_error=NULL, calendar_last_synced_at=NOW(), calendar_local_changed_at=NULL "
+            "WHERE id=%s",
+            (task_id,),
+        )
+        return True
 
     # Regla de negocio: sin fecha y sin hora no se sincroniza a Calendar.
     # Si ya existia evento remoto vinculado, se elimina para mantener consistencia.
@@ -703,9 +734,12 @@ def run_calendar_pull_sync(
                     local_changed = row["calendar_local_changed_at"] > row["calendar_last_synced_at"]
 
             if local_changed:
-                _register_calendar_conflict(task_id, ev)
-                conflicts += 1
-                continue
+                if _task_calendar_relevant_changed(task_id):
+                    _register_calendar_conflict(task_id, ev)
+                    conflicts += 1
+                    continue
+                # Cambio local no sincronizable (p.ej. carpeta/proyecto/etiquetas):
+                # aplicamos Google sin abrir conflicto.
 
             _apply_google_to_task(task_id, ev)
             updated += 1
@@ -799,9 +833,12 @@ def run_calendar_pull_sync(
                     local_changed = row["calendar_local_changed_at"] > row["calendar_last_synced_at"]
 
             if local_changed:
-                _register_calendar_conflict(task_id, ev)
-                conflicts += 1
-                continue
+                if _task_calendar_relevant_changed(task_id):
+                    _register_calendar_conflict(task_id, ev)
+                    conflicts += 1
+                    continue
+                # Cambio local no sincronizable (p.ej. carpeta/proyecto/etiquetas):
+                # aplicamos Google sin abrir conflicto.
 
             _apply_google_to_task(task_id, ev)
             updated += 1

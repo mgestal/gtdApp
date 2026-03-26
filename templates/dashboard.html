@@ -43,36 +43,36 @@
     .db-kpis {
       display: grid;
       grid-template-columns: repeat(5, minmax(0, 1fr));
-      gap: 12px;
+      gap: 10px;
       margin-bottom: 14px;
     }
     .db-kpi {
       border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 14px;
+      border-radius: 12px;
+      padding: 10px;
       background: #fff;
       display: flex;
-      gap: 10px;
+      gap: 8px;
       align-items: stretch;
     }
     .db-kpi-bar {
-      width: 10px;
+      width: 8px;
       border-radius: 8px;
     }
     .db-kpi-label {
       color: #5f6f86;
-      font-size: 1rem;
-      margin-bottom: 4px;
+      font-size: 0.86rem;
+      margin-bottom: 2px;
     }
     .db-kpi-value {
-      font-size: 2.25rem;
+      font-size: 1.65rem;
       font-weight: 800;
       line-height: 1;
       color: #132038;
     }
     .db-kpi-meta {
-      margin-top: 8px;
-      font-size: 0.9rem;
+      margin-top: 5px;
+      font-size: 0.8rem;
     }
     .db-kpi-link {
       color: #12324a;
@@ -260,6 +260,20 @@
       <div>
         <div class="db-kpi-label">En papelera</div>
         <div class="db-kpi-value">{{ stats.trash_tasks }}</div>
+      </div>
+    </article>
+    <article class="db-kpi">
+      <div class="db-kpi-bar" style="background:#7c3aed"></div>
+      <div>
+        <div class="db-kpi-label">Tareas archivadas</div>
+        <div class="db-kpi-value">{{ stats.archived_tasks }}</div>
+      </div>
+    </article>
+    <article class="db-kpi">
+      <div class="db-kpi-bar" style="background:#475569"></div>
+      <div>
+        <div class="db-kpi-label">Proyectos archivados</div>
+        <div class="db-kpi-value">{{ stats.archived_projects }}</div>
       </div>
     </article>
   </section>

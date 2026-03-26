@@ -7146,7 +7146,7 @@ def review():
         ("agenda",)
     ) if agenda_exists else []
 
-    en_seguimiento_tasks = q(
+    en_seguimiento_now = q(
         "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.name AS folder_name, fd.id AS folder_id "
@@ -7158,9 +7158,30 @@ def review():
         "WHERE t.completed_at IS NULL "
         "AND t.deleted_at IS NULL "
         "AND tg.name=%s "
-        "AND t.due_date <= DATE_ADD(CURDATE(), INTERVAL 15 DAY) "
+        "AND t.due_date IS NOT NULL "
+        "AND t.due_date <= CURDATE() "
         "AND (t.project_id IS NULL OR p.archived = 0) "
         "ORDER BY (t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC",
+        ("EnSeguimiento",)
+    ) if en_seguimiento_exists else []
+
+    en_seguimiento_next_15 = q(
+        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
+        "p.name AS project_name, p.id AS project_id, "
+        "fd.name AS folder_name, fd.id AS folder_id "
+        "FROM tasks t "
+        "JOIN task_tags tt ON tt.task_id=t.id "
+        "JOIN tags tg ON tg.id=tt.tag_id "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+        "LEFT JOIN folders fd ON fd.id=t.folder_id "
+        "WHERE t.completed_at IS NULL "
+        "AND t.deleted_at IS NULL "
+        "AND tg.name=%s "
+        "AND t.due_date IS NOT NULL "
+        "AND t.due_date > CURDATE() "
+        "AND t.due_date <= DATE_ADD(CURDATE(), INTERVAL 15 DAY) "
+        "AND (t.project_id IS NULL OR p.archived = 0) "
+        "ORDER BY t.due_date ASC, t.id DESC",
         ("EnSeguimiento",)
     ) if en_seguimiento_exists else []
 
@@ -7387,7 +7408,8 @@ def review():
         nextactions_open,
         nextactions_overdue,
         upcoming_7,
-        en_seguimiento_tasks,
+        en_seguimiento_now,
+        en_seguimiento_next_15,
         agenda_overdue,
         en_espera_tasks,
         sometime_tasks_no_project,
@@ -7406,7 +7428,8 @@ def review():
         nextactions_overdue=nextactions_overdue,
         en_seguimiento_exists=en_seguimiento_exists,
         upcoming_7=upcoming_7,
-        en_seguimiento_tasks=en_seguimiento_tasks,
+        en_seguimiento_now=en_seguimiento_now,
+        en_seguimiento_next_15=en_seguimiento_next_15,
         agenda_exists=agenda_exists,
         agenda_overdue=agenda_overdue,
         en_espera_exists=en_espera_exists,

@@ -435,15 +435,17 @@
   <div class="card">
     <div class="card-header">
       <div class="card-title">3) Revisar agenda (eventos futuros) · @EnSeguimiento 15 días</div>
-      <div class="muted">{{ en_seguimiento_tasks|length }}</div>
+      <div class="muted">{{ en_seguimiento_now|length + en_seguimiento_next_15|length }}</div>
     </div>
 
-    <div class="review-subtitle"><b>@EnSeguimiento</b> viables ya o en los próximos 15 días</div>
+    <div class="review-subtitle"><b>@EnSeguimiento</b> ya viables</div>
     {% if not en_seguimiento_exists %}
       <div class="empty">No existe la etiqueta EnSeguimiento.</div>
-    {% elif en_seguimiento_tasks %}
+    {% else %}
+      <div class="card" style="padding:10px; margin-bottom:10px;">
+      {% if en_seguimiento_now %}
       <div class="review-mini-list">
-        {% for t in en_seguimiento_tasks %}
+        {% for t in en_seguimiento_now %}
           <div class="review-mini-item review-mini-item-task">
             <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}" class="review-mini-toggle-form">
               {% if t.priority in [1, 2, 3] %}
@@ -482,8 +484,58 @@
           </div>
         {% endfor %}
       </div>
-    {% else %}
-      <div class="empty">No hay tareas @EnSeguimiento en los próximos 15 días.</div>
+      {% else %}
+      <div class="empty">No hay tareas @EnSeguimiento ya viables.</div>
+      {% endif %}
+      </div>
+
+      <div class="review-subtitle"><b>@EnSeguimiento</b> viables en los próximos 15 días</div>
+      <div class="card" style="padding:10px; margin-bottom:10px;">
+      {% if en_seguimiento_next_15 %}
+      <div class="review-mini-list">
+        {% for t in en_seguimiento_next_15 %}
+          <div class="review-mini-item review-mini-item-task">
+            <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}" class="review-mini-toggle-form">
+              {% if t.priority in [1, 2, 3] %}
+                <span class="review-priority-bar review-priority-{{ t.priority }}" aria-hidden="true"></span>
+              {% endif %}
+              <button class="radio" aria-label="toggle" title="Marcar / desmarcar"></button>
+            </form>
+            <div class="review-mini-item-main">
+            <div class="review-mini-item-title">
+              <a class="link" href="{{ url_for('task_edit', task_id=t.id) }}">{{ t.title }}</a>
+			   {% if t.notes %}
+					<a href="{{ url_for('task_edit', task_id=t.id, next=url_for('next_actions')) }}"
+					   title="{{ t.notes }}"
+					   style="text-decoration:none; font-size:0.9rem; opacity:.75;">
+					   📝
+					</a>
+				  {% endif %}
+            </div>
+            <div class="review-mini-meta">
+              {% if t.due_date %}{{ t.due_date.strftime('%d-%m-%Y') }}{% else %}Sin fecha{% endif %}
+              ·
+              {% if t.folder_name %}
+                <a href="{{ url_for('folder_detail', folder_id=t.folder_id) }}">📂 {{ t.folder_name }}</a>
+              {% endif %}
+              {% if t.folder_name and t.project_name %}
+                <span class="muted"> · </span>
+              {% endif %}
+              {% if t.project_name %}
+                <a href="{{ url_for('project_detail', project_id=t.project_id) }}">💼 {{ t.project_name }}</a>
+              {% endif %}
+              {% if not t.folder_name and not t.project_name %}
+                Inbox
+              {% endif %}
+            </div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty">No hay tareas @EnSeguimiento que vayan a ser viables en los próximos 15 días.</div>
+      {% endif %}
+      </div>
     {% endif %}
   </div>
 

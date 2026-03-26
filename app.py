@@ -3644,6 +3644,88 @@ def dashboard():
         due_soon_tags_map=due_soon_tags_map,
     )
 
+
+@app.route("/dashboard/completed")
+def dashboard_completed():
+    period = (request.args.get("period") or "today").strip().lower()
+    if period not in ("today", "week", "month"):
+        period = "today"
+
+    per_page = cfg_int(["app", "pagination", "search_per_page"], default=25, min_v=5, max_v=500)
+    try:
+        page = int(request.args.get("page", "1"))
+    except ValueError:
+        page = 1
+    page = max(page, 1)
+
+    today = _today_madrid()
+    monday = today - timedelta(days=today.weekday())
+    first_of_month = today.replace(day=1)
+
+    if period == "today":
+        where_sql = "DATE(t.completed_at) = %s"
+        where_params: Tuple[Any, ...] = (today,)
+        title = "Tareas realizadas hoy"
+        subtitle = today.strftime("%d-%m-%Y")
+    elif period == "week":
+        where_sql = "DATE(t.completed_at) >= %s"
+        where_params = (monday,)
+        title = "Tareas realizadas esta semana"
+        subtitle = f"Desde {monday.strftime('%d-%m-%Y')}"
+    else:
+        where_sql = "DATE(t.completed_at) >= %s"
+        where_params = (first_of_month,)
+        title = "Tareas realizadas este mes"
+        subtitle = first_of_month.strftime("Desde %d-%m-%Y")
+
+    total_row = q1(
+        "SELECT COUNT(*) AS c "
+        "FROM tasks t "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+        "WHERE t.completed_at IS NOT NULL "
+        "AND t.deleted_at IS NULL "
+        "AND (t.project_id IS NULL OR p.archived=0) "
+        f"AND {where_sql}",
+        where_params,
+    )
+    total = int(total_row["c"]) if total_row else 0
+    pages = max(1, (total + per_page - 1) // per_page)
+    if page > pages:
+        page = pages
+    offset = (page - 1) * per_page
+
+    rows = q(
+        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
+        "p.name AS project_name, p.id AS project_id, "
+        "fd.name AS folder_name, fd.id AS folder_id "
+        "FROM tasks t "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+        "LEFT JOIN folders fd ON fd.id=COALESCE(t.folder_id, p.folder_id) "
+        "WHERE t.completed_at IS NOT NULL "
+        "AND t.deleted_at IS NULL "
+        "AND (t.project_id IS NULL OR p.archived=0) "
+        f"AND {where_sql} "
+        "ORDER BY t.completed_at DESC, t.id DESC "
+        "LIMIT %s OFFSET %s",
+        where_params + (per_page, offset),
+    )
+
+    task_ids = [r["id"] for r in rows]
+    tags_map = load_tags_map(task_ids) if task_ids else {}
+
+    return render_template(
+        "dashboard_completed.html",
+        period=period,
+        title=title,
+        subtitle=subtitle,
+        rows=rows,
+        tags_map=tags_map,
+        total=total,
+        page=page,
+        pages=pages,
+        per_page=per_page,
+    )
+
 @app.route("/import")
 def import_view():
     return render_template("import.html")

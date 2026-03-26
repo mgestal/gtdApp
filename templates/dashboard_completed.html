@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block content %}
+  <style>
+    .dc-check-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .dc-priority-bar {
+      width: 4px;
+      min-height: 22px;
+      border-radius: 999px;
+      flex: 0 0 4px;
+    }
+
+    .dc-priority-1 { background: #d9534f; }
+    .dc-priority-2 { background: #f0ad4e; }
+    .dc-priority-3 { background: #5cb85c; }
+  </style>
+
+  <div class="page-title">
+    <h1>{{ title }}</h1>
+    <p class="subtitle">{{ subtitle }} · {{ total }} tareas</p>
+  </div>
+
+  {% if total > 0 %}
+    <div class="pager" style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin:10px 0;">
+      <div class="muted">
+        Mostrando {{ (page-1)*per_page + 1 }}–{{ [page*per_page, total]|min }} de {{ total }} · página {{ page }} de {{ pages }}
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        {% if page > 1 %}
+          <a class="btn btn-soft" href="{{ url_for('dashboard_completed', period=period, page=1) }}">« Primera</a>
+          <a class="btn btn-soft" href="{{ url_for('dashboard_completed', period=period, page=page-1) }}">‹ Anterior</a>
+        {% else %}
+          <span class="btn btn-soft disabled">« Primera</span>
+          <span class="btn btn-soft disabled">‹ Anterior</span>
+        {% endif %}
+        {% if page < pages %}
+          <a class="btn btn-soft" href="{{ url_for('dashboard_completed', period=period, page=page+1) }}">Siguiente ›</a>
+          <a class="btn btn-soft" href="{{ url_for('dashboard_completed', period=period, page=pages) }}">Última »</a>
+        {% else %}
+          <span class="btn btn-soft disabled">Siguiente ›</span>
+          <span class="btn btn-soft disabled">Última »</span>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+
+  <div class="card">
+    {% if rows %}
+      <table class="table">
+        <thead>
+          <tr>
+            <th style="width:58px;"></th>
+            <th>Tarea</th>
+            <th style="width:120px;">Realizada</th>
+            <th style="width:100px;">Fecha</th>
+            <th style="width:180px;">Ubicación</th>
+            <th style="width:90px;"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in rows %}
+            <tr class="row-done">
+              <td>
+                <div class="dc-check-wrap">
+                  {% if t.priority in [1, 2, 3] %}
+                    <span class="dc-priority-bar dc-priority-{{ t.priority }}" aria-hidden="true"></span>
+                  {% endif %}
+                  <span style="font-size:0.8rem; color:#aaa;">✔</span>
+                </div>
+              </td>
+              <td>
+                <div style="font-weight:600; display:flex; align-items:center; gap:6px;">
+                  <a href="{{ url_for('task_edit', task_id=t.id, next=request.full_path) }}" style="text-decoration:none; color:inherit;">{{ t.title }}</a>
+                  {% if t.notes %}
+                    <a href="{{ url_for('task_edit', task_id=t.id, next=request.full_path) }}" title="{{ t.notes }}" style="text-decoration:none; font-size:0.9rem; opacity:.75;">📝</a>
+                  {% endif %}
+                </div>
+                <div class="task-tags" style="font-size:0.8rem; opacity:0.8; margin-top:2px;">
+                  {% if t.recurrence_rule %}
+                    <a class="pill taglink" style="font-size:0.75rem;" href="{{ url_for('task_periodic_history', task_id=t.id, next=request.full_path) }}">⟲ periódica</a>
+                  {% endif %}
+                  {% for tag in tags_map.get(t.id, []) %}
+                    <a class="taglink" href="{{ url_for('tag_detail', tag_id=tag.id) }}" style="margin-right:5px;">@{{ tag.name }}</a>
+                  {% endfor %}
+                </div>
+              </td>
+              <td>
+                {% if t.completed_at.strftime is defined %}
+                  {{ t.completed_at.strftime('%d-%m-%Y %H:%M') }}
+                {% else %}
+                  {% set cs = t.completed_at|string %}
+                  {{ cs[8:10] }}-{{ cs[5:7] }}-{{ cs[0:4] }} {{ cs[11:16] }}
+                {% endif %}
+              </td>
+              <td>
+                {% if t.due_date %}
+                  {{ t.due_date.strftime('%d-%m-%Y') }}
+                {% else %}
+                  <span class="muted">—</span>
+                {% endif %}
+              </td>
+              <td style="font-size:0.8rem;">
+                {% if t.folder_name %}
+                  <a href="{{ url_for('folder_detail', folder_id=t.folder_id) }}">📂 {{ t.folder_name }}</a>
+                {% endif %}
+                {% if t.folder_name and t.project_name %}
+                  <span class="muted"> · </span>
+                {% endif %}
+                {% if t.project_name %}
+                  <a href="{{ url_for('project_detail', project_id=t.project_id) }}">💼 {{ t.project_name }}</a>
+                {% endif %}
+                {% if not t.folder_name and not t.project_name %}
+                  <span class="muted">Inbox</span>
+                {% endif %}
+              </td>
+              <td class="actions" style="text-align:right;">
+                <a class="btn btn-soft" href="{{ url_for('task_edit', task_id=t.id, next=request.full_path) }}">✎</a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="empty">No hay tareas realizadas en este periodo.</div>
+    {% endif %}
+  </div>
+{% endblock %}

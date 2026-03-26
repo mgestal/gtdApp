@@ -70,6 +70,15 @@
       line-height: 1;
       color: #132038;
     }
+    .db-kpi-meta {
+      margin-top: 8px;
+      font-size: 0.9rem;
+    }
+    .db-kpi-link {
+      color: #12324a;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
     .db-main {
       display: grid;
       grid-template-columns: 1fr;
@@ -206,6 +215,23 @@
       <div>
         <div class="db-kpi-label">Completadas hoy</div>
         <div class="db-kpi-value">{{ stats.comp_today }}</div>
+        <div class="db-kpi-meta"><a class="db-kpi-link" href="{{ url_for('dashboard_completed', period='today') }}">Ver lista</a></div>
+      </div>
+    </article>
+    <article class="db-kpi">
+      <div class="db-kpi-bar" style="background:#06b6d4"></div>
+      <div>
+        <div class="db-kpi-label">Completadas semana</div>
+        <div class="db-kpi-value">{{ stats.comp_week }}</div>
+        <div class="db-kpi-meta"><a class="db-kpi-link" href="{{ url_for('dashboard_completed', period='week') }}">Ver lista</a></div>
+      </div>
+    </article>
+    <article class="db-kpi">
+      <div class="db-kpi-bar" style="background:#8b5cf6"></div>
+      <div>
+        <div class="db-kpi-label">Completadas mes</div>
+        <div class="db-kpi-value">{{ stats.comp_month }}</div>
+        <div class="db-kpi-meta"><a class="db-kpi-link" href="{{ url_for('dashboard_completed', period='month') }}">Ver lista</a></div>
       </div>
     </article>
     <article class="db-kpi">

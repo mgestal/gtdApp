@@ -2754,6 +2754,8 @@ def calendar_view():
 
     show_completed = str(request.args.get("show_completed", "0")).lower() in ("1", "true", "on", "yes")
 
+    week_list_rows = []
+
     # Pendientes por due_date dentro de rango
     pending_rows = q(
         "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
@@ -2816,6 +2818,25 @@ def calendar_view():
     tags_map = load_tags_map([t["id"] for t in selected_day_tasks]) if selected_day_tasks else {}
     has_done = len(selected_day_completed)
 
+    if view == "week":
+        week_list_rows = q(
+            "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
+            "p.name AS project_name, p.id AS project_id, "
+            "fd.name AS folder_name, fd.id AS folder_id "
+            "FROM tasks t "
+            "LEFT JOIN projects p ON p.id=t.project_id "
+            "LEFT JOIN folders fd ON fd.id = COALESCE(t.folder_id, p.folder_id) "
+            "WHERE t.due_date IS NOT NULL "
+            "AND t.due_date >= %s "
+            "AND t.due_date <= %s "
+            "AND t.deleted_at IS NULL "
+            "AND (t.project_id IS NULL OR p.archived = 0) "
+            "ORDER BY (t.completed_at IS NOT NULL) ASC, t.due_date ASC, t.id DESC",
+            (start_date, end_date),
+        )
+        week_task_ids = [t["id"] for t in week_list_rows]
+        tags_map = load_tags_map(week_task_ids) if week_task_ids else {}
+
     month_weeks = _build_month_weeks(selected_date.year, selected_date.month)
 
     return render_template(
@@ -2835,6 +2856,7 @@ def calendar_view():
         selected_day_tasks=selected_day_tasks,
         selected_day_pending=selected_day_pending,
         selected_day_completed=selected_day_completed,
+        week_list_rows=week_list_rows,
         has_done=has_done,
         tags_map=tags_map,
     )

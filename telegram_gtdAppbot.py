@@ -439,7 +439,23 @@ def format_task_line(row: Dict[str, Any]) -> str:
 
     return f"• {title}"
 
-def format_task_extended(row):
+def _fmt_due_time(due_time: Any) -> Optional[str]:
+    if due_time is None:
+        return None
+    if isinstance(due_time, timedelta):
+        total_seconds = int(due_time.total_seconds()) % (24 * 3600)
+        hh = total_seconds // 3600
+        mm = (total_seconds % 3600) // 60
+        return f"{hh:02d}:{mm:02d}"
+    if hasattr(due_time, "strftime"):
+        try:
+            return due_time.strftime("%H:%M")
+        except Exception:
+            return None
+    return None
+
+
+def format_task_extended(row, show_date: bool = True):
     """
     Formato Telegram:
     • Título
@@ -452,6 +468,7 @@ def format_task_extended(row):
     folder_name = (row.get("folder_name") or "").strip()
     tags = row.get("tags") or []
     due_date = row.get("due_date")
+    due_time = row.get("due_time")
 
     lines = [f"• {title}"]
 
@@ -467,8 +484,12 @@ def format_task_extended(row):
         tag_text = " ".join(f"@{t}" for t in tags)
         lines.append(f"  🏷 {tag_text}")
 
-    if due_date:
+    if show_date and due_date:
         lines.append(f"  📅 {due_date.strftime('%d/%m/%Y')}")
+
+    hhmm = _fmt_due_time(due_time)
+    if hhmm:
+        lines.append(f"  🕒 {hhmm}")
 
     return "\n".join(lines)
 
@@ -491,12 +512,14 @@ def get_today_tasks_extended():
                     t.id,
                     t.title,
                     t.due_date,
+                                        t.due_time,
                     p.name AS project_name,
                     fd.name AS folder_name
                 FROM tasks t
                 LEFT JOIN projects p ON p.id = t.project_id
                 LEFT JOIN folders fd ON fd.id = COALESCE(t.folder_id, p.folder_id)
                 WHERE t.completed_at IS NULL
+                                    AND t.deleted_at IS NULL
                                     AND COALESCE(t.archived, 0) = 0
                                     AND (t.project_id IS NULL OR COALESCE(p.archived, 0) = 0)
                   AND t.due_date = CURDATE()
@@ -548,12 +571,14 @@ def get_agenda_tasks_extended(limit: int = 15):
                     t.id,
                     t.title,
                     t.due_date,
+                                        t.due_time,
                     p.name AS project_name,
                     fd.name AS folder_name
                 FROM tasks t
                 LEFT JOIN projects p ON p.id = t.project_id
                 LEFT JOIN folders fd ON fd.id = COALESCE(t.folder_id, p.folder_id)
                 WHERE t.completed_at IS NULL
+                                    AND t.deleted_at IS NULL
                                     AND COALESCE(t.archived, 0) = 0
                                     AND (t.project_id IS NULL OR COALESCE(p.archived, 0) = 0)
                   AND t.due_date IS NOT NULL
@@ -608,13 +633,16 @@ async def cmd_agenda(update, context):
 # =========================================================
 
 async def cmd_today(update, context):
+    if await reject_if_unauthorized(update):
+        return
+
     rows = get_today_tasks_extended()
 
     if not rows:
         await update.message.reply_text("📅 Hoy no tienes tareas.")
         return
 
-    text = "📅 Hoy\n\n" + "\n\n".join(format_task_extended(r) for r in rows[:20])
+    text = "📅 Hoy\n\n" + "\n\n".join(format_task_extended(r, show_date=False) for r in rows[:20])
 
     if len(rows) > 20:
         text += f"\n\n… y {len(rows) - 20} más."
@@ -674,6 +702,7 @@ async def cmd_nextactions(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         "JOIN task_tags tt ON tt.task_id=t.id "
         "JOIN tags tg ON tg.id=tt.tag_id "
         "WHERE t.completed_at IS NULL "
+        "AND t.deleted_at IS NULL "
         "AND COALESCE(t.archived,0)=0 "
         "AND (t.project_id IS NULL OR COALESCE(p.archived,0)=0) "
         "AND LOWER(tg.name)=LOWER(%s) "
@@ -704,6 +733,7 @@ async def cmd_hoy(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "FROM tasks t "
         "LEFT JOIN projects p ON p.id=t.project_id "
         "WHERE t.completed_at IS NULL "
+        "AND t.deleted_at IS NULL "
         "AND COALESCE(t.archived,0)=0 "
         "AND (t.project_id IS NULL OR COALESCE(p.archived,0)=0) "
         "AND t.due_date=%s",
@@ -837,11 +867,15 @@ async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     today_d = today_local()
 
     rows = q(
-        "SELECT id, title, completed_at "
-        "FROM tasks "
-        "WHERE completed_at IS NOT NULL "
-        "AND DATE(completed_at)=%s "
-        "ORDER BY completed_at DESC, id DESC",
+        "SELECT t.id, t.title, t.completed_at "
+        "FROM tasks t "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+        "WHERE t.completed_at IS NOT NULL "
+        "AND t.deleted_at IS NULL "
+        "AND COALESCE(t.archived,0)=0 "
+        "AND (t.project_id IS NULL OR COALESCE(p.archived,0)=0) "
+        "AND DATE(t.completed_at)=%s "
+        "ORDER BY t.completed_at DESC, t.id DESC",
         (today_d,),
     )
 
@@ -878,10 +912,14 @@ def get_today_tasks():
     with conn.cursor() as cur:
         cur.execute("""
             SELECT id, title
-            FROM tasks
-            WHERE due_date = CURDATE()
-            AND completed_at IS NULL
-            ORDER BY id
+            FROM tasks t
+            LEFT JOIN projects p ON p.id=t.project_id
+            WHERE t.due_date = CURDATE()
+            AND t.completed_at IS NULL
+            AND t.deleted_at IS NULL
+            AND COALESCE(t.archived,0)=0
+            AND (t.project_id IS NULL OR COALESCE(p.archived,0)=0)
+            ORDER BY t.id
         """)
         rows = cur.fetchall()
 

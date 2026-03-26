@@ -3425,6 +3425,7 @@ def dashboard():
         "AND archived=0 "
         "AND deleted_at IS NULL"
     )["c"]
+    trash_tasks = q1("SELECT COUNT(*) AS c FROM tasks WHERE deleted_at IS NOT NULL")["c"]
     projects_cnt = q1("SELECT COUNT(*) AS c FROM projects WHERE archived=0 AND deleted_at IS NULL")["c"]
     archived_cnt = q1("SELECT COUNT(*) AS c FROM projects WHERE archived=1 AND deleted_at IS NULL")["c"]
     pending_active = q1(
@@ -3560,6 +3561,7 @@ def dashboard():
             "open": open_tasks,
             "completed": completed,
             "inbox": inbox,
+            "trash_tasks": trash_tasks,
             "projects": projects_cnt,
             "archived": archived_cnt,
             "comp_today": comp_today,

@@ -7031,6 +7031,17 @@ def review():
         row = q1("SELECT id FROM folders WHERE lower(name)=lower(%s)", (name,))
         return row is not None
 
+    def get_folder_tree_ids(parent_id, include_self=True):
+        """Obtiene recursivamente los IDs de una carpeta y sus descendientes"""
+        result = set()
+        if include_self:
+            result.add(parent_id)
+        children = q("SELECT id FROM folders WHERE parent_id=%s", (parent_id,))
+        for child in children:
+            result.add(child['id'])
+            result.update(get_folder_tree_ids(child['id'], include_self=False))
+        return result
+
     # 1) Inbox
     inbox = q(
         "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
@@ -7050,6 +7061,18 @@ def review():
     # 2) NextActions
     nextaction_exists = tag_exists("NextAction")
 
+    sometime_review_folder_ids = set()
+    sometime_folder_row = q1("SELECT id FROM folders WHERE LOWER(name)=LOWER(%s)", ("Sometime",))
+    if sometime_folder_row and sometime_folder_row.get("id") is not None:
+        sometime_review_folder_ids = get_folder_tree_ids(int(sometime_folder_row["id"]))
+
+    nextaction_folder_clause = ""
+    nextaction_folder_params: Tuple[Any, ...] = ()
+    if sometime_review_folder_ids:
+        placeholders = ",".join(["%s"] * len(sometime_review_folder_ids))
+        nextaction_folder_clause = f"AND (t.folder_id IS NULL OR t.folder_id NOT IN ({placeholders})) "
+        nextaction_folder_params = tuple(sorted(sometime_review_folder_ids))
+
     nextactions_open = q(
         "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
@@ -7063,9 +7086,10 @@ def review():
         "AND t.deleted_at IS NULL "
         "AND tg.name=%s "
         "AND (t.due_date IS NULL OR t.due_date >= CURDATE()) "
+        + nextaction_folder_clause +
         "AND (t.project_id IS NULL OR p.archived = 0) "
         "ORDER BY (t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC",
-        ("NextAction",)
+        ("NextAction",) + nextaction_folder_params
     ) if nextaction_exists else []
 
     nextactions_overdue = q(
@@ -7082,9 +7106,10 @@ def review():
         "AND tg.name=%s "
         "AND t.due_date IS NOT NULL "
         "AND t.due_date < CURDATE() "
+        + nextaction_folder_clause +
         "AND (t.project_id IS NULL OR p.archived = 0) "
         "ORDER BY t.due_date ASC, t.id DESC",
-        ("NextAction",)
+        ("NextAction",) + nextaction_folder_params
     ) if nextaction_exists else []
 
     # 3) Agenda futura
@@ -7191,17 +7216,6 @@ def review():
             ) or []
 
     # 6) Proyectos (excluyendo Sometime y sus subcarpetas)
-    def get_folder_tree_ids(parent_id, include_self=True):
-        """Obtiene recursivamente los IDs de una carpeta y sus descendientes"""
-        result = set()
-        if include_self:
-            result.add(parent_id)
-        children = q("SELECT id FROM folders WHERE parent_id=%s", (parent_id,))
-        for child in children:
-            result.add(child['id'])
-            result.update(get_folder_tree_ids(child['id'], include_self=False))
-        return result
-
     excluded_folder_ids = set()
 
     sometime_folder = q1("SELECT id FROM folders WHERE name='Sometime'")

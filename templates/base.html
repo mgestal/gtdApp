@@ -13,7 +13,8 @@
   <div class="tree-node {% if current_folder_id is defined and f.id == current_folder_id %}tree-node-active{% endif %}"
        data-tree-folder="{{ f.id }}" data-default-open="{{ '1' if default_open else '0' }}">
     
-    <div class="tree-head {% if current_folder_id and f.id == current_folder_id %}tree-head-active{% endif %}">
+        <div class="tree-head js-drop-target js-draggable-sidebar-folder {% if current_folder_id and f.id == current_folder_id %}tree-head-active{% endif %}"
+          data-drop-type="folder" data-target-id="{{ f.id }}" data-folder-id="{{ f.id }}" draggable="true" title="Soltar aquí para mover a carpeta">
       
       <div class="tree-head-main">
         {% if has_children %}
@@ -44,7 +45,7 @@
           {{ render_folder_node(ch, children_map, projects_map, open_folder_ids, current_folder_id, current_project_id) }}
         {% endfor %}
         {% for p in sub_projects %}
-          <div class="tree-leaf">
+          <div class="tree-leaf js-drop-target js-draggable-sidebar-project" data-drop-type="project" data-target-id="{{ p.id }}" data-project-id="{{ p.id }}" draggable="true" title="Soltar tarea aquí para mover a proyecto">
             <a class="tree-link {% if current_project_id and p.id == current_project_id %}tree-link-active{% endif %}"
                href="{{ url_for('project_detail', project_id=p.id) }}">
               <span>💼 {{ p.name }}</span>
@@ -192,6 +193,17 @@
       align-items:center;
       justify-content:space-between;
       gap:8px;
+    }
+
+    .dnd-dragging{
+      opacity:.45;
+    }
+
+    .dnd-drop-active{
+      outline:2px dashed #4c6ef5;
+      outline-offset:1px;
+      border-radius:8px;
+      background:rgba(76,110,245,.08);
     }
   </style>
 </head>
@@ -509,6 +521,114 @@
         body.style.display = open ? 'block' : 'none';
         if (icon) icon.textContent = open ? '▾' : '▸';
       }
+    })();
+
+    (function initSidebarDnd(){
+      const projectMoveUrlBase = "{{ url_for('api_project_move', project_id=0) }}";
+      const folderMoveUrlBase = "{{ url_for('api_folder_move', folder_id=0) }}";
+      let dragPayload = null;
+
+      function clearDropHighlights() {
+        document.querySelectorAll('.dnd-drop-active').forEach((el) => el.classList.remove('dnd-drop-active'));
+      }
+
+      function targetAccepts(dropType, payload, targetId) {
+        if (!payload) return false;
+        if (payload.kind === 'project') {
+          return dropType === 'folder' && Number.isFinite(targetId);
+        }
+        if (payload.kind === 'folder') {
+          return dropType === 'folder' && Number.isFinite(targetId) && targetId !== payload.id;
+        }
+        return false;
+      }
+
+      async function postJson(url, body) {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify(body),
+        });
+        let data = {};
+        try { data = await res.json(); } catch (_) {}
+        if (!res.ok || !data.ok) {
+          throw new Error((data && data.error) ? data.error : 'No se pudo completar la operación');
+        }
+        return data;
+      }
+
+      document.querySelectorAll('.js-draggable-sidebar-project').forEach((el) => {
+        el.addEventListener('dragstart', (ev) => {
+          const id = Number(el.getAttribute('data-project-id'));
+          dragPayload = { kind: 'project', id };
+          ev.dataTransfer.effectAllowed = 'move';
+          ev.dataTransfer.setData('text/plain', `sidebar-project:${id}`);
+          el.classList.add('dnd-dragging');
+        });
+
+        el.addEventListener('dragend', () => {
+          el.classList.remove('dnd-dragging');
+          clearDropHighlights();
+          dragPayload = null;
+        });
+      });
+
+      document.querySelectorAll('.js-draggable-sidebar-folder').forEach((el) => {
+        el.addEventListener('dragstart', (ev) => {
+          const id = Number(el.getAttribute('data-folder-id'));
+          dragPayload = { kind: 'folder', id };
+          ev.dataTransfer.effectAllowed = 'move';
+          ev.dataTransfer.setData('text/plain', `sidebar-folder:${id}`);
+          el.classList.add('dnd-dragging');
+        });
+
+        el.addEventListener('dragend', () => {
+          el.classList.remove('dnd-dragging');
+          clearDropHighlights();
+          dragPayload = null;
+        });
+      });
+
+      document.querySelectorAll('.js-drop-target').forEach((el) => {
+        el.addEventListener('dragover', (ev) => {
+          const dropType = (el.getAttribute('data-drop-type') || '').toLowerCase();
+          const targetId = Number(el.getAttribute('data-target-id'));
+          if (!targetAccepts(dropType, dragPayload, targetId)) return;
+          ev.preventDefault();
+          ev.dataTransfer.dropEffect = 'move';
+          el.classList.add('dnd-drop-active');
+        });
+
+        el.addEventListener('dragleave', () => {
+          el.classList.remove('dnd-drop-active');
+        });
+
+        el.addEventListener('drop', async (ev) => {
+          const dropType = (el.getAttribute('data-drop-type') || '').toLowerCase();
+          const targetId = Number(el.getAttribute('data-target-id'));
+          if (!targetAccepts(dropType, dragPayload, targetId)) return;
+
+          ev.preventDefault();
+          ev.stopPropagation();
+          el.classList.remove('dnd-drop-active');
+
+          try {
+            if (dragPayload.kind === 'project') {
+              await postJson(projectMoveUrlBase.replace('/0/', `/${dragPayload.id}/`), {
+                folder_id: targetId,
+              });
+            } else if (dragPayload.kind === 'folder') {
+              await postJson(folderMoveUrlBase.replace('/0/', `/${dragPayload.id}/`), {
+                parent_id: targetId,
+              });
+            }
+            window.location.reload();
+          } catch (err) {
+            window.alert(err && err.message ? err.message : 'Error al mover');
+          }
+        });
+      });
     })();
   </script>
   

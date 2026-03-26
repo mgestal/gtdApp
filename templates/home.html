@@ -1,5 +1,25 @@
 {% extends "base.html" %}
 {% block content %}
+  <style>
+    .dnd-draggable {
+      cursor: grab;
+    }
+
+    .dnd-draggable:active {
+      cursor: grabbing;
+    }
+
+    .dnd-dragging {
+      opacity: 0.45;
+    }
+
+    .dnd-drop-active {
+      outline: 2px dashed #12324a;
+      outline-offset: 2px;
+      background: #eef8ff;
+    }
+  </style>
+
   <div class="page-title">
     <h1>Bandeja de entrada 📥 </h1>
   </div>
@@ -68,7 +88,7 @@
         <tbody>
         {% for t in inbox %}
           {% set sc = sub_counts.get(t.id, {'total':0, 'done':0}) %}
-          <tr class="{% if t.completed_at %}row-done{% endif %}">
+          <tr class="dnd-draggable js-draggable-task {% if t.completed_at %}row-done{% endif %}" draggable="true" data-task-id="{{ t.id }}">
             <td>
               <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}">
                 <button class="radio" title="Marcar / desmarcar" aria-label="toggle"></button>
@@ -145,7 +165,7 @@
     {% if orphan_projects and orphan_projects|length > 0 %}
       <div class="list">
         {% for p in orphan_projects %}
-          <div class="list-row"{% if p.archived %} style="opacity:.78;"{% endif %}>
+          <div class="list-row dnd-draggable js-draggable-project js-drop-target" draggable="true" data-project-id="{{ p.id }}" data-drop-type="project" data-target-id="{{ p.id }}" title="Soltar tarea para moverla a este proyecto"{% if p.archived %} style="opacity:.78;"{% endif %}>
             <div>
               <a class="link" href="{{ url_for('project_detail', project_id=p.id) }}">
                 💼 {{ p.name }}
@@ -224,6 +244,113 @@
     const taskId = btn.getAttribute('data-task-id');
     if(!taskId) return;
     toggleSubtasks(taskId);
+  });
+
+  // --- Drag & Drop Inbox -> Sidebar/Proyectos ---
+  const _TASK_MOVE_URL  = "{{ url_for('api_task_move', task_id=0) }}";
+  const _PROJ_MOVE_URL  = "{{ url_for('api_project_move', project_id=0) }}";
+  let dragPayload = null;
+
+  function clearDropHighlights() {
+    document.querySelectorAll('.dnd-drop-active').forEach((el) => el.classList.remove('dnd-drop-active'));
+  }
+
+  function targetAccepts(dropType, payload) {
+    if (!payload) return false;
+    if (payload.kind === 'task') {
+      return dropType === 'folder' || dropType === 'project';
+    }
+    if (payload.kind === 'project') {
+      return dropType === 'folder';
+    }
+    return false;
+  }
+
+  async function postJson(url, body) {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify(body),
+    });
+    let data = {};
+    try { data = await res.json(); } catch (_) {}
+    if (!res.ok || !data.ok) {
+      throw new Error((data && data.error) ? data.error : 'No se pudo completar la operación');
+    }
+    return data;
+  }
+
+  document.querySelectorAll('.js-draggable-task').forEach((el) => {
+    el.addEventListener('dragstart', (ev) => {
+      const id = Number(el.getAttribute('data-task-id'));
+      dragPayload = { kind: 'task', id };
+      ev.dataTransfer.effectAllowed = 'move';
+      ev.dataTransfer.setData('text/plain', `task:${id}`);
+      el.classList.add('dnd-dragging');
+    });
+    el.addEventListener('dragend', () => {
+      el.classList.remove('dnd-dragging');
+      clearDropHighlights();
+      dragPayload = null;
+    });
+  });
+
+  document.querySelectorAll('.js-draggable-project').forEach((el) => {
+    el.addEventListener('dragstart', (ev) => {
+      const id = Number(el.getAttribute('data-project-id'));
+      dragPayload = { kind: 'project', id };
+      ev.dataTransfer.effectAllowed = 'move';
+      ev.dataTransfer.setData('text/plain', `project:${id}`);
+      el.classList.add('dnd-dragging');
+    });
+    el.addEventListener('dragend', () => {
+      el.classList.remove('dnd-dragging');
+      clearDropHighlights();
+      dragPayload = null;
+    });
+  });
+
+  document.querySelectorAll('.js-drop-target').forEach((el) => {
+    el.addEventListener('dragover', (ev) => {
+      const dropType = (el.getAttribute('data-drop-type') || '').toLowerCase();
+      if (!targetAccepts(dropType, dragPayload)) return;
+      ev.preventDefault();
+      ev.dataTransfer.dropEffect = 'move';
+      el.classList.add('dnd-drop-active');
+    });
+
+    el.addEventListener('dragleave', () => {
+      el.classList.remove('dnd-drop-active');
+    });
+
+    el.addEventListener('drop', async (ev) => {
+      const dropType = (el.getAttribute('data-drop-type') || '').toLowerCase();
+      const targetId = Number(el.getAttribute('data-target-id'));
+      if (!targetAccepts(dropType, dragPayload) || !Number.isFinite(targetId)) {
+        return;
+      }
+
+      ev.preventDefault();
+      ev.stopPropagation();
+      el.classList.remove('dnd-drop-active');
+
+      try {
+        if (dragPayload.kind === 'task') {
+          await postJson(_TASK_MOVE_URL.replace('/0/', `/${dragPayload.id}/`), {
+            target_type: dropType,
+            target_id: targetId,
+          });
+        } else if (dragPayload.kind === 'project' && dropType === 'folder') {
+          await postJson(_PROJ_MOVE_URL.replace('/0/', `/${dragPayload.id}/`), {
+            folder_id: targetId,
+          });
+        }
+        window.location.reload();
+      } catch (err) {
+        window.alert(err && err.message ? err.message : 'Error al mover');
+      }
+    });
   });
 </script>
 

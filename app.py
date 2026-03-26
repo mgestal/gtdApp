@@ -7703,6 +7703,121 @@ def api_folders_search():
     return jsonify({"items": rows})
 
 
+@app.route("/api/tasks/<int:task_id>/move", methods=["POST"])
+def api_task_move(task_id: int):
+    payload = request.get_json(silent=True) or {}
+    target_type = (payload.get("target_type") or "").strip().lower()
+    target_id_raw = payload.get("target_id")
+
+    task = q1("SELECT id FROM tasks WHERE id=%s AND deleted_at IS NULL", (task_id,))
+    if not task:
+        return jsonify({"ok": False, "error": "Tarea no encontrada"}), 404
+
+    try:
+        target_id = int(target_id_raw)
+    except Exception:
+        return jsonify({"ok": False, "error": "Destino inválido"}), 400
+
+    try:
+        if target_type == "project":
+            project = q1(
+                "SELECT id FROM projects WHERE id=%s AND archived=0 AND deleted_at IS NULL",
+                (target_id,),
+            )
+            if not project:
+                return jsonify({"ok": False, "error": "Proyecto destino no válido"}), 400
+            exec_sql("UPDATE tasks SET project_id=%s, folder_id=NULL WHERE id=%s", (target_id, task_id))
+            commit()
+            return jsonify({"ok": True, "message": "Tarea movida a proyecto"})
+
+        if target_type == "folder":
+            folder = q1("SELECT id FROM folders WHERE id=%s", (target_id,))
+            if not folder:
+                return jsonify({"ok": False, "error": "Carpeta destino no válida"}), 400
+            exec_sql("UPDATE tasks SET folder_id=%s, project_id=NULL WHERE id=%s", (target_id, task_id))
+            commit()
+            return jsonify({"ok": True, "message": "Tarea movida a carpeta"})
+
+        return jsonify({"ok": False, "error": "Tipo de destino no soportado"}), 400
+    except Exception as e:
+        rollback()
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/projects/<int:project_id>/move", methods=["POST"])
+def api_project_move(project_id: int):
+    payload = request.get_json(silent=True) or {}
+    folder_id_raw = payload.get("folder_id")
+
+    proj = q1("SELECT id FROM projects WHERE id=%s AND deleted_at IS NULL", (project_id,))
+    if not proj:
+        return jsonify({"ok": False, "error": "Proyecto no encontrado"}), 404
+
+    try:
+        folder_id = int(folder_id_raw)
+    except Exception:
+        return jsonify({"ok": False, "error": "Carpeta destino inválida"}), 400
+
+    folder = q1("SELECT id FROM folders WHERE id=%s", (folder_id,))
+    if not folder:
+        return jsonify({"ok": False, "error": "Carpeta destino no válida"}), 400
+
+    try:
+        exec_sql("UPDATE projects SET folder_id=%s, updated_at=NOW() WHERE id=%s", (folder_id, project_id))
+        commit()
+        return jsonify({"ok": True, "message": "Proyecto movido"})
+    except Exception as e:
+        rollback()
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/folders/<int:folder_id>/move", methods=["POST"])
+def api_folder_move(folder_id: int):
+    payload = request.get_json(silent=True) or {}
+    parent_id_raw = payload.get("parent_id")
+
+    folder = q1("SELECT id FROM folders WHERE id=%s", (folder_id,))
+    if not folder:
+        return jsonify({"ok": False, "error": "Carpeta no encontrada"}), 404
+
+    parent_id = None
+    if parent_id_raw is not None and str(parent_id_raw).strip() != "":
+        try:
+            parent_id = int(parent_id_raw)
+        except Exception:
+            return jsonify({"ok": False, "error": "Carpeta destino inválida"}), 400
+
+    if parent_id == folder_id:
+        return jsonify({"ok": False, "error": "No puedes mover una carpeta dentro de sí misma"}), 400
+
+    if parent_id is not None:
+        parent = q1("SELECT id FROM folders WHERE id=%s", (parent_id,))
+        if not parent:
+            return jsonify({"ok": False, "error": "Carpeta destino no válida"}), 400
+
+        # Evita ciclos: el nuevo padre no puede ser un descendiente de la carpeta movida.
+        rows = q("SELECT id, parent_id FROM folders")
+        by_id: Dict[int, Optional[int]] = {}
+        for r in rows:
+            by_id[int(r["id"])] = int(r["parent_id"]) if r.get("parent_id") is not None else None
+
+        cursor = parent_id
+        visited: set[int] = set()
+        while cursor is not None and cursor not in visited:
+            if cursor == folder_id:
+                return jsonify({"ok": False, "error": "No se puede mover una carpeta dentro de una subcarpeta suya"}), 400
+            visited.add(cursor)
+            cursor = by_id.get(cursor)
+
+    try:
+        exec_sql("UPDATE folders SET parent_id=%s WHERE id=%s", (parent_id, folder_id))
+        commit()
+        return jsonify({"ok": True, "message": "Carpeta movida"})
+    except Exception as e:
+        rollback()
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/api/tasks/<int:task_id>/toggle_preview")
 def api_task_toggle_preview(task_id: int):
     task = q1(

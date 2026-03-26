@@ -324,9 +324,24 @@
                 </div>
               </td>
               <td>
-                <a href="{{ url_for('task_edit', task_id=t.id) }}" style="font-weight:600; display:flex; align-items:center; gap:6px;">
-                  {{ t.title }}
-                </a>
+                <div style="font-weight:600; display:flex; align-items:center; gap:6px;">
+                  <a href="{{ url_for('task_edit', task_id=t.id) }}" style="font-weight:600; display:flex; align-items:center; gap:6px; text-decoration:none; color:inherit;">
+                    {{ t.title }}
+                  </a>
+                  {% if t.notes %}
+                    <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('dashboard', days=period_days)) }}"
+                       title="{{ t.notes }}"
+                       style="text-decoration:none; font-size:0.9rem; opacity:.75;">
+                       📝
+                    </a>
+                  {% endif %}
+                </div>
+
+                <div class="task-tags" style="font-size:0.8rem; opacity:0.8; margin-top:2px;">
+                  {% for tag in due_soon_tags_map.get(t.id, []) %}
+                    <a class="taglink" href="{{ url_for('tag_detail', tag_id=tag.id) }}" style="margin-right:5px;">@{{ tag.name }}</a>
+                  {% endfor %}
+                </div>
               </td>
               <td style="font-size: 0.9rem;">{{ t.due_date.strftime('%d-%m-%Y') }}</td>
               <td style="font-size: 0.8rem;">

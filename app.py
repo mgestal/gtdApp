@@ -3610,6 +3610,8 @@ def dashboard():
         """,
         (today + timedelta(days=7),)
     )
+    due_soon_task_ids = [t["id"] for t in due_soon]
+    due_soon_tags_map = load_tags_map(due_soon_task_ids) if due_soon_task_ids else {}
 
     return render_template(
         "dashboard.html",
@@ -3639,6 +3641,7 @@ def dashboard():
         project_max=project_max,
         top_tags=top_tags,
         due_soon=due_soon,
+        due_soon_tags_map=due_soon_tags_map,
     )
 
 @app.route("/import")

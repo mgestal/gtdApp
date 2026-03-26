@@ -7058,6 +7058,16 @@ def review():
         "ORDER BY t.id DESC"
     ) or []
 
+    inbox_projects = q(
+        "SELECT p.id, p.name, p.description, p.archived, f.name AS folder_name, f.id AS folder_id "
+        "FROM projects p "
+        "LEFT JOIN folders f ON f.id=p.folder_id "
+        "WHERE p.archived=0 "
+        "AND p.deleted_at IS NULL "
+        "AND p.folder_id IS NULL "
+        "ORDER BY p.name"
+    ) or []
+
     # 2) NextActions
     nextaction_exists = tag_exists("NextAction")
 
@@ -7282,14 +7292,18 @@ def review():
     if rutinas_root and rutinas_root.get("id") is not None:
         rutinas_folder_ids = get_folder_tree_ids(int(rutinas_root["id"]))
 
+    active_projects = [p for p in active_projects if p.get("folder_id") is not None]
+
     active_projects_rutinas = [
         p for p in active_projects
         if p.get("folder_id") is not None and int(p.get("folder_id")) in rutinas_folder_ids
     ]
     active_projects_other = [
         p for p in active_projects
-        if p.get("folder_id") is None or int(p.get("folder_id")) not in rutinas_folder_ids
+        if p.get("folder_id") is not None and int(p.get("folder_id")) not in rutinas_folder_ids
     ]
+
+    empty_projects = [p for p in empty_projects if p.get("folder_name")]
 
     # 7) ADTV / SomeTime
     sometime_folder_exists = folder_exists("Sometime")
@@ -7386,6 +7400,7 @@ def review():
     return render_template(
         "review.html",
         inbox=inbox,
+        inbox_projects=inbox_projects,
         nextaction_exists=nextaction_exists,
         nextactions_open=nextactions_open,
         nextactions_overdue=nextactions_overdue,

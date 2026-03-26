@@ -202,9 +202,11 @@
   <div class="card">
     <div class="card-header">
       <div class="card-title">1) Procesar inbox</div>
-      <div class="muted">{{ inbox|length }}</div>
+      <div class="muted">{{ inbox|length + inbox_projects|length }}</div>
     </div>
 
+    <div class="review-subtitle">Tareas en inbox</div>
+    <div class="card" style="padding:10px; margin-bottom:10px;">
     {% if inbox %}
       <div class="review-mini-list">
         {% for t in inbox %}
@@ -247,8 +249,27 @@
         {% endfor %}
       </div>
     {% else %}
-      <div class="empty">Inbox vacío.</div>
+      <div class="empty">No hay tareas en inbox.</div>
     {% endif %}
+    </div>
+
+    <div class="review-subtitle">Proyectos en inbox</div>
+    <div class="card" style="padding:10px; margin-bottom:10px;">
+      {% if inbox_projects %}
+        <div class="review-mini-list" style="margin-bottom:0;">
+          {% for p in inbox_projects %}
+            <div class="review-mini-item">
+              <div class="review-mini-item-title">
+                <a class="link" href="{{ url_for('project_detail', project_id=p.id) }}">💼 {{ p.name }}</a>
+              </div>
+              <div class="review-mini-meta">Inbox</div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty">No hay proyectos en inbox.</div>
+      {% endif %}
+    </div>
   </div>
 
   <div class="card">

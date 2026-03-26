@@ -1,0 +1,679 @@
+{% extends "base.html" %}
+{% block content %}
+  <style>
+    .flash-error_detail {
+      font-size: 0.85rem;
+      color: #9f1239;
+      background: #fff3f2;
+      border: 1px solid #fca5a5;
+      border-radius: 8px;
+      padding: 6px 14px;
+      margin-top: -8px;
+    }
+
+    .sync-error-pill {
+      background: #fff3f2 !important;
+      color: #9f1239 !important;
+      border-color: #fca5a5 !important;
+      cursor: help;
+    }
+
+    @media (max-width: 980px) {
+      .calendar-sync-table-wrap {
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .calendar-sync-table-wrap .calendar-sync-table {
+        min-width: 980px;
+      }
+
+      .calendar-sync-toolbar {
+        align-items: flex-start !important;
+      }
+
+      .calendar-sync-toolbar-actions {
+        width: 100%;
+        flex-wrap: wrap;
+      }
+    }
+
+    .calendar-sync-state {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 3px 10px;
+      font-size: 0.84rem;
+      border: 1px solid var(--border);
+      background: #f8fafc;
+      color: #334155;
+      white-space: nowrap;
+    }
+
+    .calendar-sync-state.diff {
+      background: #fff3f2;
+      color: #9f1239;
+    }
+
+    .calendar-sync-origin {
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .calendar-sync-action-wrap {
+      display: inline-flex;
+      flex-direction: column;
+      gap: 6px;
+      align-items: flex-start;
+    }
+
+    .calendar-sync-footer-select {
+      margin-top: 10px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .calendar-sync-exec {
+      margin-top: 12px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      background: #fff;
+    }
+
+    .calendar-sync-exec-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 8px 10px;
+      background: #fbfdff;
+      margin-bottom: 8px;
+    }
+
+    .calendar-sync-exec-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .calendar-sync-row-action {
+      min-width: 150px;
+      text-align: left;
+    }
+
+    .calendar-sync-row-action.active {
+      border-color: #12324a !important;
+      background: #12324a !important;
+      color: #fff !important;
+      box-shadow: 0 0 0 1px rgba(18, 50, 74, 0.15);
+    }
+
+    .calendar-sync-bulk-action.active {
+      border-color: #12324a !important;
+      background: #12324a !important;
+      color: #fff !important;
+    }
+
+    .calendar-sync-view-actions {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      background: #fff;
+      margin-bottom: 12px;
+    }
+
+    .calendar-sync-apply-wrap {
+      margin-top: 10px;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      align-items: stretch;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .calendar-sync-apply-wrap .btn {
+      width: 100%;
+      justify-content: center;
+    }
+  </style>
+
+  <div class="page-title">
+    <h1>Sincronización Google Calendar</h1>
+    <p class="subtitle">Panel unificado de estado, diferencias y resolución masiva.</p>
+  </div>
+
+  <!-- Spinner de carga global -->
+  <div id="sync-loading-overlay" style="display:none; position:fixed; inset:0; background:rgba(255,255,255,0.72); z-index:9999; align-items:center; justify-content:center; flex-direction:column; gap:14px;">
+    <svg width="52" height="52" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg" style="animation:sync-spin 0.9s linear infinite;">
+      <circle cx="26" cy="26" r="22" stroke="#d1dde8" stroke-width="5"/>
+      <path d="M26 4 A22 22 0 0 1 48 26" stroke="#12324a" stroke-width="5" stroke-linecap="round"/>
+    </svg>
+    <div id="sync-loading-label" style="font-size:0.95rem; color:#12324a; font-weight:600;">Procesando…</div>
+  </div>
+  <style>
+    @keyframes sync-spin { to { transform: rotate(360deg); } }
+  </style>
+
+  <div class="calendar-sync-view-actions">
+    <div style="font-weight:600; margin-bottom:4px;">Acciones de vista y análisis</div>
+    <div class="hint" style="margin-bottom:10px;">Ajusta el análisis, refresca estado o recalcula la comparación completa.</div>
+
+    <form method="post" action="{{ url_for('calendar_sync_view') }}" id="sync-view-form" style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-start; margin:0;">
+      <input type="hidden" name="next" value="{{ request.full_path }}">
+      <input type="hidden" name="action" value="sync_calendar_now">
+
+      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+        <label class="muted" for="sync-import-mode">Modo</label>
+        <div style="display:flex; flex-direction:column; gap:2px;">
+          <select class="input" id="sync-import-mode" name="import_mode" style="max-width:220px;">
+            <option value="event_date">Fecha del evento</option>
+            <option value="created_date">Fecha de creación</option>
+          </select>
+          <span class="hint" style="margin:0; font-size:0.78rem;">Criterio de fecha para buscar eventos en Google Calendar</span>
+        </div>
+
+        <label class="muted" for="sync-range-value">Rango</label>
+        <div style="display:flex; flex-direction:column; gap:2px;">
+          <select class="input" id="sync-range-value" name="range_value" style="max-width:180px;">
+            <option value="today">Hoy</option>
+            <option value="7days">7 días</option>
+            <option value="15days" selected>15 días</option>
+          </select>
+          <span class="hint" style="margin:0; font-size:0.78rem;">Ventana de tiempo a analizar</span>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-start; margin-top:2px;">
+        <div style="display:flex; flex-direction:column; gap:2px; align-items:flex-start;">
+          <a class="btn btn-soft sync-nav-btn" href="{{ url_for('calendar_sync_view', page=1, only_conflicts=1 if only_conflicts else None) }}"
+             title="Recarga la lista con el estado actual de la BD, sin contactar Google Calendar">Refrescar estado</a>
+          <span class="hint" style="margin:0; font-size:0.78rem;">Recarga la tabla desde la BD local</span>
+        </div>
+
+        {% if only_conflicts %}
+          <div style="display:flex; flex-direction:column; gap:2px; align-items:flex-start;">
+            <a class="btn btn-primary sync-nav-btn" href="{{ url_for('calendar_sync_view', page=1, only_conflicts=1) }}"
+               title="Muestra solo conflictos, push/delete pendientes y errores">Ver solo diferencias</a>
+            <span class="hint" style="margin:0; font-size:0.78rem;">Oculta los elementos sin cambios</span>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:2px; align-items:flex-start;">
+            <a class="btn btn-soft sync-nav-btn" href="{{ url_for('calendar_sync_view', page=1) }}"
+               title="Muestra todos los elementos, incluyendo los sincronizados">Ver todo</a>
+            <span class="hint" style="margin:0; font-size:0.78rem;">Incluye todos los estados</span>
+          </div>
+        {% else %}
+          <div style="display:flex; flex-direction:column; gap:2px; align-items:flex-start;">
+            <a class="btn btn-soft sync-nav-btn" href="{{ url_for('calendar_sync_view', page=1, only_conflicts=1) }}"
+               title="Muestra solo conflictos, push/delete pendientes y errores">Ver solo diferencias</a>
+            <span class="hint" style="margin:0; font-size:0.78rem;">Oculta los elementos sin cambios</span>
+          </div>
+        {% endif %}
+
+        <div style="display:flex; flex-direction:column; gap:2px; align-items:flex-start;">
+          <button class="btn btn-primary" type="submit" id="btn-comparar"
+                  title="Lanza la sincronización completa con Google Calendar (puede tardar unos segundos)">Comparar nuevamente</button>
+          <span class="hint" style="margin:0; font-size:0.78rem;">Consulta Google Calendar y actualiza diferencias</span>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div class="card" style="margin-bottom:12px;">
+    <div class="calendar-sync-toolbar" style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap;">
+      <div class="muted">
+        Estados: pending_push={{ calendar_sync_stats.pending_push }}, pending_delete={{ calendar_sync_stats.pending_delete }}, conflict={{ calendar_sync_stats.conflict }}, error={{ calendar_sync_stats.error }}
+      </div>
+      <div class="calendar-sync-toolbar-actions" style="display:flex; gap:8px; flex-wrap:wrap;"></div>
+    </div>
+
+    {% if calendar_sync_last_info %}
+      {% if calendar_sync_last_level == 'error' %}
+        <div style="margin-top:10px; border:1px solid var(--border); border-radius:12px; padding:10px 12px; background:#fff3f2; color:var(--text);">
+      {% else %}
+        <div style="margin-top:10px; border:1px solid var(--border); border-radius:12px; padding:10px 12px; background:#eef8f1; color:var(--text);">
+      {% endif %}
+          <div style="font-weight:600; margin-bottom:4px;">Resultado última sincronización</div>
+          <div class="hint" style="margin:0; color:inherit;">{{ calendar_sync_last_info }}</div>
+        </div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">Elementos detectados</div>
+      <div class="muted">{{ total }} resultados</div>
+    </div>
+
+    {% if calendar_sync_items %}
+      <form method="post" id="calendar-sync-form" action="{{ url_for('calendar_sync_view') }}">
+        <input type="hidden" name="next" value="{{ request.full_path }}">
+        <input type="hidden" name="action" value="apply_calendar_sync_changes">
+
+        <div class="pager" style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:10px;">
+          <div class="muted">
+            Mostrando {{ (page-1)*per_page + 1 }}–{{ [page*per_page, total]|min }} de {{ total }} · página {{ page }} de {{ pages }}
+          </div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            {% if page > 1 %}
+              <a class="btn btn-soft" href="{{ url_for('calendar_sync_view', page=1, only_conflicts=1 if only_conflicts else None) }}">« Primera</a>
+              <a class="btn btn-soft" href="{{ url_for('calendar_sync_view', page=page-1, only_conflicts=1 if only_conflicts else None) }}">‹ Anterior</a>
+            {% else %}
+              <span class="btn btn-soft disabled">« Primera</span>
+              <span class="btn btn-soft disabled">‹ Anterior</span>
+            {% endif %}
+            {% if page < pages %}
+              <a class="btn btn-soft" href="{{ url_for('calendar_sync_view', page=page+1, only_conflicts=1 if only_conflicts else None) }}">Siguiente ›</a>
+              <a class="btn btn-soft" href="{{ url_for('calendar_sync_view', page=pages, only_conflicts=1 if only_conflicts else None) }}">Última »</a>
+            {% else %}
+              <span class="btn btn-soft disabled">Siguiente ›</span>
+              <span class="btn btn-soft disabled">Última »</span>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="calendar-sync-table-wrap">
+          <table class="table calendar-sync-table">
+            <thead>
+              <tr>
+                <th style="width:56px;"><input type="checkbox" id="sync-check-all" aria-label="Seleccionar todo"></th>
+                <th>Elemento</th>
+                <th style="width:110px;">Origen</th>
+                <th style="width:180px;">Estado</th>
+                <th style="width:120px;">Fecha</th>
+                <th style="width:200px;">Acción de datos</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in calendar_sync_items %}
+                <tr>
+                  <td>
+                    <input
+                      type="checkbox"
+                      name="task_ids"
+                      value="{{ item.id }}"
+                      class="sync-item-checkbox"
+                      data-origin="{{ item.origin }}"
+                      data-actionable="{{ 1 if item.actionable else 0 }}"
+                    >
+                  </td>
+                  <td>
+                    <div style="font-weight:600; margin-bottom:4px;">
+                      <a href="{{ url_for('task_edit', task_id=item.id, next=request.full_path) }}">{{ item.title }}</a>
+                    </div>
+                    <div class="hint" style="margin:0;">{{ item.reason }}</div>
+                  </td>
+                  <td><span class="calendar-sync-origin">{{ item.origin }}</span></td>
+                  <td>
+                    <span
+                      class="calendar-sync-state {% if item.calendar_sync_state == 'conflict' %}diff{% endif %}{% if item.calendar_sync_state == 'error' %} sync-error-pill{% endif %}"
+                      {% if item.calendar_sync_state == 'error' and item.calendar_sync_error %}title="{{ item.calendar_sync_error }}"{% endif %}
+                    >{{ item.state_label }}</span>
+                  </td>
+                  <td>
+                    <div>{% if item.due_date %}{{ item.due_date.strftime('%d-%m-%Y') }}{% else %}<span class="muted">—</span>{% endif %}</div>
+                    <div class="muted" style="font-size:0.92em; margin-top:2px;">{% if item.due_time_text %}{{ item.due_time_text }}{% else %}—{% endif %}</div>
+                  </td>
+                  <td>
+                    <div class="calendar-sync-action-wrap">
+                      <input type="hidden" name="row_action_{{ item.id }}" value="{{ item.default_action_key }}" class="row-action-hidden">
+                      {% for action in item.action_defs %}
+                        <button
+                          class="btn btn-soft calendar-sync-row-action {% if action.key == item.default_action_key %}active{% endif %}"
+                          type="button"
+                          data-task-id="{{ item.id }}"
+                          data-action-key="{{ action.key }}"
+                        >
+                          {{ action.label }}
+                        </button>
+                      {% endfor %}
+                    </div>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="calendar-sync-footer-select">
+          <div class="muted">Selección masiva por origen:</div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button class="btn btn-soft" type="button" id="pick-origin-gcal">Marcar GCalendar</button>
+            <button class="btn btn-soft" type="button" id="pick-origin-gtd">Marcar GTD</button>
+            <button class="btn btn-soft" type="button" id="pick-origin-both">Marcar Ambos</button>
+            <button class="btn btn-soft" type="button" id="pick-origin-clear">Limpiar checks</button>
+          </div>
+        </div>
+
+        <div class="calendar-sync-exec">
+          <div class="calendar-sync-exec-row">
+            <div class="muted">Origen GTD: crear en GCal o mantener solo GTD.</div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <button class="btn btn-soft calendar-sync-bulk-action" type="button" id="bulk-create-gcal" disabled>Crear/Borrar en GCal</button>
+              <button class="btn btn-soft calendar-sync-bulk-action" type="button" id="bulk-solo-gtd" disabled>Solo GTD</button>
+            </div>
+          </div>
+
+          <div class="calendar-sync-exec-row">
+            <div class="muted">Origen GCalendar: importar a GTD o mantener solo GCal.</div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <button class="btn btn-soft calendar-sync-bulk-action" type="button" id="bulk-import-gtd" disabled>Importar a GTD</button>
+              <button class="btn btn-soft calendar-sync-bulk-action" type="button" id="bulk-solo-gcal" disabled>Solo GCal</button>
+            </div>
+          </div>
+
+          <div class="calendar-sync-exec-row">
+            <div class="muted">Origen Ambos: decide por fila (Usar GTD/GCal) y aplica en bloque.</div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <button class="btn btn-soft calendar-sync-bulk-action" type="button" id="bulk-keep-gtd" disabled>Usar GTD</button>
+              <button class="btn btn-soft calendar-sync-bulk-action" type="button" id="bulk-keep-gcal" disabled>Usar GCal</button>
+            </div>
+          </div>
+
+          <div class="calendar-sync-apply-wrap">
+            <div class="hint" id="apply-summary">Sin elementos seleccionados.</div>
+            <button class="btn btn-primary" type="submit" id="apply-changes-btn">Aplicar cambios</button>
+          </div>
+        </div>
+      </form>
+    {% else %}
+      <div class="empty">No hay elementos pendientes en la sincronización.</div>
+    {% endif %}
+  </div>
+
+  <script>
+    (function () {
+      const checkAll = document.getElementById('sync-check-all');
+      const checks = Array.from(document.querySelectorAll('.sync-item-checkbox'));
+      const pickGcal = document.getElementById('pick-origin-gcal');
+      const pickGtd = document.getElementById('pick-origin-gtd');
+      const pickBoth = document.getElementById('pick-origin-both');
+      const pickClear = document.getElementById('pick-origin-clear');
+      const applySummary = document.getElementById('apply-summary');
+      const form = document.getElementById('calendar-sync-form');
+      const rowActionButtons = Array.from(document.querySelectorAll('.calendar-sync-row-action'));
+      const bulkCreateGcal = document.getElementById('bulk-create-gcal');
+      const bulkSoloGtd = document.getElementById('bulk-solo-gtd');
+      const bulkImportGtd = document.getElementById('bulk-import-gtd');
+      const bulkSoloGcal = document.getElementById('bulk-solo-gcal');
+      const bulkKeepGtd = document.getElementById('bulk-keep-gtd');
+      const bulkKeepGcal = document.getElementById('bulk-keep-gcal');
+      const bulkButtons = Array.from(document.querySelectorAll('.calendar-sync-bulk-action'));
+
+      function updateSummary() {
+        if (!applySummary) return;
+        const selected = checks.filter(function (c) { return c.checked; }).length;
+        if (selected === 0) {
+          applySummary.textContent = 'Sin elementos seleccionados.';
+          return;
+        }
+        applySummary.textContent = 'Seleccionados: ' + selected + ' elemento(s).';
+      }
+
+      function selectedCheckboxes() {
+        return checks.filter(function (c) { return c.checked; });
+      }
+
+      function rowButtonsForTask(taskId) {
+        return rowActionButtons.filter(function (b) {
+          return b.getAttribute('data-task-id') === taskId;
+        });
+      }
+
+      function taskSupportsAction(taskId, actionKey) {
+        return rowButtonsForTask(taskId).some(function (b) {
+          return b.getAttribute('data-action-key') === actionKey;
+        });
+      }
+
+      function setActionForSelection(actionKeys, originName) {
+        const keys = Array.isArray(actionKeys) ? actionKeys : [actionKeys];
+        selectedCheckboxes().forEach(function (cb) {
+          const taskId = cb.value;
+          if (originName && cb.getAttribute('data-origin') !== originName) return;
+
+          const buttons = rowButtonsForTask(taskId);
+          const chosen = buttons.find(function (b) {
+            return keys.indexOf(b.getAttribute('data-action-key')) >= 0;
+          });
+          if (!chosen) return;
+
+          buttons.forEach(function (b) { b.classList.remove('active'); });
+          chosen.classList.add('active');
+
+          const hidden = form ? form.querySelector('input[name="row_action_' + taskId + '"]') : null;
+          if (hidden) {
+            hidden.value = chosen.getAttribute('data-action-key') || '';
+          }
+        });
+      }
+
+      function countSelectedBy(originName, actionKeys) {
+        const keys = Array.isArray(actionKeys) ? actionKeys : [actionKeys];
+        return selectedCheckboxes().filter(function (cb) {
+          if (originName && cb.getAttribute('data-origin') !== originName) return false;
+          return keys.some(function (k) { return taskSupportsAction(cb.value, k); });
+        }).length;
+      }
+
+      function markBulkButtonActive(btn) {
+        bulkButtons.forEach(function (b) { b.classList.remove('active'); });
+        if (btn && !btn.disabled) {
+          btn.classList.add('active');
+        }
+      }
+
+      function updateBulkButtons() {
+        const cCreate = countSelectedBy(null, ['create_gcal', 'delete_gcal']);
+        const cSoloGtd = countSelectedBy(null, 'solo_gtd');
+        const cImport = countSelectedBy('GCalendar', 'import_gtd');
+        const cSoloGcal = countSelectedBy('GCalendar', 'solo_gcal');
+        const cKeepGtd = countSelectedBy('Ambos', 'keep_gtd');
+        const cKeepGcal = countSelectedBy('Ambos', 'keep_google');
+
+        if (bulkCreateGcal) {
+          bulkCreateGcal.disabled = cCreate === 0;
+          bulkCreateGcal.textContent = 'Crear/Borrar en GCal (' + cCreate + ')';
+        }
+        if (bulkSoloGtd) {
+          bulkSoloGtd.disabled = cSoloGtd === 0;
+          bulkSoloGtd.textContent = 'Solo GTD (' + cSoloGtd + ')';
+        }
+        if (bulkImportGtd) {
+          bulkImportGtd.disabled = cImport === 0;
+          bulkImportGtd.textContent = 'Importar a GTD (' + cImport + ')';
+        }
+        if (bulkSoloGcal) {
+          bulkSoloGcal.disabled = cSoloGcal === 0;
+          bulkSoloGcal.textContent = 'Solo GCal (' + cSoloGcal + ')';
+        }
+        if (bulkKeepGtd) {
+          bulkKeepGtd.disabled = cKeepGtd === 0;
+          bulkKeepGtd.textContent = 'Usar GTD (' + cKeepGtd + ')';
+        }
+        if (bulkKeepGcal) {
+          bulkKeepGcal.disabled = cKeepGcal === 0;
+          bulkKeepGcal.textContent = 'Usar GCal (' + cKeepGcal + ')';
+        }
+      }
+
+      function updateMaster() {
+        if (!checkAll) return;
+        const allChecked = checks.length > 0 && checks.every(function (c) { return c.checked; });
+        checkAll.checked = allChecked;
+      }
+
+      function setOrigin(originName) {
+        checks.forEach(function (c) {
+          c.checked = c.getAttribute('data-origin') === originName;
+        });
+        updateMaster();
+        updateSummary();
+        updateBulkButtons();
+      }
+
+      if (checkAll) {
+        checkAll.addEventListener('change', function () {
+          checks.forEach(function (c) { c.checked = checkAll.checked; });
+          updateSummary();
+          updateBulkButtons();
+        });
+      }
+
+      checks.forEach(function (c) {
+        c.addEventListener('change', function () {
+          updateMaster();
+          updateSummary();
+          updateBulkButtons();
+        });
+      });
+
+      if (pickGcal) {
+        pickGcal.addEventListener('click', function () { setOrigin('GCalendar'); });
+      }
+      if (pickGtd) {
+        pickGtd.addEventListener('click', function () { setOrigin('GTD'); });
+      }
+      if (pickBoth) {
+        pickBoth.addEventListener('click', function () { setOrigin('Ambos'); });
+      }
+      if (pickClear) {
+        pickClear.addEventListener('click', function () {
+          checks.forEach(function (c) { c.checked = false; });
+          updateMaster();
+          updateSummary();
+          updateBulkButtons();
+        });
+      }
+
+      if (bulkCreateGcal) {
+        bulkCreateGcal.addEventListener('click', function () {
+          setActionForSelection(['create_gcal', 'delete_gcal']);
+          markBulkButtonActive(bulkCreateGcal);
+        });
+      }
+      if (bulkSoloGtd) {
+        bulkSoloGtd.addEventListener('click', function () {
+          setActionForSelection('solo_gtd');
+          markBulkButtonActive(bulkSoloGtd);
+        });
+      }
+      if (bulkImportGtd) {
+        bulkImportGtd.addEventListener('click', function () {
+          setActionForSelection('import_gtd', 'GCalendar');
+          markBulkButtonActive(bulkImportGtd);
+        });
+      }
+      if (bulkSoloGcal) {
+        bulkSoloGcal.addEventListener('click', function () {
+          setActionForSelection('solo_gcal', 'GCalendar');
+          markBulkButtonActive(bulkSoloGcal);
+        });
+      }
+      if (bulkKeepGtd) {
+        bulkKeepGtd.addEventListener('click', function () {
+          setActionForSelection('keep_gtd', 'Ambos');
+          markBulkButtonActive(bulkKeepGtd);
+        });
+      }
+      if (bulkKeepGcal) {
+        bulkKeepGcal.addEventListener('click', function () {
+          setActionForSelection('keep_google', 'Ambos');
+          markBulkButtonActive(bulkKeepGcal);
+        });
+      }
+
+      rowActionButtons.forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          const taskId = btn.getAttribute('data-task-id');
+          const actionKey = btn.getAttribute('data-action-key');
+          if (!taskId || !actionKey) return;
+
+          const group = rowActionButtons.filter(function (b) {
+            return b.getAttribute('data-task-id') === taskId;
+          });
+          group.forEach(function (b) { b.classList.remove('active'); });
+          btn.classList.add('active');
+
+          const hidden = form ? form.querySelector('input[name="row_action_' + taskId + '"]') : null;
+          if (hidden) {
+            hidden.value = actionKey;
+          }
+
+          const checkbox = form ? form.querySelector('input.sync-item-checkbox[value="' + taskId + '"]') : null;
+          if (checkbox) {
+            checkbox.checked = true;
+            updateMaster();
+            updateSummary();
+            updateBulkButtons();
+          }
+        });
+      });
+
+      if (form) {
+        form.addEventListener('submit', function (e) {
+          const selected = checks.filter(function (c) { return c.checked; }).length;
+          if (selected === 0) {
+            e.preventDefault();
+            window.alert('Selecciona al menos un elemento antes de aplicar cambios.');
+          }
+        });
+      }
+
+      updateSummary();
+      updateMaster();
+      updateBulkButtons();
+
+      // --- Spinner de carga ---
+      var overlay = document.getElementById('sync-loading-overlay');
+      var loadingLabel = document.getElementById('sync-loading-label');
+
+      function showSpinner(label) {
+        loadingLabel.textContent = label || 'Procesando…';
+        overlay.style.display = 'flex';
+      }
+
+      // "Comparar nuevamente" → lanza sync completo (puede tardar)
+      var btnComparar = document.getElementById('btn-comparar');
+      if (btnComparar) {
+        btnComparar.addEventListener('click', function () {
+          showSpinner('Comparando con Google Calendar…');
+        });
+      }
+
+      // "Refrescar estado" y otros enlaces de navegación → carga rápida
+      document.querySelectorAll('.sync-nav-btn').forEach(function (a) {
+        a.addEventListener('click', function () {
+          showSpinner('Cargando…');
+        });
+      });
+
+      // "Aplicar cambios" → procesamiento por lotes
+      var applyBtn = document.getElementById('apply-changes-btn');
+      if (applyBtn) {
+        applyBtn.addEventListener('click', function () {
+          var nSelected = document.querySelectorAll('.sync-item-checkbox:checked').length;
+          if (nSelected > 0) {
+            showSpinner('Aplicando cambios (' + nSelected + ' elementos)…');
+          }
+        });
+      }
+
+      // Ocultar spinner si se navega atrás (bfcache)
+      window.addEventListener('pageshow', function (e) {
+        if (e.persisted) { overlay.style.display = 'none'; }
+      });
+
+    })();
+  </script>
+{% endblock %}

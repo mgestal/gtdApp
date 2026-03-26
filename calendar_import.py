@@ -23,6 +23,13 @@ REQUIRED_SCOPES = {
 }
 
 
+def _has_required_scopes(creds: Optional[Credentials]) -> bool:
+    if creds is None:
+        return False
+    authorized = set(creds.scopes) if creds.scopes else set()
+    return REQUIRED_SCOPES.issubset(authorized)
+
+
 def build_google_service(
     credentials_path: str | Path,
     token_path: str | Path,
@@ -38,15 +45,31 @@ def build_google_service(
         creds = Credentials.from_authorized_user_file(str(token_path), SCOPES)
 
     if creds and creds.valid:
-        # Verifica que tenga los scopes mínimos requeridos
-        authorized = set(creds.scopes) if creds.scopes else set()
-        if REQUIRED_SCOPES.issubset(authorized):
+        # Verifica que tenga los scopes mínimos requeridos.
+        if _has_required_scopes(creds):
             return build(api_name, api_version, credentials=creds)
-        # Si no tiene los scopes requeridos, continúa con refresh/reauth
+
+        # Si no tiene los scopes requeridos, forzamos reautorización.
+        if os.environ.get("GTD_NON_INTERACTIVE_OAUTH", "0") == "1":
+            raise RuntimeError(
+                "Token Google sin permisos suficientes para Calendar (write). "
+                "Reautoriza OAuth para conceder scope calendar."
+            )
+        creds = None
 
     if creds and creds.expired and creds.refresh_token:
         creds.refresh(Request())
         token_path.write_text(creds.to_json(), encoding="utf-8")
+
+        if not _has_required_scopes(creds):
+            if os.environ.get("GTD_NON_INTERACTIVE_OAUTH", "0") == "1":
+                raise RuntimeError(
+                    "Token Google refrescado pero sin permisos suficientes para Calendar (write). "
+                    "Reautoriza OAuth para conceder scope calendar."
+                )
+            creds = None
+
+    if creds and creds.valid:
         return build(api_name, api_version, credentials=creds)
 
     if os.environ.get("GTD_NON_INTERACTIVE_OAUTH", "0") == "1":

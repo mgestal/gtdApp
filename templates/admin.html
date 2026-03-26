@@ -370,21 +370,11 @@
                 <div class="hint">
                   Estados: pending_push={{ calendar_sync_stats.pending_push }}, pending_delete={{ calendar_sync_stats.pending_delete }}, conflict={{ calendar_sync_stats.conflict }}, error={{ calendar_sync_stats.error }}
                 </div>
+                <div class="hint" style="margin-top:6px;">Conflictos pendientes: {{ calendar_sync_stats.conflict }}.</div>
+                <div class="hint" style="margin-top:6px;">Accede al panel unificado para comparar, filtrar diferencias y resolver en bloque.</div>
               </div>
-              <form method="post" class="form" style="margin:0;">
-                <input type="hidden" name="action" value="sync_calendar_now">
-                <button class="btn btn-primary" type="submit">Sincronizar ahora</button>
-              </form>
-            </div>
-
-            <div class="list-row" style="align-items:flex-start;">
-              <div style="flex:1; min-width:0;">
-                <div style="font-weight:600; margin-bottom:4px;">Conflictos</div>
-                <div class="hint">Conflictos pendientes: {{ calendar_sync_stats.conflict }}</div>
-                <div class="hint" style="margin-top:6px;">Gestiona resolución individual o masiva en la vista dedicada.</div>
-              </div>
-              <div>
-                <a class="btn btn-soft" href="{{ url_for('calendar_conflicts_view') }}">Ir a conflictos</a>
+              <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <a class="btn btn-primary" href="{{ url_for('calendar_sync_view') }}">Abrir panel de sincronización</a>
               </div>
             </div>
           </div>

@@ -326,6 +326,14 @@ def _calendar_sync_service():
     token_path = google_token_path()
     if not creds_path.exists() or not token_path.exists():
         return None
+    if not os.access(creds_path, os.R_OK):
+        raise RuntimeError(
+            f"No se puede leer {creds_path}. Revisa propietario/permisos para el usuario del servidor web."
+        )
+    if not os.access(token_path, os.R_OK):
+        raise RuntimeError(
+            f"No se puede leer {token_path}. Revisa propietario/permisos para el usuario del servidor web."
+        )
 
     prev = os.environ.get("GTD_NON_INTERACTIVE_OAUTH")
     os.environ["GTD_NON_INTERACTIVE_OAUTH"] = "1"
@@ -336,6 +344,8 @@ def _calendar_sync_service():
             api_name="calendar",
             api_version="v3",
         )
+    except RuntimeError:
+        raise  # propaga errores de scopes/autenticación con su mensaje real
     except Exception:
         return None
     finally:
@@ -5325,11 +5335,173 @@ def _load_calendar_conflicts_view_data(page: int) -> Dict[str, Any]:
     }
 
 
+def _load_calendar_sync_view_data(page: int, only_conflicts: bool = False) -> Dict[str, Any]:
+    per_page = cfg_int(["app", "pagination", "calendar_conflicts_per_page"], default=25, min_v=5, max_v=500)
+
+    base_where = "calendar_sync_state IN ('pending_push','pending_delete','conflict','error')"
+    if only_conflicts:
+        base_where = "calendar_sync_state='conflict'"
+
+    total_row = q1(f"SELECT COUNT(*) AS c FROM tasks WHERE {base_where}")
+    total = int(total_row["c"]) if total_row else 0
+
+    pages = max(1, (total + per_page - 1) // per_page)
+    page = max(1, min(page, pages))
+    offset = (page - 1) * per_page
+
+    def _norm_hhmm(value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, timedelta):
+            total_seconds = int(value.total_seconds()) % (24 * 3600)
+            hh = total_seconds // 3600
+            mm = (total_seconds % 3600) // 60
+            return f"{hh:02d}:{mm:02d}"
+        if hasattr(value, "strftime"):
+            try:
+                return value.strftime("%H:%M")
+            except Exception:
+                pass
+        txt = str(value).strip()
+        if len(txt) >= 5 and txt[2] == ":":
+            return txt[:5]
+        return txt
+
+    def _calendar_conflict_reason(row: Dict[str, Any]) -> str:
+        payload_raw = row.get("calendar_conflict_payload")
+        if not payload_raw:
+            return "No disponible"
+
+        try:
+            ev = json.loads(payload_raw)
+            remote = _google_event_to_task_fields(ev)
+        except Exception:
+            return "No disponible"
+
+        reasons: List[str] = []
+
+        if (row.get("title") or "").strip() != (remote.get("title") or "").strip():
+            reasons.append("titulo")
+
+        if (row.get("notes") or "").strip() != (remote.get("notes") or "").strip():
+            reasons.append("notas")
+
+        if str(row.get("due_date") or "") != str(remote.get("due_date") or ""):
+            reasons.append("fecha")
+
+        if _norm_hhmm(row.get("due_time")) != _norm_hhmm(remote.get("due_time")):
+            reasons.append("hora")
+
+        if not reasons:
+            return "Sin diferencias actuales"
+        return ", ".join(reasons)
+
+    rows = q(
+        f"SELECT id, title, notes, due_date, due_time, TIME_FORMAT(due_time, '%%H:%%i') AS due_time_text, "
+        "calendar_sync_state, calendar_sync_error, calendar_conflict_at, calendar_conflict_payload "
+        "FROM tasks "
+        f"WHERE {base_where} "
+        "ORDER BY "
+        "CASE calendar_sync_state "
+        "  WHEN 'conflict' THEN 1 "
+        "  WHEN 'pending_push' THEN 2 "
+        "  WHEN 'pending_delete' THEN 3 "
+        "  WHEN 'error' THEN 4 "
+        "  ELSE 5 END, "
+        "COALESCE(calendar_conflict_at, NOW()) DESC, id DESC "
+        "LIMIT %s OFFSET %s",
+        (per_page, offset),
+    )
+
+    calendar_sync_items: List[Dict[str, Any]] = []
+    for r in rows:
+        state = (r.get("calendar_sync_state") or "").strip().lower()
+        if state == "conflict":
+            origin = "Ambos"
+            state_label = "Con diferencias"
+            action_defs = [
+                {"key": "keep_gtd", "label": "Usar GTD"},
+                {"key": "keep_google", "label": "Usar GCal"},
+            ]
+            actionable = True
+            reason = _calendar_conflict_reason(r)
+            default_action_key = "keep_gtd"
+        elif state == "pending_push":
+            origin = "GTD"
+            state_label = "Solo en GTD"
+            action_defs = [
+                {"key": "create_gcal", "label": "Crear en GCal"},
+                {"key": "solo_gtd", "label": "Solo GTD"},
+            ]
+            actionable = False
+            reason = "Pendiente de envio a Calendar"
+            default_action_key = "create_gcal"
+        elif state == "pending_delete":
+            origin = "Ambos"
+            state_label = "Pendiente borrado en GCal"
+            action_defs = [
+                {"key": "delete_gcal", "label": "Borrar en GCal"},
+                {"key": "solo_gtd", "label": "Solo GTD"},
+            ]
+            actionable = False
+            reason = "Existe en GCal; pendiente de borrado remoto"
+            default_action_key = "delete_gcal"
+        else:
+            origin = "Ambos"
+            state_label = "Error"
+            action_defs = [
+                {"key": "retry_sync", "label": "Reintentar"},
+                {"key": "solo_gtd", "label": "Solo GTD"},
+            ]
+            actionable = False
+            reason = "Error de sincronización con Google Calendar"
+            default_action_key = "retry_sync"
+
+        item = dict(r)
+        item["origin"] = origin
+        item["state_label"] = state_label
+        item["action_defs"] = action_defs
+        item["actionable"] = actionable
+        item["reason"] = reason
+        item["default_action_key"] = default_action_key
+        calendar_sync_items.append(item)
+
+    calendar_sync_stats = {
+        "pending_push": 0,
+        "pending_delete": 0,
+        "conflict": 0,
+        "error": 0,
+    }
+
+    stats_rows = q(
+        "SELECT calendar_sync_state, COUNT(*) AS c "
+        "FROM tasks "
+        "WHERE calendar_sync_state IN ('pending_push','pending_delete','conflict','error') "
+        "GROUP BY calendar_sync_state"
+    )
+    for r in stats_rows:
+        st = r.get("calendar_sync_state")
+        if st in calendar_sync_stats:
+            calendar_sync_stats[st] = int(r.get("c") or 0)
+
+    return {
+        "calendar_sync_items": calendar_sync_items,
+        "calendar_sync_stats": calendar_sync_stats,
+        "page": page,
+        "pages": pages,
+        "total": total,
+        "per_page": per_page,
+        "only_conflicts": only_conflicts,
+    }
+
+
 def _handle_calendar_conflicts_action(action: str, default_endpoint: str):
     handled = {
         "sync_calendar_now",
+        "apply_calendar_sync_changes",
         "resolve_calendar_conflict",
         "resolve_calendar_conflicts_all",
+        "resolve_calendar_conflicts_selected",
     }
     if action not in handled:
         return None
@@ -5395,6 +5567,140 @@ def _handle_calendar_conflicts_action(action: str, default_endpoint: str):
         finally:
             if acquired:
                 _calendar_sync_lock_release()
+        return redirect(next_url)
+
+    if action == "apply_calendar_sync_changes":
+        raw_ids = request.form.getlist("task_ids")
+        task_ids: List[int] = []
+        for rid in raw_ids:
+            try:
+                task_ids.append(int(rid))
+            except Exception:
+                pass
+        task_ids = sorted(set(task_ids))[:500]
+
+        if not task_ids:
+            flash("No hay elementos seleccionados para aplicar cambios.", "error")
+            return redirect(next_url)
+
+        placeholders = ",".join(["%s"] * len(task_ids))
+        rows = q(
+            "SELECT id, calendar_sync_state, calendar_conflict_payload "
+            "FROM tasks "
+            f"WHERE id IN ({placeholders})",
+            tuple(task_ids),
+        )
+
+        state_by_id: Dict[int, str] = {int(r["id"]): (r.get("calendar_sync_state") or "") for r in rows}
+        payload_by_id: Dict[int, Any] = {int(r["id"]): r.get("calendar_conflict_payload") for r in rows}
+
+        applied = 0
+        skipped = 0
+        failed = 0
+        first_error: Optional[str] = None
+
+        try:
+            service = _calendar_sync_service()
+
+            for task_id in task_ids:
+                st = (state_by_id.get(task_id) or "").strip().lower()
+                chosen = (request.form.get(f"row_action_{task_id}") or "").strip().lower()
+
+                if not chosen:
+                    skipped += 1
+                    continue
+
+                try:
+                    if st == "conflict":
+                        if chosen == "keep_google":
+                            payload = payload_by_id.get(task_id)
+                            if not payload:
+                                skipped += 1
+                                continue
+                            ev = json.loads(payload)
+                            _apply_google_to_task(task_id, ev)
+                            exec_sql(
+                                "UPDATE tasks "
+                                "SET calendar_sync_state='synced', calendar_conflict_payload=NULL, calendar_conflict_at=NULL "
+                                "WHERE id=%s",
+                                (task_id,),
+                            )
+                            applied += 1
+                            continue
+
+                        if chosen == "keep_gtd":
+                            exec_sql(
+                                "UPDATE tasks "
+                                "SET calendar_sync_state='pending_push', calendar_conflict_payload=NULL, calendar_conflict_at=NULL, calendar_local_changed_at=NOW() "
+                                "WHERE id=%s",
+                                (task_id,),
+                            )
+                            if _sync_task_push(task_id, service=service, force_remote_update=True):
+                                applied += 1
+                            else:
+                                failed += 1
+                            continue
+
+                        skipped += 1
+                        continue
+
+                    if st in ("pending_push", "pending_delete", "error"):
+                        if chosen in ("create_gcal", "delete_gcal", "retry_sync"):
+                            if _sync_task_push(task_id, service=service, force_remote_update=True):
+                                applied += 1
+                            else:
+                                failed += 1
+                                if first_error is None:
+                                    row_err = q1("SELECT calendar_sync_error FROM tasks WHERE id=%s", (task_id,))
+                                    first_error = (row_err or {}).get("calendar_sync_error") or "Error al sincronizar con Google Calendar"
+                            continue
+
+                        if chosen == "solo_gtd":
+                            exec_sql(
+                                "UPDATE tasks "
+                                "SET calendar_sync_state='none', calendar_sync_error=NULL, calendar_local_changed_at=NULL "
+                                "WHERE id=%s",
+                                (task_id,),
+                            )
+                            applied += 1
+                            continue
+
+                        skipped += 1
+                        continue
+
+                    skipped += 1
+                except Exception as e:
+                    failed += 1
+                    if first_error is None:
+                        first_error = str(e)
+
+            commit()
+            detail = ""
+            if first_error:
+                detail_low = first_error.lower()
+                if (
+                    "insufficient authentication scopes" in detail_low
+                    or "insufficientpermissions" in detail_low
+                    or "insufficient authentica" in detail_low
+                    or "forbidden" in detail_low
+                ):
+                    detail = (
+                        " Reautoriza Google OAuth con permisos de Calendar (write): "
+                        "regenera instance/gmail_token.json."
+                    )
+                else:
+                    detail = f" Primer error: {first_error[:220]}"
+
+            flash(
+                f"Aplicar cambios: {applied} aplicados, {skipped} omitidos, {failed} con error.",
+                "ok" if failed == 0 else "error",
+            )
+            if detail:
+                flash(detail.strip(), "error_detail")
+        except Exception as e:
+            rollback()
+            flash(f"No se pudieron aplicar cambios: {e}", "error")
+
         return redirect(next_url)
 
     if action == "resolve_calendar_conflict":
@@ -5475,13 +5781,36 @@ def _handle_calendar_conflicts_action(action: str, default_endpoint: str):
         flash("Resolución masiva inválida.", "error")
         return redirect(next_url)
 
-    rows = q(
-        "SELECT id, calendar_conflict_payload "
-        "FROM tasks "
-        "WHERE calendar_sync_state='conflict' "
-        "ORDER BY calendar_conflict_at DESC, id DESC "
-        "LIMIT 200"
-    )
+    if action == "resolve_calendar_conflicts_selected":
+        raw_ids = request.form.getlist("task_ids")
+        task_ids: List[int] = []
+        for rid in raw_ids:
+            try:
+                task_ids.append(int(rid))
+            except Exception:
+                pass
+        task_ids = sorted(set(task_ids))[:200]
+
+        if not task_ids:
+            flash("No hay conflictos seleccionados.", "error")
+            return redirect(next_url)
+
+        placeholders = ",".join(["%s"] * len(task_ids))
+        rows = q(
+            "SELECT id, calendar_conflict_payload "
+            "FROM tasks "
+            f"WHERE calendar_sync_state='conflict' AND id IN ({placeholders}) "
+            "ORDER BY calendar_conflict_at DESC, id DESC",
+            tuple(task_ids),
+        )
+    else:
+        rows = q(
+            "SELECT id, calendar_conflict_payload "
+            "FROM tasks "
+            "WHERE calendar_sync_state='conflict' "
+            "ORDER BY calendar_conflict_at DESC, id DESC "
+            "LIMIT 200"
+        )
 
     if not rows:
         flash("No hay conflictos para resolver.", "ok")
@@ -5573,28 +5902,37 @@ def trash_view():
 
 @app.route("/calendar/conflicts", methods=["GET", "POST"])
 def calendar_conflicts_view():
+    if request.method == "POST":
+        return redirect(url_for("calendar_sync_view"), code=307)
+    return redirect(url_for("calendar_sync_view"), code=301)
+
+
+@app.route("/calendar/sync", methods=["GET", "POST"])
+def calendar_sync_view():
     if not admin_required():
         flash("No autorizado.", "error")
         return redirect(url_for("admin"))
 
     if request.method == "POST":
         action = (request.form.get("action") or "").strip()
-        handled = _handle_calendar_conflicts_action(action, "calendar_conflicts_view")
+        handled = _handle_calendar_conflicts_action(action, "calendar_sync_view")
         if handled is not None:
             return handled
-        flash("Acción de conflictos no válida.", "error")
-        return redirect(url_for("calendar_conflicts_view"))
+        flash("Acción de sincronización no válida.", "error")
+        return redirect(url_for("calendar_sync_view"))
 
     try:
         page = int(request.args.get("page", "1"))
     except ValueError:
         page = 1
 
-    context = _load_calendar_conflicts_view_data(page=page)
+    only_conflicts = str(request.args.get("only_conflicts", "0")).strip().lower() in ("1", "true", "on", "yes")
+
+    context = _load_calendar_sync_view_data(page=page, only_conflicts=only_conflicts)
     calendar_sync_last_info = session.pop("calendar_sync_last_info", None)
     calendar_sync_last_level = session.pop("calendar_sync_last_level", "ok")
     return render_template(
-        "calendar_conflicts.html",
+        "calendar_sync.html",
         calendar_sync_last_info=calendar_sync_last_info,
         calendar_sync_last_level=calendar_sync_last_level,
         **context,
@@ -5606,6 +5944,11 @@ def admin():
 
     if request.method == "POST":
         action = request.form.get("action", "")
+
+        if action == "sync_calendar_now":
+            handled = _handle_calendar_conflicts_action(action, "admin")
+            if handled is not None:
+                return handled
 
         if action == "backup_db":
                if not admin_required():

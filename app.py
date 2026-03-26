@@ -2256,7 +2256,7 @@ def search():
             rows = q(
                 "SELECT p.id, p.name, p.description, p.archived, "
                 "f.name AS folder_name, f.id AS folder_id, "
-                "(SELECT COUNT(*) FROM tasks t WHERE t.project_id=p.id AND t.completed_at IS NULL AND t.deleted_at IS NULL) AS pending "
+                "(SELECT COUNT(*) FROM tasks t WHERE t.project_id=p.id AND t.completed_at IS NULL AND t.archived=0 AND t.deleted_at IS NULL) AS pending "
                 "FROM projects p LEFT JOIN folders f ON f.id=p.folder_id "
                 "WHERE p.deleted_at IS NULL "
                 "AND (LOWER(p.name) LIKE %s OR LOWER(p.description) LIKE %s) "
@@ -2295,7 +2295,7 @@ def search():
             offset = (page - 1) * per_page
             rows = q(
                 "SELECT tg.id, tg.name, tg.type, "
-                "(SELECT COUNT(*) FROM task_tags tt JOIN tasks t ON t.id=tt.task_id WHERE tt.tag_id=tg.id AND t.deleted_at IS NULL) AS task_count "
+                "(SELECT COUNT(*) FROM task_tags tt JOIN tasks t ON t.id=tt.task_id WHERE tt.tag_id=tg.id AND t.archived=0 AND t.deleted_at IS NULL) AS task_count "
                 "FROM tags tg "
                 "WHERE LOWER(tg.name) LIKE %s "
                 "ORDER BY tg.name ASC "
@@ -3130,9 +3130,10 @@ def tags():
 
     # (opcional pero útil) contador de tareas por etiqueta
     rows = q(
-        "SELECT tg.id, tg.name, tg.type, COUNT(tt.task_id) AS task_count "
+        "SELECT tg.id, tg.name, tg.type, COUNT(t.id) AS task_count "
         "FROM tags tg "
         "LEFT JOIN task_tags tt ON tt.tag_id=tg.id "
+        "LEFT JOIN tasks t ON t.id=tt.task_id AND t.archived=0 AND t.deleted_at IS NULL "
         f"{where} "
         "GROUP BY tg.id, tg.name, tg.type "
         "ORDER BY tg.name ASC, (tg.type IS NULL) ASC, tg.type ASC  "
@@ -3395,11 +3396,35 @@ def dashboard():
     # Primer día del mes actual
     first_of_month = today.replace(day=1)
 
-    # Estadísticas básicas existentes
-    total = q1("SELECT COUNT(*) AS c FROM tasks WHERE deleted_at IS NULL")["c"]
-    open_tasks = q1("SELECT COUNT(*) AS c FROM tasks WHERE completed_at IS NULL AND deleted_at IS NULL")["c"]
+    # Criterio de métricas:
+    # - ACTIVAS (backlog actual): excluyen archivadas y papelera.
+    # - HISTORICAS (productividad): excluyen papelera, pero pueden incluir archivadas.
+    total = q1(
+        "SELECT COUNT(*) AS c "
+        "FROM tasks t "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+        "WHERE t.deleted_at IS NULL "
+        "AND t.archived=0 "
+        "AND (t.project_id IS NULL OR p.archived=0)"
+    )["c"]
+    open_tasks = q1(
+        "SELECT COUNT(*) AS c "
+        "FROM tasks t "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+        "WHERE t.completed_at IS NULL "
+        "AND t.deleted_at IS NULL "
+        "AND t.archived=0 "
+        "AND (t.project_id IS NULL OR p.archived=0)"
+    )["c"]
     completed = q1("SELECT COUNT(*) AS c FROM tasks WHERE completed_at IS NOT NULL AND deleted_at IS NULL")["c"]
-    inbox = q1("SELECT COUNT(*) AS c FROM tasks WHERE project_id IS NULL AND completed_at IS NULL AND deleted_at IS NULL")["c"]
+    inbox = q1(
+        "SELECT COUNT(*) AS c "
+        "FROM tasks "
+        "WHERE project_id IS NULL "
+        "AND completed_at IS NULL "
+        "AND archived=0 "
+        "AND deleted_at IS NULL"
+    )["c"]
     projects_cnt = q1("SELECT COUNT(*) AS c FROM projects WHERE archived=0 AND deleted_at IS NULL")["c"]
     archived_cnt = q1("SELECT COUNT(*) AS c FROM projects WHERE archived=1 AND deleted_at IS NULL")["c"]
     pending_active = q1(
@@ -3412,7 +3437,7 @@ def dashboard():
         "AND (t.project_id IS NULL OR p.archived=0)"
     )["c"]
 
-    # --- NUEVAS ESTADÍSTICAS DE COMPLETADOS ---
+    # --- ESTADÍSTICAS HISTORICAS DE COMPLETADOS ---
     comp_today = q1("SELECT COUNT(*) AS c FROM tasks WHERE DATE(completed_at) = %s AND deleted_at IS NULL", (today,))["c"]
     comp_week = q1("SELECT COUNT(*) AS c FROM tasks WHERE DATE(completed_at) >= %s AND deleted_at IS NULL", (monday,))["c"]
     comp_month = q1("SELECT COUNT(*) AS c FROM tasks WHERE DATE(completed_at) >= %s AND deleted_at IS NULL", (first_of_month,))["c"]
@@ -6464,7 +6489,10 @@ def inject_sidebar_tree():
         rows = q(
             "SELECT project_id, COUNT(*) AS n "
             "FROM tasks "
-            "WHERE completed_at IS NULL AND project_id IS NOT NULL "
+            "WHERE completed_at IS NULL "
+            "AND archived=0 "
+            "AND deleted_at IS NULL "
+            "AND project_id IS NOT NULL "
             "GROUP BY project_id"
         )
         project_task_counts = {int(r["project_id"]): int(r["n"]) for r in rows}
@@ -6482,6 +6510,8 @@ def inject_sidebar_tree():
             "SELECT folder_id, COUNT(*) AS n "
             "FROM tasks "
             "WHERE completed_at IS NULL "
+            "AND archived=0 "
+            "AND deleted_at IS NULL "
             "AND folder_id IS NOT NULL "
             "AND project_id IS NULL "
             "GROUP BY folder_id"
@@ -6839,7 +6869,7 @@ def review():
             f"SELECT p.id, p.name, p.description, p.archived, f.name AS folder_name "
             f"FROM projects p "
             f"LEFT JOIN folders f ON f.id=p.folder_id "
-            f"LEFT JOIN tasks t ON t.project_id = p.id AND t.completed_at IS NULL AND t.deleted_at IS NULL "
+            f"LEFT JOIN tasks t ON t.project_id = p.id AND t.completed_at IS NULL AND t.archived=0 AND t.deleted_at IS NULL "
             f"WHERE p.archived = 0 "
             f"AND p.deleted_at IS NULL "
             f"AND (p.folder_id IS NULL OR p.folder_id NOT IN ({ids_placeholder})) "
@@ -6852,7 +6882,7 @@ def review():
             "SELECT p.id, p.name, p.description, p.archived, f.name AS folder_name "
             "FROM projects p "
             "LEFT JOIN folders f ON f.id=p.folder_id "
-            "LEFT JOIN tasks t ON t.project_id = p.id AND t.completed_at IS NULL AND t.deleted_at IS NULL "
+            "LEFT JOIN tasks t ON t.project_id = p.id AND t.completed_at IS NULL AND t.archived=0 AND t.deleted_at IS NULL "
             "WHERE p.archived = 0 "
             "AND p.deleted_at IS NULL "
             "GROUP BY p.id, p.name, p.description, p.archived, f.name "

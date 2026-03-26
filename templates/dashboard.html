@@ -42,7 +42,7 @@
     }
     .db-kpis {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(5, minmax(0, 1fr));
       gap: 12px;
       margin-bottom: 14px;
     }
@@ -227,6 +227,13 @@
       <div>
         <div class="db-kpi-label">Pendientes activas</div>
         <div class="db-kpi-value">{{ stats.pending_active }}</div>
+      </div>
+    </article>
+    <article class="db-kpi">
+      <div class="db-kpi-bar" style="background:#6b7280"></div>
+      <div>
+        <div class="db-kpi-label">En papelera</div>
+        <div class="db-kpi-value">{{ stats.trash_tasks }}</div>
       </div>
     </article>
   </section>

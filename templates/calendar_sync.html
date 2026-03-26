@@ -162,6 +162,15 @@
     <div id="sync-loading-label" style="font-size:0.95rem; color:#12324a; font-weight:600;">Procesando…</div>
   </div>
   <style>
+    .sync-view-btn {
+      min-width: 160px;
+      min-height: 42px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+    }
+
     @keyframes sync-spin { to { transform: rotate(360deg); } }
   </style>
 
@@ -194,37 +203,34 @@
         </div>
       </div>
 
-      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-start; margin-top:2px;">
-        <div style="display:flex; flex-direction:column; gap:2px; align-items:flex-start;">
-          <a class="btn btn-soft sync-nav-btn" href="{{ url_for('calendar_sync_view', page=1, only_conflicts=1 if only_conflicts else None) }}"
+      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:stretch; margin-top:2px;">
+
+        <div style="display:flex; flex-direction:column; gap:2px;">
+          <a class="btn btn-soft sync-nav-btn sync-view-btn" href="{{ url_for('calendar_sync_view', page=1, only_conflicts=1 if only_conflicts else None) }}"
              title="Recarga la lista con el estado actual de la BD, sin contactar Google Calendar">Refrescar estado</a>
-          <span class="hint" style="margin:0; font-size:0.78rem;">Recarga la tabla desde la BD local</span>
+          <span class="hint" style="margin:0; font-size:0.78rem;">Solo recarga desde BD local</span>
         </div>
 
-        {% if only_conflicts %}
-          <div style="display:flex; flex-direction:column; gap:2px; align-items:flex-start;">
-            <a class="btn btn-primary sync-nav-btn" href="{{ url_for('calendar_sync_view', page=1, only_conflicts=1) }}"
-               title="Muestra solo conflictos, push/delete pendientes y errores">Ver solo diferencias</a>
-            <span class="hint" style="margin:0; font-size:0.78rem;">Oculta los elementos sin cambios</span>
-          </div>
-          <div style="display:flex; flex-direction:column; gap:2px; align-items:flex-start;">
-            <a class="btn btn-soft sync-nav-btn" href="{{ url_for('calendar_sync_view', page=1) }}"
-               title="Muestra todos los elementos, incluyendo los sincronizados">Ver todo</a>
-            <span class="hint" style="margin:0; font-size:0.78rem;">Incluye todos los estados</span>
-          </div>
-        {% else %}
-          <div style="display:flex; flex-direction:column; gap:2px; align-items:flex-start;">
-            <a class="btn btn-soft sync-nav-btn" href="{{ url_for('calendar_sync_view', page=1, only_conflicts=1) }}"
-               title="Muestra solo conflictos, push/delete pendientes y errores">Ver solo diferencias</a>
-            <span class="hint" style="margin:0; font-size:0.78rem;">Oculta los elementos sin cambios</span>
-          </div>
-        {% endif %}
-
-        <div style="display:flex; flex-direction:column; gap:2px; align-items:flex-start;">
-          <button class="btn btn-primary" type="submit" id="btn-comparar"
-                  title="Lanza la sincronización completa con Google Calendar (puede tardar unos segundos)">Comparar nuevamente</button>
-          <span class="hint" style="margin:0; font-size:0.78rem;">Consulta Google Calendar y actualiza diferencias</span>
+        <div style="display:flex; flex-direction:column; gap:2px;">
+          <a class="btn {% if only_conflicts %}btn-primary{% else %}btn-soft{% endif %} sync-nav-btn sync-view-btn"
+             href="{{ url_for('calendar_sync_view', page=1, only_conflicts=1) }}"
+             title="Muestra solo conflictos, push/delete pendientes y errores">Ver solo diferencias</a>
+          <span class="hint" style="margin:0; font-size:0.78rem;">Oculta los sin cambios</span>
         </div>
+
+        <div style="display:flex; flex-direction:column; gap:2px;">
+          <a class="btn {% if not only_conflicts %}btn-primary{% else %}btn-soft{% endif %} sync-nav-btn sync-view-btn"
+             href="{{ url_for('calendar_sync_view', page=1) }}"
+             title="Muestra todos los elementos, incluyendo los sincronizados">Ver todo</a>
+          <span class="hint" style="margin:0; font-size:0.78rem;">Incluye todos los estados</span>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:2px;">
+            <button class="btn btn-soft sync-view-btn" type="submit" id="btn-comparar"
+              title="Lanza la sincronización completa con Google Calendar (puede tardar unos segundos)">&#x21bb; Comparar nuevamente</button>
+          <span class="hint" style="margin:0; font-size:0.78rem;">Consulta GCal y actualiza</span>
+        </div>
+
       </div>
     </form>
   </div>

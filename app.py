@@ -2226,17 +2226,28 @@ def search():
         like = f"%{qtxt.lower()}%"
 
         if search_type == "tasks":
-            total_row = q1(
-                "SELECT COUNT(*) AS c FROM tasks t "
-                "WHERE t.deleted_at IS NULL "
-                "AND MATCH(t.title, t.notes) AGAINST(%s IN BOOLEAN MODE)",
-                (qtxt + "*",),
-            )
+            # FULLTEXT (MATCH…AGAINST) requiere mínimo 3 caracteres en MySQL por defecto.
+            # Para términos cortos (< 3 chars) usamos LIKE para que "CV", "IO", etc. funcionen.
+            use_fulltext = len(qtxt) >= 3
+            if use_fulltext:
+                total_row = q1(
+                    "SELECT COUNT(*) AS c FROM tasks t "
+                    "WHERE t.deleted_at IS NULL "
+                    "AND MATCH(t.title, t.notes) AGAINST(%s IN BOOLEAN MODE)",
+                    (qtxt + "*",),
+                )
+            else:
+                total_row = q1(
+                    "SELECT COUNT(*) AS c FROM tasks t "
+                    "WHERE t.deleted_at IS NULL "
+                    "AND (LOWER(t.title) LIKE %s OR LOWER(t.notes) LIKE %s)",
+                    (like, like),
+                )
             total = int(total_row["c"]) if total_row else 0
             pages = max(1, (total + per_page - 1) // per_page)
             page = min(page, pages)
             offset = (page - 1) * per_page
-            rows = q(
+            _task_select = (
                 "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.archived, t.archived_at, "
                 "p.name AS project_name, p.id AS project_id, "
                 "fd.id AS folder_id, fd.name AS folder_name "
@@ -2244,12 +2255,26 @@ def search():
                 "LEFT JOIN projects p ON p.id=t.project_id "
                 "LEFT JOIN folders fd ON fd.id = COALESCE(t.folder_id, p.folder_id) "
                 "WHERE t.deleted_at IS NULL "
-                "AND MATCH(t.title, t.notes) AGAINST(%s IN BOOLEAN MODE) "
+            )
+            _task_order = (
                 "ORDER BY t.archived ASC, (t.completed_at IS NOT NULL) ASC, "
                 "(t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC "
-                "LIMIT %s OFFSET %s",
-                (qtxt + "*", per_page, offset),
+                "LIMIT %s OFFSET %s"
             )
+            if use_fulltext:
+                rows = q(
+                    _task_select +
+                    "AND MATCH(t.title, t.notes) AGAINST(%s IN BOOLEAN MODE) " +
+                    _task_order,
+                    (qtxt + "*", per_page, offset),
+                )
+            else:
+                rows = q(
+                    _task_select +
+                    "AND (LOWER(t.title) LIKE %s OR LOWER(t.notes) LIKE %s) " +
+                    _task_order,
+                    (like, like, per_page, offset),
+                )
             tags_map = load_tags_map([r["id"] for r in rows]) if rows else {}
 
         elif search_type == "projects":

@@ -14,8 +14,10 @@ from googleapiclient.discovery import build
 
 # Solo lectura. Si más adelante quieres modificar etiquetas en Gmail,
 # cambia a gmail.modify.
-SCOPES = ["https://www.googleapis.com/auth/gmail.readonly",
-          "https://www.googleapis.com/auth/calendar.readonly"]
+SCOPES = [
+    "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/calendar",
+]
 
 
 def build_gmail_service(

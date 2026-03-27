@@ -68,8 +68,8 @@ def main():
     client_id = client_config['installed']['client_id']
     client_secret = client_config['installed']['client_secret']
 
-    redirect_port = _find_free_port()
-    redirect_uri = f'http://localhost:{redirect_port}/'
+    redirect_port = 8081
+    redirect_uri = 'http://localhost:8081/'
 
     print("\n" + "="*80)
     print("GENERADOR DE TOKEN GOOGLE - CON CAPTURA AUTOMÁTICA")

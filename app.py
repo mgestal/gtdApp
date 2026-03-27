@@ -6461,6 +6461,29 @@ def admin():
         "error": 0,
     }
 
+    # Estado del token para la card (unificado)
+    token_path = gmail_token_path()
+    google_token_status = "unknown"
+    google_token_expiry = None
+    if token_path.exists():
+        try:
+            with open(token_path, "r", encoding="utf-8") as f:
+                token_data = json.load(f)
+                google_token_expiry = token_data.get("expiry")
+        except Exception:
+            google_token_expiry = None
+        from google.oauth2.credentials import Credentials
+        creds = Credentials.from_authorized_user_file(str(token_path), [
+            "https://www.googleapis.com/auth/gmail.readonly",
+            "https://www.googleapis.com/auth/calendar"
+        ])
+        if creds and creds.valid:
+            google_token_status = "ok"
+        elif creds and creds.expired and creds.refresh_token:
+            google_token_status = "refreshing"
+        else:
+            google_token_status = "expired"
+
     if admin_required():
         periodic_names = ("periodica", "periódica", "periodicas", "periódicas")
         archive_orphans_preview = q(
@@ -6511,6 +6534,8 @@ def admin():
         calendar_sync_stats=calendar_sync_stats,
         calendar_sync_last_info=calendar_sync_last_info,
         calendar_sync_last_level=calendar_sync_last_level,
+        google_token_status=google_token_status,
+        google_token_expiry=google_token_expiry,
     )
 
 

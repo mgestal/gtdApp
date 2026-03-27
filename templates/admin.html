@@ -392,6 +392,41 @@
           </div>
         </div>
 
+        <div class="card" style="margin-top:20px;">
+          <div class="card-header">
+            <div class="card-title">Renovación tokens Google</div>
+            <div class="card-sub">Estado y renovación de credenciales OAuth para Gmail/Calendar</div>
+          </div>
+          <div class="list" style="gap:12px;">
+            <div class="list-row" style="align-items:flex-start;">
+              <div style="flex:1;">
+                <div class="hint">
+                  Estado actual:
+                  {% if google_token_status == 'ok' %}
+                    <span style="color:green; font-weight:600;">Válido</span>
+                  {% elif google_token_status == 'refreshing' %}
+                    <span style="color:orange; font-weight:600;">Refrescando...</span>
+                  {% elif google_token_status == 'expired' %}
+                    <span style="color:red; font-weight:600;">Expirado</span>
+                  {% else %}
+                    <span style="color:gray; font-weight:600;">Desconocido</span>
+                  {% endif %}
+                </div>
+                <div class="hint" style="margin-top:6px;">
+                  Última expiración: {{ google_token_expiry or '—' }}
+                </div>
+              </div>
+              <form method="post" class="form" style="margin:0;">
+                <input type="hidden" name="action" value="renew_google_token">
+                <button class="btn btn-primary" type="submit">Renovar token</button>
+              </form>
+            </div>
+            <div class="hint" style="margin-top:8px;">
+              Si el token ha caducado o hay error, pulsa "Renovar token" y sigue las instrucciones. Si es necesario, se abrirá una URL para autorizar manualmente.
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
   {% endif %}

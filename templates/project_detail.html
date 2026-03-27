@@ -178,6 +178,7 @@
               <div style="display:inline-flex; gap:5px;">
                 <a class="btn btn-soft" style="padding:5px 8px;" href="{{ url_for('task_edit', task_id=t.id, next=request.full_path) }}">✎</a>
                 <form method="post" action="{{ url_for('task_delete', task_id=t.id) }}" style="display:inline;">
+                  <input type="hidden" name="next" value="{{ request.full_path }}">
                   <button class="btn btn-soft" style="padding:5px 8px;" onclick="return confirm('¿Borrar?');">🗑</button>
                 </form>
               </div>
@@ -252,6 +253,7 @@
             <td style="width:100px; text-align:right;">
               {% if not project.archived %}
                 <form method="post" action="{{ url_for('task_delete', task_id=t.id) }}" style="display:inline;">
+                    <input type="hidden" name="next" value="{{ request.full_path }}">
                     <button class="btn btn-soft" style="padding:5px 8px;" onclick="return confirm('¿Borrar?');">🗑</button>
                 </form>
               {% endif %}

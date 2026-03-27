@@ -102,34 +102,8 @@
       </div>
     </div>
 
-    <!-- Formulario añadir subtarea -->
-    <form method="post" action="{{ url_for('subtask_add', task_id=task.id) }}" class="form" style="margin-top:10px;">
-      <input type="hidden" name="next" value="{{ next_url }}">
 
-      <div class="grid2" style="align-items:end;">
-        <div>
-          <label class="label">Nueva subtarea</label>
-          <input class="input" name="title" placeholder="Título de la subtarea" required>
-        </div>
-        <div>
-          <label class="label">Fecha límite (dd-mm-aaaa)</label>
-          <input class="input" name="due_date" placeholder="04-03-2026">
-        </div>
-      </div>
-
-      <label class="label">Descripción</label>
-      <textarea class="input" name="description" rows="1" placeholder="Opcional"></textarea>
-
-      <div class="row">
-        <button class="btn btn-soft" type="submit">Añadir subtarea</button>
-      </div>
-
-      <div class="hint">
-        Las subtareas solo pertenecen a esta tarea. No se usan en búsqueda/filtros/agenda como entradas propias.
-      </div>
-    </form>
-
-    <hr style="border:0; border-top:1px solid rgba(0,0,0,.08); margin:14px 0;">
+    <hr style="border: 0; border-top:1px solid rgba(0,0,0,.08); margin:14px 0;">
 
     <!-- Listado de subtareas -->
     {% if subtasks and subtasks|length > 0 %}
@@ -137,7 +111,6 @@
         {% for s in subtasks %}
           {% set faded = (task.completed_at is not none) %}
           {% set is_done = (s.completed_at is not none) %}
-
           <div class="subtask-row {% if faded or is_done %}row-done{% endif %}">
             <div style="display:flex; gap:10px; align-items:flex-start; width:100%;">
 
@@ -171,7 +144,7 @@
     <!-- La descripción va en su propia fila (grid) con botones a la derecha -->
     <div class="st-desc-row">
       <textarea class="input st-desc" name="description" rows="1"
-                placeholder="Descripción (opcional)">{% if s.description %}{{ s.description }}{% endif %}</textarea>
+                placeholder="Sin descripción">{% if s.description %}{{ s.description }}{% endif %}</textarea>
 
 
       <!-- 💾 envía el form de update -->
@@ -224,6 +197,40 @@
       <div class="empty">No hay subtareas aún.</div>
     {% endif %}
   </div>
+
+  <div class="card" style="margin-top:14px;">
+    <div class="card-header" style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+      <div class="card-title">Añadir subtarea</div>
+
+      <!-- Formulario añadir subtarea -->
+    <form method="post" action="{{ url_for('subtask_add', task_id=task.id) }}" class="form" style="margin-top:10px;">
+      <input type="hidden" name="next" value="{{ next_url }}">
+
+      <div class="grid2" style="align-items:end;">
+        <div>
+          <label class="label">Título</label>
+          <input class="input" name="title" placeholder="" required>
+        </div>
+        <div>
+          <label class="label">Fecha límite (dd-mm-aaaa)</label>
+          <input class="input" name="due_date" placeholder="">
+        </div>
+      </div>
+
+      <label class="label">Descripción opcional</label>
+      <textarea class="input" name="description" rows="1" placeholder=""></textarea>
+
+      <div class="row">
+        <button class="btn btn-soft" type="submit">Añadir subtarea</button>
+      </div>
+
+      <div class="hint">
+        Las subtareas solo pertenecen a esta tarea. No se usan en búsqueda/filtros/agenda como entradas propias.
+      </div>
+    </form>
+
+    </div>
+    </div>
 
   <script>
     (function () {

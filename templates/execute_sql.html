@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block content %}
+  <style>
+    .sql-resizable-table thead th {
+      position: relative;
+      white-space: nowrap;
+      border-right: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      background: #f7f7f7;
+    }
+
+    .sql-resizable-table thead th:first-child {
+      border-left: 1px solid var(--border);
+    }
+
+    .sql-col-resizer {
+      position: absolute;
+      top: 0;
+      right: -4px;
+      width: 8px;
+      height: 100%;
+      cursor: col-resize;
+      user-select: none;
+      touch-action: none;
+      z-index: 2;
+    }
+
+    .sql-resizing {
+      cursor: col-resize !important;
+      user-select: none !important;
+    }
+  </style>
+
+  <div class="page-title">
+    <h1>executeSQL</h1>
+    <p class="subtitle">Consulta de base de datos en modo solo lectura.</p>
+  </div>
+
+  <div class="card" style="margin-bottom:16px;">
+    <form method="post" class="form">
+
+      <label class="label">Consultas guardadas</label>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+        <select class="input" name="saved_query_name" style="min-width:260px; max-width:520px;">
+          <option value="">(elige una consulta guardada)</option>
+          {% for item in saved_queries %}
+            <option value="{{ item.name }}" {% if selected_query_name and selected_query_name == item.name %}selected{% endif %}>{{ item.name }}</option>
+          {% endfor %}
+        </select>
+
+        <button class="btn btn-soft" type="submit" name="action" value="load_query">Cargar</button>
+        <button class="btn btn-soft" type="submit" name="action" value="delete_query" onclick="return confirm('¿Eliminar la consulta guardada seleccionada?');">Eliminar</button>
+      </div>
+
+      <label class="label">Consulta SQL</label>
+      <textarea class="input" name="sql_query" rows="6" style="font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;">{{ sql_query_input }}</textarea>
+
+      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:8px;">
+        <input class="input" type="text" name="query_name" placeholder="Nombre descriptivo (ej: tareas completadas)" style="min-width:280px; max-width:520px;" value="{{ selected_query_name }}">
+        <button class="btn btn-soft" type="submit" name="action" value="save_query">Guardar consulta</button>
+      </div>
+
+      <div class="hint" style="margin-top:8px;">
+        Ejemplo 1: <code>SELECT id, title, completed_at FROM tasks WHERE completed_at IS NOT NULL ORDER BY completed_at DESC LIMIT 100;</code><br>
+        Ejemplo 2: <code>DESCRIBE tasks;</code>
+      </div>
+
+      <div class="row" style="margin-top:10px;">
+        <button class="btn btn-primary" type="submit">Ejecutar SQL</button>
+        <a class="btn btn-soft" href="{{ url_for('admin') }}">Volver a Admin</a>
+      </div>
+    </form>
+  </div>
+
+  {% if sql_error %}
+    <div class="flash flash-error">{{ sql_error }}</div>
+  {% endif %}
+
+  {% if sql_result_cols and sql_result_rows %}
+    <div class="card">
+      <div class="hint" style="margin-bottom:8px;">Resultados</div>
+      <div style="width:100%; overflow:auto; border:1px solid var(--border); border-radius:12px;">
+        <table id="sqlResultTable" class="table admin-readable-table sql-resizable-table" style="min-width:1400px; table-layout:auto;">
+          <thead>
+            <tr>
+              {% for c in sql_result_cols %}
+                <th>{{ c }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in sql_result_rows %}
+              <tr>
+                {% for c in sql_result_cols %}
+                  <td>{{ r.get(c) if r is mapping else r[loop.index0] }}</td>
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if sql_result_truncated %}
+        <div class="hint" style="margin-top:8px;">Mostrando las primeras 200 filas.</div>
+      {% endif %}
+    </div>
+
+    <script>
+      (function initSqlColumnResize() {
+        const table = document.getElementById('sqlResultTable');
+        if (!table) return;
+
+        const headers = Array.from(table.querySelectorAll('thead th'));
+        if (!headers.length) return;
+
+        headers.forEach((th) => {
+          if (th.querySelector('.sql-col-resizer')) return;
+
+          const handle = document.createElement('span');
+          handle.className = 'sql-col-resizer';
+          handle.setAttribute('aria-hidden', 'true');
+          th.appendChild(handle);
+
+          handle.addEventListener('mousedown', (ev) => {
+            const startX = ev.pageX;
+            const startW = th.offsetWidth;
+            document.body.classList.add('sql-resizing');
+
+            const onMove = (moveEv) => {
+              const delta = moveEv.pageX - startX;
+              const nextW = Math.max(90, startW + delta);
+              th.style.width = `${nextW}px`;
+              th.style.minWidth = `${nextW}px`;
+            };
+
+            const onUp = () => {
+              document.removeEventListener('mousemove', onMove);
+              document.removeEventListener('mouseup', onUp);
+              document.body.classList.remove('sql-resizing');
+            };
+
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+            ev.preventDefault();
+            ev.stopPropagation();
+          });
+        });
+      })();
+    </script>
+  {% endif %}
+{% endblock %}

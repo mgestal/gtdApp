@@ -6450,6 +6450,7 @@ def admin():
             save_config(cfg)
             flash("Paginación guardada.", "ok")
             return redirect(url_for("admin"))
+
     cfg = load_config()
     archive_orphans_preview = []
     trash_counts = {"tasks": 0, "projects": 0}
@@ -6510,6 +6511,128 @@ def admin():
         calendar_sync_stats=calendar_sync_stats,
         calendar_sync_last_info=calendar_sync_last_info,
         calendar_sync_last_level=calendar_sync_last_level,
+    )
+
+
+@app.route("/executeSQL", methods=["GET", "POST"])
+def execute_sql_view():
+    if not admin_required():
+        flash("No autorizado. Inicia sesión como admin.", "error")
+        return redirect(url_for("admin"))
+
+    cfg = load_config()
+    appcfg = cfg.setdefault("app", {})
+    tools_cfg = appcfg.setdefault("tools", {})
+    raw_saved = tools_cfg.get("saved_sql_queries", [])
+    saved_queries: List[Dict[str, str]] = []
+    if isinstance(raw_saved, list):
+        for item in raw_saved:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name") or "").strip()
+            sql = str(item.get("sql") or "").strip()
+            if name and sql:
+                saved_queries.append({"name": name, "sql": sql})
+
+    sql_query_input = ""
+    sql_result_cols: List[str] = []
+    sql_result_rows: List[Any] = []
+    sql_result_truncated = False
+    sql_error = ""
+    selected_query_name = ""
+
+    def _run_query(query_text: str) -> None:
+        nonlocal sql_result_cols, sql_result_rows, sql_result_truncated, sql_error
+        normalized = query_text.strip().rstrip(";").strip()
+        lowered = normalized.lower()
+        allowed_prefixes = ("select", "show", "describe", "desc", "explain")
+
+        if not normalized:
+            sql_error = "Debes escribir una consulta SQL."
+            return
+
+        if not lowered.startswith(allowed_prefixes):
+            sql_error = "Solo se permiten consultas de lectura: SELECT, SHOW, DESCRIBE, DESC o EXPLAIN."
+            return
+
+        try:
+            with db().cursor() as cur:
+                cur.execute(normalized)
+                if cur.description:
+                    sql_result_cols = [str(col[0]) for col in cur.description]
+                    fetched = cur.fetchmany(201)
+                    sql_result_rows = fetched[:200]
+                    sql_result_truncated = len(fetched) > 200
+                else:
+                    sql_result_cols = ["resultado"]
+                    sql_result_rows = [{"resultado": "Consulta ejecutada sin conjunto de filas."}]
+        except Exception as e:
+            sql_error = str(e)
+
+    if request.method == "POST":
+        action = (request.form.get("action") or "run_sql").strip().lower()
+        sql_query_input = (request.form.get("sql_query") or "").strip()
+        selected_query_name = (request.form.get("saved_query_name") or "").strip()
+
+        if action == "load_query":
+            loaded = next((x for x in saved_queries if x["name"] == selected_query_name), None)
+            if not loaded:
+                sql_error = "Consulta guardada no encontrada."
+            else:
+                sql_query_input = loaded["sql"]
+
+        elif action == "save_query":
+            query_name = (request.form.get("query_name") or "").strip()
+            if not query_name:
+                sql_error = "Debes indicar un nombre para la consulta."
+            elif not sql_query_input:
+                sql_error = "No hay SQL para guardar."
+            else:
+                replaced = False
+                for item in saved_queries:
+                    if item["name"] == query_name:
+                        item["sql"] = sql_query_input
+                        replaced = True
+                        break
+                if not replaced:
+                    saved_queries.append({"name": query_name, "sql": sql_query_input})
+
+                tools_cfg["saved_sql_queries"] = saved_queries
+                try:
+                    save_config(cfg)
+                    selected_query_name = query_name
+                    flash("Consulta guardada.", "ok")
+                except Exception as e:
+                    import logging
+                    logging.exception("Error guardando config.json en executeSQL")
+                    sql_error = f"Error guardando configuración: {e}"
+
+        elif action == "delete_query":
+            if not selected_query_name:
+                sql_error = "Selecciona una consulta para eliminar."
+            else:
+                before = len(saved_queries)
+                saved_queries = [x for x in saved_queries if x["name"] != selected_query_name]
+                if len(saved_queries) == before:
+                    sql_error = "Consulta guardada no encontrada."
+                else:
+                    tools_cfg["saved_sql_queries"] = saved_queries
+                    save_config(cfg)
+                    selected_query_name = ""
+                    flash("Consulta eliminada.", "ok")
+
+        else:
+            _run_query(sql_query_input)
+
+    return render_template(
+        "execute_sql.html",
+        sql_query_input=sql_query_input,
+        sql_result_cols=sql_result_cols,
+        sql_result_rows=sql_result_rows,
+        sql_result_truncated=sql_result_truncated,
+        sql_error=sql_error,
+        saved_queries=saved_queries,
+        selected_query_name=selected_query_name,
     )
 
 

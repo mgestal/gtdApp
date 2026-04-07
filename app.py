@@ -3577,6 +3577,75 @@ def dashboard():
     )["c"]
     close_rate = int(round((comp_period / created_period) * 100)) if created_period else 0
 
+    focus_projects_today = q1(
+        "SELECT COUNT(DISTINCT COALESCE(t.project_id, 0)) AS c "
+        "FROM tasks t "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+        "WHERE t.deleted_at IS NULL "
+        "AND (t.project_id IS NULL OR p.archived=0) "
+        "AND ((t.completed_at IS NOT NULL AND DATE(t.completed_at)=%s) "
+        "OR (t.last_completed_at IS NOT NULL "
+        "AND t.recurrence_rule IS NOT NULL AND TRIM(t.recurrence_rule)<>'' "
+        "AND DATE(t.last_completed_at)=%s))",
+        (today, today),
+    )["c"]
+
+    pending_age_row = q1(
+        "SELECT AVG(DATEDIFF(%s, DATE(t.created_at))) AS avg_days, "
+        "MAX(DATEDIFF(%s, DATE(t.created_at))) AS max_days "
+        "FROM tasks t "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+        "WHERE t.completed_at IS NULL "
+        "AND t.archived=0 "
+        "AND t.deleted_at IS NULL "
+        "AND (t.project_id IS NULL OR p.archived=0)",
+        (today, today),
+    )
+    pending_age_avg = int(round(float(pending_age_row["avg_days"]))) if pending_age_row and pending_age_row["avg_days"] is not None else 0
+    pending_age_oldest = int(pending_age_row["max_days"]) if pending_age_row and pending_age_row["max_days"] is not None else 0
+
+    habits_today_row = q1(
+        "SELECT "
+        "(SELECT COUNT(*) "
+        " FROM tasks t "
+        " LEFT JOIN projects p ON p.id=t.project_id "
+        " WHERE t.recurrence_rule IS NOT NULL "
+        " AND TRIM(t.recurrence_rule)<>'' "
+        " AND t.archived=0 "
+        " AND t.deleted_at IS NULL "
+        " AND (t.project_id IS NULL OR p.archived=0) "
+        " AND t.due_date=%s) AS due_today, "
+        "(SELECT COUNT(*) "
+        " FROM recurring_task_runs rr "
+        " JOIN tasks t ON t.id=rr.task_id "
+        " LEFT JOIN projects p ON p.id=t.project_id "
+        " WHERE rr.previous_due_date=%s "
+        " AND DATE(rr.executed_at)=%s "
+        " AND t.archived=0 "
+        " AND t.deleted_at IS NULL "
+        " AND (t.project_id IS NULL OR p.archived=0)) AS done_today",
+        (today, today, today),
+    )
+    habits_due_today = int(habits_today_row["due_today"] or 0) if habits_today_row else 0
+    habits_done_today = int(habits_today_row["done_today"] or 0) if habits_today_row else 0
+    habits_planned_today = habits_due_today + habits_done_today
+    habits_rate = int(round((habits_done_today / habits_planned_today) * 100)) if habits_planned_today else 0
+
+    focus_split_row = q1(
+        "SELECT "
+        "SUM(CASE WHEN t.project_id IS NULL THEN 1 ELSE 0 END) AS reactive_cnt, "
+        "SUM(CASE WHEN t.project_id IS NOT NULL THEN 1 ELSE 0 END) AS structured_cnt "
+        "FROM tasks t "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+        "WHERE t.completed_at IS NULL "
+        "AND t.archived=0 "
+        "AND t.deleted_at IS NULL "
+        "AND (t.project_id IS NULL OR p.archived=0)"
+    )
+    reactive_active = int(focus_split_row["reactive_cnt"] or 0) if focus_split_row else 0
+    structured_active = int(focus_split_row["structured_cnt"] or 0) if focus_split_row else 0
+    structured_share = int(round((structured_active / (structured_active + reactive_active)) * 100)) if (structured_active + reactive_active) else 0
+
     # --- TENDENCIA DIARIA DE COMPLETADAS ---
     trend_rows = q(
         "SELECT DATE(completed_at) AS d, COUNT(*) AS c "
@@ -3699,6 +3768,17 @@ def dashboard():
             "comp_period": comp_period,
             "close_rate": close_rate,
             "pending_active": pending_active,
+        },
+        focus={
+            "projects_today": int(focus_projects_today or 0),
+            "pending_age_avg": pending_age_avg,
+            "pending_age_oldest": pending_age_oldest,
+            "habits_done_today": habits_done_today,
+            "habits_planned_today": habits_planned_today,
+            "habits_rate": habits_rate,
+            "reactive_active": reactive_active,
+            "structured_active": structured_active,
+            "structured_share": structured_share,
         },
         period_days=period_days,
         trend_points=trend_points,

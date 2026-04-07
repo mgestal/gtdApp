@@ -97,6 +97,34 @@
       color: #182338;
       line-height: 1.1;
     }
+    .db-focus-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .db-focus-item {
+      border: 1px solid #dce3ec;
+      border-radius: 12px;
+      padding: 12px;
+      background: #fbfdff;
+    }
+    .db-focus-label {
+      color: #5f6f86;
+      font-size: 0.86rem;
+      margin-bottom: 4px;
+    }
+    .db-focus-value {
+      font-size: 1.5rem;
+      font-weight: 800;
+      line-height: 1.1;
+      color: #132038;
+    }
+    .db-focus-meta {
+      margin-top: 6px;
+      font-size: 0.82rem;
+      color: #5f6f86;
+      line-height: 1.3;
+    }
     .db-chart-wrap {
       border: 1px solid #dce3ec;
       border-radius: 12px;
@@ -180,6 +208,9 @@
       .db-kpis {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
+      .db-focus-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
       .db-bottom-grid {
         grid-template-columns: 1fr;
       }
@@ -189,6 +220,9 @@
         flex-direction: column;
       }
       .db-kpis {
+        grid-template-columns: 1fr;
+      }
+      .db-focus-grid {
         grid-template-columns: 1fr;
       }
       .db-project-row {
@@ -279,6 +313,32 @@
   </section>
 
   <section class="db-main">
+    <article class="db-card">
+      <h2>Métricas de enfoque</h2>
+      <div class="db-focus-grid">
+        <div class="db-focus-item">
+          <div class="db-focus-label">Proyectos tocados hoy</div>
+          <div class="db-focus-value">{{ focus.projects_today }}</div>
+          <div class="db-focus-meta">Cuenta proyectos con cierres hoy. Inbox se agrupa como un contexto adicional.</div>
+        </div>
+        <div class="db-focus-item">
+          <div class="db-focus-label">Edad media de pendientes</div>
+          <div class="db-focus-value">{{ focus.pending_age_avg }}d</div>
+          <div class="db-focus-meta">La más antigua lleva {{ focus.pending_age_oldest }} días abierta.</div>
+        </div>
+        <div class="db-focus-item">
+          <div class="db-focus-label">Hábitos de hoy</div>
+          <div class="db-focus-value">{{ focus.habits_done_today }}/{{ focus.habits_planned_today }}</div>
+          <div class="db-focus-meta">Cumplimiento del {{ focus.habits_rate }}% sobre hábitos previstos hoy.</div>
+        </div>
+        <div class="db-focus-item">
+          <div class="db-focus-label">Trabajo con proyecto</div>
+          <div class="db-focus-value">{{ focus.structured_share }}%</div>
+          <div class="db-focus-meta">{{ focus.structured_active }} activas con proyecto frente a {{ focus.reactive_active }} sin proyecto.</div>
+        </div>
+      </div>
+    </article>
+
     <article class="db-card">
       <h2>Tendencia diaria de tareas completadas</h2>
       <div class="db-chart-wrap">

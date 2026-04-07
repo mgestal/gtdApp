@@ -4683,6 +4683,26 @@ def folder_detail(folder_id: int):
         for r in cnt_rows:
             sub_counts[int(r["task_id"])] = {"total": int(r["total"]), "done": int(r["done"] or 0)}
 
+    # Tareas completadas de la carpeta (normales + periódicas)
+    completed_tasks = q(
+        "SELECT * FROM ("
+        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority "
+        "FROM tasks t "
+        "WHERE t.folder_id=%s AND t.project_id IS NULL AND t.deleted_at IS NULL "
+        "AND t.completed_at IS NOT NULL "
+        "UNION ALL "
+        "SELECT t.id, t.title, t.notes, t.due_date, t.last_completed_at, t.recurrence_rule, t.priority "
+        "FROM tasks t "
+        "WHERE t.folder_id=%s AND t.project_id IS NULL AND t.deleted_at IS NULL "
+        "AND t.last_completed_at IS NOT NULL "
+        "AND t.recurrence_rule IS NOT NULL AND TRIM(t.recurrence_rule) <> '' "
+        ") AS completed_union "
+        "ORDER BY completed_at DESC, id DESC "
+        "LIMIT 10",
+        (folder_id, folder_id)
+    )
+    completed_tags_map = load_tags_map([t["id"] for t in completed_tasks])
+
     return render_template(
         "folder_detail.html",
         folder=folder,
@@ -4692,6 +4712,8 @@ def folder_detail(folder_id: int):
         tags_map=tags_map,
         sub_map=sub_map,
         sub_counts=sub_counts,
+        completed_tasks=completed_tasks,
+        completed_tags_map=completed_tags_map,
     )
 
 @app.route("/folders/<int:folder_id>/rename", methods=["POST"])

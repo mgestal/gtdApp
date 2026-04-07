@@ -270,6 +270,74 @@
     {% endif %}
   </div>
 
+  <div class="card" style="margin-top:14px;">
+    <div class="card-header"><div class="card-title">Tareas completadas</div></div>
+
+    {% if completed_tasks and completed_tasks|length > 0 %}
+      <table class="table">
+        <thead>
+          <tr>
+            <th style="width:58px;"></th>
+            <th>Tarea</th>
+            <th style="width:100px;">Fecha</th>
+            <th style="width:100px;">Hora</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for t in completed_tasks %}
+          <tr class="row-done">
+            <td style="vertical-align:top; padding-top:6px;">
+              <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}">
+                <button class="radio"></button>
+              </form>
+            </td>
+            <td>
+              <div style="font-weight:600; margin-bottom:4px;">
+                {{ t.title }}
+              </div>
+              
+              <div style="display:flex; flex-wrap:wrap; gap:4px;">
+                {% if t.recurrence_rule %}<a class="pill taglink" style="font-size:10px;" href="{{ url_for('task_periodic_history', task_id=t.id, next=request.full_path) }}">⟲ periódica</a>{% endif %}
+                {% for tag in completed_tags_map.get(t.id, []) %}
+                  <a class="tagchip taglink" style="margin:0; font-size:9px;" href="{{ url_for('tag_detail', tag_id=tag.id) }}">@{{ tag.name }}</a>
+                {% endfor %}
+              </div>
+            </td>
+
+            <td style="white-space:nowrap; font-size:13px;">
+              {% if t.completed_at %}
+                {% if t.completed_at.strftime is defined %}
+                  {{ t.completed_at.strftime('%d-%m-%Y') }}
+                {% else %}
+                  {% set ds = t.completed_at|string %}
+                  {{ ds[8:10] }}-{{ ds[5:7] }}-{{ ds[0:4] if ds|length >= 10 else ds }}
+                {% endif %}
+              {% else %}
+                <span class="muted">—</span>
+              {% endif %}
+            </td>
+
+            <td style="white-space:nowrap; font-size:13px;">
+              {% if t.completed_at %}
+                {% if t.completed_at.strftime is defined %}
+                  {{ t.completed_at.strftime('%H:%M') }}
+                {% else %}
+                  {% set ts = t.completed_at|string %}
+                  {{ ts[11:16] if ts|length >= 16 else '—' }}
+                {% endif %}
+              {% else %}
+                <span class="muted">—</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="empty">No hay tareas completadas en esta carpeta.</div>
+    {% endif %}
+  </div>
+
   <script>
     function toggleFolderActions(e){
       e.stopPropagation();

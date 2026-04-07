@@ -1,21 +1,20 @@
-FROM python:3.10-slim
+FROM python:3.13-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+	PYTHONUNBUFFERED=1 \
+	PIP_NO_CACHE_DIR=1
 
 WORKDIR /app
 
-# Instalar dependencias del sistema
-RUN apt-get update && apt-get install -y gcc default-libmysqlclient-dev && rm -rf /var/lib/apt/lists/*
+# Instalar dependencias Python aprovechando la cache de capas.
+COPY requirements.txt ./
+RUN pip install --upgrade pip && pip install -r requirements.txt
 
-# Copiar requirements
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copiar app
+# Copiar la aplicación.
 COPY . .
 
-# Crear directorio instance si no existe
-RUN mkdir -p instance
+RUN chmod +x docker-entrypoint.sh && mkdir -p instance backups
 
 EXPOSE 5000
 
-# Copiar config de Docker y ejecutar app
-CMD ["sh", "-c", "cp instance/config.docker.json instance/config.json && gunicorn --bind 0.0.0.0:5000 wsgi:app"]
+ENTRYPOINT ["./docker-entrypoint.sh"]

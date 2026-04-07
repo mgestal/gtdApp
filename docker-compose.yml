@@ -1,34 +1,46 @@
-version: '3.8'
-
 services:
   mysql:
     image: mysql:8.0
     container_name: gtd_mysql
+    restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: root_password
-      MYSQL_DATABASE: gtd
-      MYSQL_USER: gtd
-      MYSQL_PASSWORD: gtd_password
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_password}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-gtd}
+      MYSQL_USER: ${MYSQL_USER:-gtd}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-gtd_password}
     volumes:
       - ./sql/esquema.sql:/docker-entrypoint-initdb.d/esquema.sql
       - mysql_data:/var/lib/mysql
     ports:
-      - "3306:3306"
+      - "${GTD_DB_PORT:-3306}:3306"
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       timeout: 5s
       retries: 5
+      start_period: 15s
 
   app:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: gtd_app
+    restart: unless-stopped
     environment:
       FLASK_ENV: production
+      GTD_SECRET_KEY: ${GTD_SECRET_KEY:-CHANGE_ME_IN_PROD}
+      GTD_DB_HOST: mysql
+      GTD_DB_INTERNAL_PORT: 3306
+      GTD_DB_NAME: ${MYSQL_DATABASE:-gtd}
+      GTD_DB_USER: ${MYSQL_USER:-gtd}
+      GTD_DB_PASSWORD: ${MYSQL_PASSWORD:-gtd_password}
+      GTD_TIMEZONE: ${GTD_TIMEZONE:-Europe/Madrid}
+      GTD_APP_TITLE: ${GTD_APP_TITLE:-GTD App}
+      GTD_CALENDAR_ID: ${GTD_CALENDAR_ID:-}
     volumes:
       - ./instance:/app/instance
       - ./backups:/app/backups
     ports:
-      - "5000:5000"
+      - "${GTD_APP_PORT:-5000}:5000"
     depends_on:
       mysql:
         condition: service_healthy

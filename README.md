@@ -165,26 +165,37 @@ La forma más sencilla de ejecutar la app en cualquier equipo.
 git clone https://github.com/usuario/gtdApp.git
 cd gtdApp
 
+# Crear tu configuración de entorno
+cp .env.example .env
+
 # Iniciar la app (crea automáticamente BD y volúmenes)
-docker-compose up -d
+docker compose up -d
 
 # La app está disponible en http://localhost:5000
+```
+
+Si no existe `instance/config.json`, el contenedor la genera automáticamente usando estas variables y, si están presentes, `instance/config.docker.json` o `instance/config.docker.json.example` como base.
+
+Si el host ya usa esos puertos, puedes cambiarlos sin editar el YAML:
+
+```bash
+GTD_APP_PORT=5001 GTD_DB_PORT=3307 docker compose up -d
 ```
 
 **Comandos útiles:**
 
 ```bash
 # Ver logs
-docker-compose logs -f app
+docker compose logs -f app
 
 # Parar
-docker-compose down
+docker compose down
 
 # Parar y eliminar datos (BD)
-docker-compose down -v
+docker compose down -v
 ```
 
-**Configuración:** Edita `instance/config.docker.json` antes de iniciar.
+**Configuración:** Para un servidor nuevo, ajusta `.env` y, si quieres personalizar más campos de la app, crea `instance/config.docker.json` a partir de `instance/config.docker.json.example` antes de iniciar.
 
 ---
 

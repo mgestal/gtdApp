@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 from flask import Flask, abort, flash, g, redirect, render_template, request, session, url_for, send_file, jsonify
+from google_auth_oauthlib.flow import InstalledAppFlow
 
 from urllib.parse import urlparse
 
@@ -212,6 +213,29 @@ def gmail_default_query() -> str:
     return os.environ.get("GTD_GMAIL_QUERY", "label:ToGTD in:inbox")
 
 
+GOOGLE_OAUTH_SCOPES = [
+    "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/calendar",
+]
+
+
+def _build_admin_google_flow(redirect_uri: str) -> InstalledAppFlow:
+    return InstalledAppFlow.from_client_secrets_file(
+        str(gmail_credentials_path()),
+        GOOGLE_OAUTH_SCOPES,
+        redirect_uri=redirect_uri,
+    )
+
+
+def _is_google_invalid_grant_error(err: Any) -> bool:
+    txt = (str(err) or "").lower()
+    return (
+        "invalid_grant" in txt
+        or "token has been expired or revoked" in txt
+        or "token has expired or revoked" in txt
+    )
+
+
 def ensure_imported_emails_table() -> None:
     exec_sql(
         "CREATE TABLE IF NOT EXISTS imported_emails ("
@@ -346,7 +370,12 @@ def _calendar_sync_service():
         )
     except RuntimeError:
         raise  # propaga errores de scopes/autenticación con su mensaje real
-    except Exception:
+    except Exception as e:
+        if _is_google_invalid_grant_error(e):
+            raise RuntimeError(
+                "Token Google caducado o revocado (invalid_grant). "
+                "Renueva el token en Admin > Renovación tokens Google."
+            )
         return None
     finally:
         if prev is None:
@@ -6201,6 +6230,32 @@ def admin():
             flash("Configuración guardada.", "ok")
             return redirect(url_for("admin"))
 
+        if action == "renew_google_token":
+            creds_path = gmail_credentials_path()
+            if not creds_path.exists():
+                flash(
+                    "Falta instance/gmail_credentials.json. Descarga credenciales OAuth y colócalas en instance/.",
+                    "error",
+                )
+                return redirect(url_for("admin"))
+
+            try:
+                # Usar HTTPS para callback automático (Google lo requiere en producción)
+                redirect_uri = "https://raspvinxeira.mooo.com:9999/gtdApp/admin/google_oauth/callback"
+                flow = _build_admin_google_flow(redirect_uri)
+                auth_url, state = flow.authorization_url(
+                    access_type="offline",
+                    prompt="consent",
+                    include_granted_scopes="true",
+                )
+                session["google_oauth_state"] = state
+                session["google_oauth_code_verifier"] = getattr(flow, "code_verifier", None)
+                return redirect(auth_url)
+            except Exception as e:
+                flash(f"No se pudo iniciar la renovación OAuth: {e}", "error")
+                return redirect(url_for("admin"))
+
+
         if action == "save_nextaction_behavior":
             cfg = load_config()
             appcfg = cfg.setdefault("app", {})
@@ -6522,6 +6577,7 @@ def admin():
 
     calendar_sync_last_info = session.pop("calendar_sync_last_info", None)
     calendar_sync_last_level = session.pop("calendar_sync_last_level", "ok")
+    google_oauth_auth_url = session.get("google_oauth_auth_url")
 
     return render_template(
         "admin.html",
@@ -6537,6 +6593,47 @@ def admin():
         google_token_status=google_token_status,
         google_token_expiry=google_token_expiry,
     )
+
+
+@app.route("/admin/google_oauth/callback")
+def admin_google_oauth_callback():
+    """Callback automático de Google OAuth. Recibe code y state, intercambia por token."""
+    error = (request.args.get("error") or "").strip()
+    if error:
+        flash(f"OAuth denegado o cancelado: {error}", "error")
+        return redirect(url_for("admin"))
+
+    try:
+        expected_state = session.pop("google_oauth_state", None)
+        code_verifier = session.pop("google_oauth_code_verifier", None)
+        incoming_state = (request.args.get("state") or "").strip()
+
+        if not expected_state or not incoming_state or expected_state != incoming_state:
+            raise RuntimeError("Estado OAuth inválido o expirado (state mismatch)")
+
+        redirect_uri = "https://raspvinxeira.mooo.com:9999/gtdApp/admin/google_oauth/callback"
+        flow = _build_admin_google_flow(redirect_uri)
+        if code_verifier:
+            flow.code_verifier = str(code_verifier)
+
+        flow.fetch_token(authorization_response=request.url)
+        creds = flow.credentials
+
+        token_path = gmail_token_path()
+        token_path.write_text(creds.to_json(), encoding="utf-8")
+        try:
+            os.chmod(token_path, 0o660)
+        except Exception:
+            pass
+
+        if not admin_required():
+            session["is_admin"] = True
+
+        flash("Token de Google renovado correctamente.", "ok")
+        return redirect(url_for("admin"))
+    except Exception as e:
+        flash(f"No se pudo completar la renovación OAuth: {e}", "error")
+        return redirect(url_for("admin"))
 
 
 @app.route("/executeSQL", methods=["GET", "POST"])
@@ -8172,6 +8269,12 @@ def gmail_import_to_inbox():
                 "Después borra instance/gmail_token.json e intenta importar otra vez.",
                 "error",
             )
+        elif _is_google_invalid_grant_error(e):
+            flash(
+                "No se pudieron importar los correos: token de Google caducado o revocado (invalid_grant). "
+                "Ve a Admin > Renovación tokens Google y pulsa 'Renovar token'.",
+                "error",
+            )
         else:
             flash(f"No se pudieron importar los correos: {e}", "error")
 
@@ -8328,7 +8431,14 @@ def calendar_import_to_inbox():
 
     except Exception as e:
         rollback()
-        flash(f"No se pudieron importar los eventos: {e}", "error")
+        if _is_google_invalid_grant_error(e):
+            flash(
+                "No se pudieron importar los eventos: token de Google caducado o revocado (invalid_grant). "
+                "Ve a Admin > Renovación tokens Google y pulsa 'Renovar token'.",
+                "error",
+            )
+        else:
+            flash(f"No se pudieron importar los eventos: {e}", "error")
 
     return redirect(next_url)
 
@@ -8385,7 +8495,13 @@ def calendar_sync_now():
         flash(msg, "ok")
     except Exception as e:
         rollback()
-        msg = f"No se pudo sincronizar con Google Calendar: {e}"
+        if _is_google_invalid_grant_error(e):
+            msg = (
+                "No se pudo sincronizar con Google Calendar: token caducado o revocado (invalid_grant). "
+                "Renueva el token en Admin > Renovación tokens Google."
+            )
+        else:
+            msg = f"No se pudo sincronizar con Google Calendar: {e}"
         session["calendar_sync_last_info"] = msg
         session["calendar_sync_last_level"] = "error"
         flash(msg, "error")

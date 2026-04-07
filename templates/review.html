@@ -891,14 +891,11 @@
     </div>
 
     <form method="post" action="{{ url_for('task_create') }}" class="form">
+      <div class="hint" style="margin-bottom:8px;">
+        Sintaxis: nombre + [@etiquetas] + [ [*]dd-mm-[aaaa] | *hoy | *mañana | *+nDias ] [h:HH:MM] [#proyecto | #"proyecto con espacios"] [f:carpeta | f:"carpeta con espacios"] [cada {día|semana|mes|año}]
+      </div>
       <div class="review-quick-form">
         <input class="input" name="quick" placeholder="Ej: Idea nueva @NextAction #Proyecto" required>
-        <select class="input" name="priority" style="max-width:130px;">
-          <option value="" selected>(sin)</option>
-          <option value="1">Alta</option>
-          <option value="2">Media</option>
-          <option value="3">Baja</option>
-        </select>
         <button class="btn btn-primary" type="submit">Añadir</button>
       </div>
     </form>

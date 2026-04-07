@@ -13,7 +13,16 @@
       <input class="input" name="name" value="{{ tag.name }}" required>
 
       <label class="label">Tipo (opcional)</label>
-      <input class="input" name="type" value="{{ tag.type or '' }}" placeholder="contexto, herramienta...">
+      <select class="input" name="type_select">
+        <option value="" {% if not tag.type %}selected{% endif %}>(sin tipo)</option>
+        {% for tp in existing_tag_types %}
+          <option value="{{ tp }}" {% if tag.type == tp %}selected{% endif %}>{{ tp }}</option>
+        {% endfor %}
+      </select>
+
+      <label class="label" style="margin-top:8px;">Nuevo tipo (opcional)</label>
+      <input class="input" name="type_new" value="" placeholder="persona, herramienta...">
+      <div class="hint">Si rellenas "Nuevo tipo", tendrá prioridad sobre el desplegable.</div>
 
       <div class="row">
         <button class="btn btn-primary" type="submit">Guardar</button>

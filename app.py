@@ -2634,7 +2634,7 @@ def today():
     today_d = _today_madrid()
 
     pending_rows = q(
-        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
+        "SELECT t.id, t.title, t.notes, t.due_date, t.due_time, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.id AS folder_id, fd.name AS folder_name "
         "FROM tasks t "
@@ -2648,7 +2648,7 @@ def today():
     )
 
     overdue_rows = q(
-        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
+        "SELECT t.id, t.title, t.notes, t.due_date, t.due_time, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.id AS folder_id, fd.name AS folder_name "
         "FROM tasks t "
@@ -3132,11 +3132,31 @@ def tag_edit(tag_id: int):
     if not tag:
         abort(404)
 
+    type_rows = q(
+        "SELECT DISTINCT tg.type "
+        "FROM tags tg "
+        "WHERE tg.type IS NOT NULL AND TRIM(tg.type) <> '' "
+        "ORDER BY tg.type ASC"
+    )
+    existing_tag_types = [r["type"] for r in type_rows]
+
     next_url = request.args.get("next") or request.form.get("next") or url_for("tags")
 
     if request.method == "POST":
         name = normalize_name(request.form.get("name", ""))
-        tag_type = normalize_name(request.form.get("type", "")) or None
+        selected_type = normalize_name(request.form.get("type_select", ""))
+        new_type = normalize_name(request.form.get("type_new", ""))
+        legacy_type = normalize_name(request.form.get("type", ""))
+
+        if new_type:
+            tag_type = new_type
+        elif selected_type:
+            tag_type = selected_type
+        elif legacy_type:
+            tag_type = legacy_type
+        else:
+            tag_type = None
+
         if not name:
             flash("El nombre es obligatorio.", "error")
             return redirect(url_for("tag_edit", tag_id=tag_id, next=next_url))
@@ -3151,7 +3171,12 @@ def tag_edit(tag_id: int):
             flash(f"No se pudo actualizar: {e}", "error")
             return redirect(url_for("tag_edit", tag_id=tag_id, next=next_url))
 
-    return render_template("tag_edit.html", tag=tag, next_url=next_url)  
+    return render_template(
+        "tag_edit.html",
+        tag=tag,
+        next_url=next_url,
+        existing_tag_types=existing_tag_types,
+    )
     
     
     

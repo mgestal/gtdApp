@@ -2662,6 +2662,7 @@ def today():
     )
 
     done_rows = q(
+        "("
         "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.id AS folder_id, fd.name AS folder_name "
@@ -2671,8 +2672,20 @@ def today():
         "WHERE t.completed_at IS NOT NULL AND DATE(t.completed_at)=%s "
         "AND t.deleted_at IS NULL "
         "AND (t.project_id IS NULL OR p.archived = 0) "
-        "ORDER BY t.completed_at DESC, t.id DESC",
-        (today_d,)
+        "UNION ALL "
+        "SELECT t.id, t.title, t.notes, t.due_date, t.last_completed_at, t.recurrence_rule, t.priority, "
+        "p.name AS project_name, p.id AS project_id, "
+        "fd.id AS folder_id, fd.name AS folder_name "
+        "FROM tasks t "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+        "LEFT JOIN folders fd ON fd.id=t.folder_id "
+        "WHERE t.last_completed_at IS NOT NULL AND DATE(t.last_completed_at)=%s "
+        "AND t.recurrence_rule IS NOT NULL AND TRIM(t.recurrence_rule) <> '' "
+        "AND t.deleted_at IS NULL "
+        "AND (t.project_id IS NULL OR p.archived = 0) "
+        ") "
+        "ORDER BY completed_at DESC, id DESC",
+        (today_d, today_d)
     )
 
     all_ids = [r["id"] for r in pending_rows] + [r["id"] for r in overdue_rows] + [r["id"] for r in done_rows]
@@ -3736,14 +3749,23 @@ def dashboard_completed():
         subtitle = first_of_month.strftime("Desde %d-%m-%Y")
 
     total_row = q1(
-        "SELECT COUNT(*) AS c "
-        "FROM tasks t "
+        "SELECT COUNT(*) AS c FROM ("
+        "SELECT t.id FROM tasks t "
         "LEFT JOIN projects p ON p.id=t.project_id "
         "WHERE t.completed_at IS NOT NULL "
         "AND t.deleted_at IS NULL "
         "AND (t.project_id IS NULL OR p.archived=0) "
-        f"AND {where_sql}",
-        where_params,
+        f"AND {where_sql} "
+        "UNION ALL "
+        "SELECT t.id FROM tasks t "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+        "WHERE t.last_completed_at IS NOT NULL "
+        "AND t.recurrence_rule IS NOT NULL AND TRIM(t.recurrence_rule) <> '' "
+        "AND t.deleted_at IS NULL "
+        "AND (t.project_id IS NULL OR p.archived=0) "
+        f"AND {where_sql.replace('t.completed_at', 't.last_completed_at')} "
+        ") AS combined_tasks",
+        where_params + where_params,
     )
     total = int(total_row["c"]) if total_row else 0
     pages = max(1, (total + per_page - 1) // per_page)
@@ -3752,6 +3774,7 @@ def dashboard_completed():
     offset = (page - 1) * per_page
 
     rows = q(
+        "SELECT * FROM ("
         "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.name AS folder_name, fd.id AS folder_id "
@@ -3762,9 +3785,22 @@ def dashboard_completed():
         "AND t.deleted_at IS NULL "
         "AND (t.project_id IS NULL OR p.archived=0) "
         f"AND {where_sql} "
-        "ORDER BY t.completed_at DESC, t.id DESC "
+        "UNION ALL "
+        "SELECT t.id, t.title, t.notes, t.due_date, t.last_completed_at, t.recurrence_rule, t.priority, "
+        "p.name AS project_name, p.id AS project_id, "
+        "fd.name AS folder_name, fd.id AS folder_id "
+        "FROM tasks t "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+        "LEFT JOIN folders fd ON fd.id=COALESCE(t.folder_id, p.folder_id) "
+        "WHERE t.last_completed_at IS NOT NULL "
+        "AND t.recurrence_rule IS NOT NULL AND TRIM(t.recurrence_rule) <> '' "
+        "AND t.deleted_at IS NULL "
+        "AND (t.project_id IS NULL OR p.archived=0) "
+        f"AND {where_sql.replace('t.completed_at', 't.last_completed_at')} "
+        ") AS completed_union "
+        "ORDER BY completed_at DESC, id DESC "
         "LIMIT %s OFFSET %s",
-        where_params + (per_page, offset),
+        where_params + where_params + (per_page, offset),
     )
 
     task_ids = [r["id"] for r in rows]

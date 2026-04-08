@@ -2671,12 +2671,15 @@ def proximo():
     sub_counts = load_subtask_counts(subdb, task_ids)
     sub_map = load_subtasks_map(subdb, task_ids)
 
+    today_d = _today_madrid()
+
     return render_template(
         "proximo.html",
         rows=rows,
         tags_map=tags_map,
         sub_counts=sub_counts,
         sub_map=sub_map,
+        today_d=today_d,
         page=page,
         pages=pages,
         total=total,

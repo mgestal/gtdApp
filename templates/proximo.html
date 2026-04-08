@@ -17,6 +17,27 @@
     .proximo-priority-medium { background: #f59e0b; }
     .proximo-priority-low { background: #22c55e; }
 
+    .proximo-mobile-meta {
+      display: none;
+      margin-top: 4px;
+      font-size: 0.8rem;
+      color: var(--muted);
+      overflow-wrap: anywhere;
+    }
+
+    .proximo-actions-cell {
+      white-space: nowrap;
+    }
+
+    .proximo-overdue-date {
+      color: #b91c1c;
+      font-weight: 700;
+    }
+
+    .pager-label-short {
+      display: none;
+    }
+
     @media (max-width: 980px) {
       .proximo-card {
         padding: 10px;
@@ -32,6 +53,64 @@
         min-width: 680px;
       }
     }
+
+    @media (max-width: 640px) {
+      .proximo-pager,
+      .proximo-bottom-pager {
+        align-items: flex-start !important;
+      }
+
+      .proximo-pager .muted,
+      .proximo-bottom-pager .muted {
+        width: 100%;
+      }
+
+      .proximo-pager-actions,
+      .proximo-bottom-pager-actions {
+        width: 100%;
+      }
+
+      .proximo-pager-actions .btn,
+      .proximo-bottom-pager-actions .btn {
+        min-width: 44px;
+        justify-content: center;
+      }
+
+      .pager-label-full {
+        display: none;
+      }
+
+      .pager-label-short {
+        display: inline;
+      }
+
+      .proximo-table-wrap .table {
+        min-width: 0;
+      }
+
+      .proximo-table-wrap .table th:nth-child(3),
+      .proximo-table-wrap .table td:nth-child(3),
+      .proximo-table-wrap .table th:nth-child(4),
+      .proximo-table-wrap .table td:nth-child(4),
+      .proximo-table-wrap .table th:nth-child(5),
+      .proximo-table-wrap .table td:nth-child(5) {
+        display: none;
+      }
+
+      .proximo-table-wrap .table th,
+      .proximo-table-wrap .table td {
+        padding-left: 4px;
+        padding-right: 4px;
+      }
+
+      .proximo-mobile-meta {
+        display: block;
+      }
+
+      .proximo-actions-cell .btn {
+        padding: 5px 8px;
+      }
+    }
   </style>
 
   <div class="page-title">
@@ -39,27 +118,27 @@
   <p class="subtitle">Tareas ordenadas por fecha de finalización.</p>
   </div>
 
-<div class="pager" style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:10px;">
+<div class="pager proximo-pager" style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:10px;">
   <div class="muted">
     Mostrando {{ (page-1)*per_page + 1 if total>0 else 0 }}–{{ [page*per_page, total]|min }} de {{ total }}
     · página {{ page }} de {{ pages }}
   </div>
 
-  <div style="display:flex; gap:8px; flex-wrap:wrap;">
+  <div class="proximo-pager-actions" style="display:flex; gap:8px; flex-wrap:wrap;">
     {% if page > 1 %}
-      <a class="btn btn-soft" href="{{ url_for('proximo', page=1) }}">« Primera</a>
-      <a class="btn btn-soft" href="{{ url_for('proximo', page=page-1) }}">‹ Anterior</a>
+      <a class="btn btn-soft" href="{{ url_for('proximo', page=1) }}"><span class="pager-label-full">« Primera</span><span class="pager-label-short">«</span></a>
+      <a class="btn btn-soft" href="{{ url_for('proximo', page=page-1) }}"><span class="pager-label-full">‹ Anterior</span><span class="pager-label-short">‹</span></a>
     {% else %}
-      <span class="btn btn-soft disabled">« Primera</span>
-      <span class="btn btn-soft disabled">‹ Anterior</span>
+      <span class="btn btn-soft disabled"><span class="pager-label-full">« Primera</span><span class="pager-label-short">«</span></span>
+      <span class="btn btn-soft disabled"><span class="pager-label-full">‹ Anterior</span><span class="pager-label-short">‹</span></span>
     {% endif %}
 
     {% if page < pages %}
-      <a class="btn btn-soft" href="{{ url_for('proximo', page=page+1) }}">Siguiente ›</a>
-      <a class="btn btn-soft" href="{{ url_for('proximo', page=pages) }}">Última »</a>
+      <a class="btn btn-soft" href="{{ url_for('proximo', page=page+1) }}"><span class="pager-label-full">Siguiente ›</span><span class="pager-label-short">›</span></a>
+      <a class="btn btn-soft" href="{{ url_for('proximo', page=pages) }}"><span class="pager-label-full">Última »</span><span class="pager-label-short">»</span></a>
     {% else %}
-      <span class="btn btn-soft disabled">Siguiente ›</span>
-      <span class="btn btn-soft disabled">Última »</span>
+      <span class="btn btn-soft disabled"><span class="pager-label-full">Siguiente ›</span><span class="pager-label-short">›</span></span>
+      <span class="btn btn-soft disabled"><span class="pager-label-full">Última »</span><span class="pager-label-short">»</span></span>
     {% endif %}
   </div>
 </div>
@@ -145,10 +224,52 @@
                   {% endfor %}
                 </div>
               {% endif %}
+
+              <div class="proximo-mobile-meta">
+                {% if t.due_date %}
+                  {% if today_d is defined and t.due_date < today_d %}
+                    <span class="proximo-overdue-date">{{ t.due_date.strftime('%d-%m-%Y') }}</span>
+                  {% else %}
+                    {{ t.due_date.strftime('%d-%m-%Y') }}
+                  {% endif %}
+                {% else %}
+                  —
+                {% endif %}
+                {% if t.due_time %}
+                  ·
+                  {% if t.due_time.strftime is defined %}
+                    {{ t.due_time.strftime('%H:%M') }}
+                  {% else %}
+                    {% set ts_mobile = t.due_time|string %}
+                    {{ ts_mobile[:5] }}
+                  {% endif %}
+                {% endif %}
+                ·
+                {% if t.folder_name %}
+                  📂 {{ t.folder_name }}
+                {% endif %}
+                {% if t.folder_name and t.project_name %}
+                  ·
+                {% endif %}
+                {% if t.project_name %}
+                  💼 {{ t.project_name }}
+                {% endif %}
+                {% if not t.folder_name and not t.project_name %}
+                  Inbox
+                {% endif %}
+              </div>
             </td>
 
             <td style="font-size: 0.85rem;">
-              {% if t.due_date %}{{ t.due_date.strftime('%d-%m-%Y') }}{% else %}<span class="muted">—</span>{% endif %}
+              {% if t.due_date %}
+                {% if today_d is defined and t.due_date < today_d %}
+                  <span class="proximo-overdue-date">{{ t.due_date.strftime('%d-%m-%Y') }}</span>
+                {% else %}
+                  {{ t.due_date.strftime('%d-%m-%Y') }}
+                {% endif %}
+              {% else %}
+                <span class="muted">—</span>
+              {% endif %}
             </td>
 
             <td style="font-size: 0.85rem;">
@@ -183,7 +304,7 @@
               {% endif %}
             </td>
 
-            <td class="actions" style="text-align: right;">
+            <td class="actions proximo-actions-cell" style="text-align: right;">
               <a class="btn btn-soft" href="{{ url_for('task_edit', task_id=t.id, next=url_for('proximo', page=page)) }}"> ✎ </a>
               <form method="post" action="{{ url_for('task_delete', task_id=t.id) }}" style="display:inline;">
                 <button class="btn btn-soft" onclick="return confirm('¿Borrar esta tarea?');"> 🗑 </button>
@@ -200,16 +321,16 @@
   </div>
 
   {% if total > 0 %}
-  <div class="pager" style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-top:20px;">
+  <div class="pager proximo-bottom-pager" style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-top:20px;">
     <div class="muted">
       Página {{ page }} de {{ pages }}
     </div>
-    <div style="display:flex; gap:8px;">
+    <div class="proximo-bottom-pager-actions" style="display:flex; gap:8px;">
       {% if page > 1 %}
-        <a class="btn btn-soft" href="{{ url_for('proximo', page=page-1) }}">‹ Anterior</a>
+        <a class="btn btn-soft" href="{{ url_for('proximo', page=page-1) }}"><span class="pager-label-full">‹ Anterior</span><span class="pager-label-short">‹</span></a>
       {% endif %}
       {% if page < pages %}
-        <a class="btn btn-soft" href="{{ url_for('proximo', page=page+1) }}">Siguiente ›</a>
+        <a class="btn btn-soft" href="{{ url_for('proximo', page=page+1) }}"><span class="pager-label-full">Siguiente ›</span><span class="pager-label-short">›</span></a>
       {% endif %}
     </div>
   </div>

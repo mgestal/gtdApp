@@ -6,26 +6,26 @@
   <p class="subtitle">Tareas etiquetadas con @NextAction.</p>
 </div>
 
-<div class="pager" style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:10px;">
+<div class="pager next-pager" style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:10px;">
   <div class="muted">
     Mostrando {{ (page-1)*per_page + 1 if total>0 else 0 }}–{{ [page*per_page, total]|min }} de {{ total }}
     · página {{ page }} de {{ pages }}
   </div>
-  <div style="display:flex; gap:8px; flex-wrap:wrap;">
+  <div class="next-pager-actions" style="display:flex; gap:8px; flex-wrap:wrap;">
     {% if page > 1 %}
-      <a class="btn btn-soft" href="{{ url_for('next_actions', page=1) }}">« Primera</a>
-      <a class="btn btn-soft" href="{{ url_for('next_actions', page=page-1) }}">‹ Anterior</a>
+      <a class="btn btn-soft" href="{{ url_for('next_actions', page=1) }}"><span class="pager-label-full">« Primera</span><span class="pager-label-short">«</span></a>
+      <a class="btn btn-soft" href="{{ url_for('next_actions', page=page-1) }}"><span class="pager-label-full">‹ Anterior</span><span class="pager-label-short">‹</span></a>
     {% else %}
-      <span class="btn btn-soft disabled">« Primera</span>
-      <span class="btn btn-soft disabled">‹ Anterior</span>
+      <span class="btn btn-soft disabled"><span class="pager-label-full">« Primera</span><span class="pager-label-short">«</span></span>
+      <span class="btn btn-soft disabled"><span class="pager-label-full">‹ Anterior</span><span class="pager-label-short">‹</span></span>
     {% endif %}
 
     {% if page < pages %}
-      <a class="btn btn-soft" href="{{ url_for('next_actions', page=page+1) }}">Siguiente ›</a>
-      <a class="btn btn-soft" href="{{ url_for('next_actions', page=pages) }}">Última »</a>
+      <a class="btn btn-soft" href="{{ url_for('next_actions', page=page+1) }}"><span class="pager-label-full">Siguiente ›</span><span class="pager-label-short">›</span></a>
+      <a class="btn btn-soft" href="{{ url_for('next_actions', page=pages) }}"><span class="pager-label-full">Última »</span><span class="pager-label-short">»</span></a>
     {% else %}
-      <span class="btn btn-soft disabled">Siguiente ›</span>
-      <span class="btn btn-soft disabled">Última »</span>
+      <span class="btn btn-soft disabled"><span class="pager-label-full">Siguiente ›</span><span class="pager-label-short">›</span></span>
+      <span class="btn btn-soft disabled"><span class="pager-label-full">Última »</span><span class="pager-label-short">»</span></span>
     {% endif %}
   </div>
 </div>
@@ -33,6 +33,28 @@
 <div class="card">
 
   <style>
+    .next-table-wrap {
+      width: 100%;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .next-mobile-meta {
+      display: none;
+      margin-top: 4px;
+      font-size: 0.8rem;
+      color: var(--muted);
+      overflow-wrap: anywhere;
+    }
+
+    .next-actions-cell {
+      white-space: nowrap;
+    }
+
+    .pager-label-short {
+      display: none;
+    }
+
     .next-toggle-wrap {
       display: flex;
       align-items: center;
@@ -48,11 +70,64 @@
     .next-priority-high { background: #ef4444; }
     .next-priority-medium { background: #f59e0b; }
     .next-priority-low { background: #22c55e; }
+
+    @media (max-width: 640px) {
+      .next-pager {
+        align-items: flex-start !important;
+      }
+
+      .next-pager .muted {
+        width: 100%;
+      }
+
+      .next-pager-actions {
+        width: 100%;
+      }
+
+      .next-pager-actions .btn {
+        min-width: 44px;
+        justify-content: center;
+      }
+
+      .pager-label-full {
+        display: none;
+      }
+
+      .pager-label-short {
+        display: inline;
+      }
+
+      .next-table-wrap .table {
+        min-width: 0;
+      }
+
+      .next-table-wrap .table th:nth-child(3),
+      .next-table-wrap .table td:nth-child(3),
+      .next-table-wrap .table th:nth-child(4),
+      .next-table-wrap .table td:nth-child(4) {
+        display: none;
+      }
+
+      .next-table-wrap .table th,
+      .next-table-wrap .table td {
+        padding-left: 4px;
+        padding-right: 4px;
+      }
+
+      .next-mobile-meta {
+        display: block;
+      }
+
+      .next-actions-cell .btn {
+        padding: 5px 8px;
+      }
+    }
   </style>
 
   {% if rows and rows|length > 0 %}
 
-    <table class="table">
+    <div class="next-table-wrap">
+    <table class="table next-table">
       <thead>
         <tr>
           <th style="width:58px;"></th>
@@ -129,6 +204,27 @@
                 {% endfor %}
               </div>
             {% endif %}
+
+            <div class="next-mobile-meta">
+              {% if t.due_date %}
+                {{ t.due_date.strftime('%d-%m-%Y') }}
+              {% else %}
+                —
+              {% endif %}
+              ·
+              {% if t.folder_name %}
+                📂 {{ t.folder_name }}
+              {% endif %}
+              {% if t.folder_name and t.project_name %}
+                ·
+              {% endif %}
+              {% if t.project_name %}
+                💼 {{ t.project_name }}
+              {% endif %}
+              {% if not t.folder_name and not t.project_name %}
+                Inbox
+              {% endif %}
+            </div>
           </td>
 
           <td style="font-size:0.85rem; text-align:center;">
@@ -157,7 +253,7 @@
             {% endif %}
           </td>
 
-          <td class="actions" style="text-align:right;">
+          <td class="actions next-actions-cell" style="text-align:right;">
             <a class="btn btn-soft" href="{{ url_for('task_edit', task_id=t.id, next=url_for('next_actions', page=page)) }}">✎</a>
             <form method="post" action="{{ url_for('task_delete', task_id=t.id) }}" style="display:inline;">
               <input type="hidden" name="next" value="{{ url_for('next_actions', page=page) }}">
@@ -168,6 +264,7 @@
       {% endfor %}
       </tbody>
     </table>
+    </div>
 
   {% else %}
     <div class="empty">

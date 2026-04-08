@@ -3621,12 +3621,81 @@ def dashboard():
     )["c"]
 
     # --- ESTADÍSTICAS HISTORICAS DE COMPLETADOS ---
-    comp_today = q1("SELECT COUNT(*) AS c FROM tasks WHERE DATE(completed_at) = %s AND deleted_at IS NULL", (today,))["c"]
-    comp_week = q1("SELECT COUNT(*) AS c FROM tasks WHERE DATE(completed_at) >= %s AND deleted_at IS NULL", (monday,))["c"]
-    comp_month = q1("SELECT COUNT(*) AS c FROM tasks WHERE DATE(completed_at) >= %s AND deleted_at IS NULL", (first_of_month,))["c"]
+    comp_today = q1(
+        "SELECT COUNT(*) AS c FROM ("
+        "SELECT t.id FROM tasks t "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+        "WHERE t.completed_at IS NOT NULL "
+        "AND t.deleted_at IS NULL "
+        "AND (t.project_id IS NULL OR p.archived=0) "
+        "AND DATE(t.completed_at)=%s "
+        "UNION ALL "
+        "SELECT t.id FROM tasks t "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+        "WHERE t.last_completed_at IS NOT NULL "
+        "AND t.recurrence_rule IS NOT NULL AND TRIM(t.recurrence_rule)<>'' "
+        "AND t.deleted_at IS NULL "
+        "AND (t.project_id IS NULL OR p.archived=0) "
+        "AND DATE(t.last_completed_at)=%s"
+        ") AS completed_union",
+        (today, today),
+    )["c"]
+    comp_week = q1(
+        "SELECT COUNT(*) AS c FROM ("
+        "SELECT t.id FROM tasks t "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+        "WHERE t.completed_at IS NOT NULL "
+        "AND t.deleted_at IS NULL "
+        "AND (t.project_id IS NULL OR p.archived=0) "
+        "AND DATE(t.completed_at)>=%s "
+        "UNION ALL "
+        "SELECT t.id FROM tasks t "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+        "WHERE t.last_completed_at IS NOT NULL "
+        "AND t.recurrence_rule IS NOT NULL AND TRIM(t.recurrence_rule)<>'' "
+        "AND t.deleted_at IS NULL "
+        "AND (t.project_id IS NULL OR p.archived=0) "
+        "AND DATE(t.last_completed_at)>=%s"
+        ") AS completed_union",
+        (monday, monday),
+    )["c"]
+    comp_month = q1(
+        "SELECT COUNT(*) AS c FROM ("
+        "SELECT t.id FROM tasks t "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+        "WHERE t.completed_at IS NOT NULL "
+        "AND t.deleted_at IS NULL "
+        "AND (t.project_id IS NULL OR p.archived=0) "
+        "AND DATE(t.completed_at)>=%s "
+        "UNION ALL "
+        "SELECT t.id FROM tasks t "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+        "WHERE t.last_completed_at IS NOT NULL "
+        "AND t.recurrence_rule IS NOT NULL AND TRIM(t.recurrence_rule)<>'' "
+        "AND t.deleted_at IS NULL "
+        "AND (t.project_id IS NULL OR p.archived=0) "
+        "AND DATE(t.last_completed_at)>=%s"
+        ") AS completed_union",
+        (first_of_month, first_of_month),
+    )["c"]
     comp_period = q1(
-        "SELECT COUNT(*) AS c FROM tasks WHERE completed_at IS NOT NULL AND deleted_at IS NULL AND DATE(completed_at) >= %s",
-        (period_start,),
+        "SELECT COUNT(*) AS c FROM ("
+        "SELECT t.id FROM tasks t "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+        "WHERE t.completed_at IS NOT NULL "
+        "AND t.deleted_at IS NULL "
+        "AND (t.project_id IS NULL OR p.archived=0) "
+        "AND DATE(t.completed_at)>=%s "
+        "UNION ALL "
+        "SELECT t.id FROM tasks t "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+        "WHERE t.last_completed_at IS NOT NULL "
+        "AND t.recurrence_rule IS NOT NULL AND TRIM(t.recurrence_rule)<>'' "
+        "AND t.deleted_at IS NULL "
+        "AND (t.project_id IS NULL OR p.archived=0) "
+        "AND DATE(t.last_completed_at)>=%s"
+        ") AS completed_union",
+        (period_start, period_start),
     )["c"]
     created_period = q1(
         "SELECT COUNT(*) AS c FROM tasks WHERE deleted_at IS NULL AND DATE(created_at) >= %s",

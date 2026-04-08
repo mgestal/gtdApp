@@ -204,6 +204,52 @@
     .db-priority-2 { background: #f0ad4e; }
     .db-priority-3 { background: #5cb85c; }
 
+    .db-collapsible-card {
+      padding: 0;
+      overflow: hidden;
+    }
+
+    .db-collapsible-head {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px;
+      border: 0;
+      background: transparent;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .db-collapsible-head .card-title {
+      margin: 0;
+    }
+
+    .db-collapsible-icon {
+      color: #5f6f86;
+      font-size: 0.95rem;
+      line-height: 1;
+      transition: transform .18s ease;
+    }
+
+    .db-collapsible-card.is-collapsed .db-collapsible-icon {
+      transform: rotate(-90deg);
+    }
+
+    .db-collapsible-body {
+      padding: 0 16px 16px;
+    }
+
+    .db-collapsible-card.is-collapsed .db-collapsible-body {
+      display: none;
+    }
+
+    .db-overdue-date {
+      color: #b91c1c;
+      font-weight: 700;
+    }
+
     @media (max-width: 1100px) {
       .db-kpis {
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -410,10 +456,12 @@
     </div>
   </section>
 
-  <div class="card">
-    <div class="card-header">
-      <div class="card-title">Vencen en 7 días</div>
-    </div>
+  <div class="card db-collapsible-card" id="dueSoonCard">
+    <button type="button" class="db-collapsible-head" id="dueSoonToggle" aria-expanded="true" aria-controls="dueSoonBody">
+      <div class="card-title">Tareas que vencen en 7 días</div>
+      <span class="db-collapsible-icon" aria-hidden="true">▾</span>
+    </button>
+    <div class="db-collapsible-body" id="dueSoonBody">
     {% if due_soon and due_soon|length > 0 %}
       <table class="table">
         <thead>
@@ -458,7 +506,9 @@
                   {% endfor %}
                 </div>
               </td>
-              <td style="font-size: 0.9rem;">{{ t.due_date.strftime('%d-%m-%Y') }}</td>
+              <td style="font-size: 0.9rem;">
+                <span class="{% if today_d is defined and t.due_date < today_d %}db-overdue-date{% endif %}">{{ t.due_date.strftime('%d-%m-%Y') }}</span>
+              </td>
               <td style="font-size: 0.8rem;">
                 {% if t.folder_name %}
                   <a href="{{ url_for('folder_detail', folder_id=t.folder_id) }}">📂 {{ t.folder_name }}</a>
@@ -480,6 +530,7 @@
     {% else %}
       <div class="empty">Nada próximo para los siguientes 7 días.</div>
     {% endif %}
+    </div>
   </div>
 
   <script>
@@ -489,6 +540,24 @@
         const pct = Number(bar.getAttribute('data-pct') || '0');
         const safe = Number.isFinite(pct) ? Math.max(0, Math.min(100, pct)) : 0;
         bar.style.width = safe + '%';
+      });
+
+      const storageKey = 'gtd_dashboard_due_soon_collapsed';
+      const card = document.getElementById('dueSoonCard');
+      const toggle = document.getElementById('dueSoonToggle');
+      if (!card || !toggle) return;
+
+      function setCollapsed(collapsed) {
+        card.classList.toggle('is-collapsed', collapsed);
+        toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      }
+
+      setCollapsed(window.localStorage.getItem(storageKey) === '1');
+
+      toggle.addEventListener('click', function () {
+        const collapsed = !card.classList.contains('is-collapsed');
+        setCollapsed(collapsed);
+        window.localStorage.setItem(storageKey, collapsed ? '1' : '0');
       });
     })();
   </script>

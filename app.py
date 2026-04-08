@@ -4045,6 +4045,7 @@ def dashboard():
         completed_by_project=completed_by_project,
         project_max=project_max,
         top_tags=top_tags,
+        today_d=today,
         due_soon=due_soon,
         due_soon_tags_map=due_soon_tags_map,
     )

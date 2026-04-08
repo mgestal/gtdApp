@@ -3646,6 +3646,48 @@ def dashboard():
     structured_active = int(focus_split_row["structured_cnt"] or 0) if focus_split_row else 0
     structured_share = int(round((structured_active / (structured_active + reactive_active)) * 100)) if (structured_active + reactive_active) else 0
 
+    avg_completion_row = q1(
+        "SELECT ROUND(AVG(DATEDIFF(DATE(t.completed_at), DATE(t.created_at)))) AS avg_days "
+        "FROM tasks t "
+        "WHERE t.completed_at IS NOT NULL "
+        "AND t.deleted_at IS NULL "
+        "AND DATE(t.completed_at) >= %s",
+        (period_start,),
+    )
+    avg_completion_days = int(avg_completion_row["avg_days"]) if avg_completion_row and avg_completion_row["avg_days"] is not None else 0
+
+    overdue_rescue_today = int(q1(
+        "SELECT COUNT(*) AS c FROM tasks "
+        "WHERE completed_at IS NOT NULL "
+        "AND deleted_at IS NULL "
+        "AND DATE(completed_at) = %s "
+        "AND due_date IS NOT NULL "
+        "AND due_date < DATE(completed_at)",
+        (today,),
+    )["c"] or 0)
+    overdue_rescue_week = int(q1(
+        "SELECT COUNT(*) AS c FROM tasks "
+        "WHERE completed_at IS NOT NULL "
+        "AND deleted_at IS NULL "
+        "AND DATE(completed_at) >= %s "
+        "AND due_date IS NOT NULL "
+        "AND due_date < DATE(completed_at)",
+        (monday,),
+    )["c"] or 0)
+
+    comp_struct_row = q1(
+        "SELECT COUNT(*) AS total, "
+        "SUM(CASE WHEN t.project_id IS NOT NULL THEN 1 ELSE 0 END) AS with_project "
+        "FROM tasks t "
+        "WHERE t.completed_at IS NOT NULL "
+        "AND t.deleted_at IS NULL "
+        "AND DATE(t.completed_at) >= %s",
+        (monday,),
+    )
+    comp_total_week = int(comp_struct_row["total"] or 0) if comp_struct_row else 0
+    comp_with_project_cnt = int(comp_struct_row["with_project"] or 0) if comp_struct_row else 0
+    comp_project_share = int(round((comp_with_project_cnt / comp_total_week) * 100)) if comp_total_week else 0
+
     # --- TENDENCIA DIARIA DE COMPLETADAS ---
     trend_rows = q(
         "SELECT DATE(completed_at) AS d, COUNT(*) AS c "
@@ -3779,6 +3821,12 @@ def dashboard():
             "reactive_active": reactive_active,
             "structured_active": structured_active,
             "structured_share": structured_share,
+            "avg_completion_days": avg_completion_days,
+            "overdue_rescue_today": overdue_rescue_today,
+            "overdue_rescue_week": overdue_rescue_week,
+            "comp_project_share": comp_project_share,
+            "comp_with_project": comp_with_project_cnt,
+            "comp_total_week": comp_total_week,
         },
         period_days=period_days,
         trend_points=trend_points,
@@ -6952,6 +7000,25 @@ def archive_view():
     project_page = max(project_page, 1)
     project_offset = (project_page - 1) * project_per_page
 
+    sort_by = (request.args.get("sort_by") or "completed").strip().lower()
+    if sort_by not in ("archived", "completed", "location"):
+        sort_by = "completed"
+
+    sort_dir = (request.args.get("sort_dir") or "desc").strip().lower()
+    if sort_dir not in ("asc", "desc"):
+        sort_dir = "desc"
+
+    sort_dir_sql = "ASC" if sort_dir == "asc" else "DESC"
+    if sort_by == "archived":
+        order_sql = f"(t.archived_at IS NULL) ASC, t.archived_at {sort_dir_sql}, t.id DESC"
+    elif sort_by == "location":
+        order_sql = (
+            f"COALESCE(p.name, fd.name, 'Inbox') {sort_dir_sql}, "
+            "(t.archived_at IS NULL) ASC, t.archived_at DESC, t.id DESC"
+        )
+    else:
+        order_sql = f"(t.completed_at IS NULL) ASC, t.completed_at {sort_dir_sql}, t.id DESC"
+
     params_tasks: List[Any] = []
     where_tasks = ["t.archived=1", "t.deleted_at IS NULL"]
     params_projects: List[Any] = []
@@ -6988,7 +7055,7 @@ def archive_view():
         "LEFT JOIN projects p ON p.id=t.project_id "
         "LEFT JOIN folders fd ON fd.id=COALESCE(t.folder_id, p.folder_id) "
         "WHERE " + where_tasks_sql + " "
-        "ORDER BY t.completed_at DESC, t.id DESC "
+        "ORDER BY " + order_sql + " "
         "LIMIT %s OFFSET %s",
         tuple(params_tasks + [task_per_page, task_offset]),
     )
@@ -7022,6 +7089,8 @@ def archive_view():
     return render_template(
         "archive.html",
         qtxt=qtxt,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
         archived_tasks=archived_tasks,
         archived_projects=archived_projects,
         tags_map=tags_map,

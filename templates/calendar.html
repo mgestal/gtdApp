@@ -419,8 +419,9 @@
                   {% endif %}
                 </td>
                 <td class="actions" style="text-align:right;">
-                  <a class="btn btn-soft" href="{{ url_for('task_edit', task_id=t.id) }}">✎</a>
+                  <a class="btn btn-soft" href="{{ url_for('task_edit', task_id=t.id, next=request.full_path) }}">✎</a>
                   <form method="post" action="{{ url_for('task_delete', task_id=t.id) }}" style="display:inline; margin:0;">
+                    <input type="hidden" name="next" value="{{ request.full_path }}">
                     <button class="btn btn-soft" onclick="return confirm('¿Borrar esta tarea?');">🗑</button>
                   </form>
                 </td>

@@ -1,6 +1,24 @@
 {% extends "base.html" %}
 {% block content %}
   <style>
+    .archive-sort-link {
+      text-decoration: none;
+      color: inherit;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .archive-sort-link:hover {
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+
+    .archive-sort-indicator {
+      font-size: 11px;
+      opacity: 0.75;
+    }
+
     @media (max-width: 980px) {
       .archive-table-wrap {
         width: 100%;
@@ -51,9 +69,11 @@
     <form method="get" class="form archive-search-form" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:0;">
       <label class="label" style="margin:0;">Buscar por título</label>
       <input class="input" type="text" name="q" value="{{ qtxt or '' }}" placeholder="Título de tarea o proyecto" style="flex:1; min-width:220px; margin:0;">
+      <input type="hidden" name="sort_by" value="{{ sort_by }}">
+      <input type="hidden" name="sort_dir" value="{{ sort_dir }}">
       <button class="btn btn-primary" type="submit">Buscar</button>
       {% if qtxt %}
-        <a class="btn btn-soft" href="{{ url_for('archive_view', task_page=task_page, project_page=project_page) }}">Limpiar</a>
+        <a class="btn btn-soft" href="{{ url_for('archive_view', task_page=task_page, project_page=project_page, sort_by=sort_by, sort_dir=sort_dir) }}">Limpiar</a>
       {% endif %}
     </form>
   </div>
@@ -71,15 +91,15 @@
         </div>
         <div class="archive-pager-actions" style="display:flex; gap:8px; flex-wrap:wrap;">
           {% if task_page > 1 %}
-            <a class="btn btn-soft" href="{{ url_for('archive_view', q=qtxt, task_page=1, project_page=project_page) }}">« Primera</a>
-            <a class="btn btn-soft" href="{{ url_for('archive_view', q=qtxt, task_page=task_page-1, project_page=project_page) }}">‹ Anterior</a>
+            <a class="btn btn-soft" href="{{ url_for('archive_view', q=qtxt, task_page=1, project_page=project_page, sort_by=sort_by, sort_dir=sort_dir) }}">« Primera</a>
+            <a class="btn btn-soft" href="{{ url_for('archive_view', q=qtxt, task_page=task_page-1, project_page=project_page, sort_by=sort_by, sort_dir=sort_dir) }}">‹ Anterior</a>
           {% else %}
             <span class="btn btn-soft disabled">« Primera</span>
             <span class="btn btn-soft disabled">‹ Anterior</span>
           {% endif %}
           {% if task_page < task_pages %}
-            <a class="btn btn-soft" href="{{ url_for('archive_view', q=qtxt, task_page=task_page+1, project_page=project_page) }}">Siguiente ›</a>
-            <a class="btn btn-soft" href="{{ url_for('archive_view', q=qtxt, task_page=task_pages, project_page=project_page) }}">Última »</a>
+            <a class="btn btn-soft" href="{{ url_for('archive_view', q=qtxt, task_page=task_page+1, project_page=project_page, sort_by=sort_by, sort_dir=sort_dir) }}">Siguiente ›</a>
+            <a class="btn btn-soft" href="{{ url_for('archive_view', q=qtxt, task_page=task_pages, project_page=project_page, sort_by=sort_by, sort_dir=sort_dir) }}">Última »</a>
           {% else %}
             <span class="btn btn-soft disabled">Siguiente ›</span>
             <span class="btn btn-soft disabled">Última »</span>
@@ -92,9 +112,30 @@
           <thead>
             <tr>
               <th>Tarea</th>
-              <th style="width:120px;">Archivada</th>
-              <th style="width:120px;">Realizada</th>
-              <th>Ubicación</th>
+              <th style="width:120px;">
+                <a class="archive-sort-link" href="{{ url_for('archive_view', q=qtxt, task_page=1, project_page=project_page, sort_by='archived', sort_dir=('desc' if sort_by == 'archived' and sort_dir == 'asc' else 'asc')) }}">
+                  Archivada
+                  {% if sort_by == 'archived' %}
+                    <span class="archive-sort-indicator">{{ '↑' if sort_dir == 'asc' else '↓' }}</span>
+                  {% endif %}
+                </a>
+              </th>
+              <th style="width:120px;">
+                <a class="archive-sort-link" href="{{ url_for('archive_view', q=qtxt, task_page=1, project_page=project_page, sort_by='completed', sort_dir=('desc' if sort_by == 'completed' and sort_dir == 'asc' else 'asc')) }}">
+                  Realizada
+                  {% if sort_by == 'completed' %}
+                    <span class="archive-sort-indicator">{{ '↑' if sort_dir == 'asc' else '↓' }}</span>
+                  {% endif %}
+                </a>
+              </th>
+              <th>
+                <a class="archive-sort-link" href="{{ url_for('archive_view', q=qtxt, task_page=1, project_page=project_page, sort_by='location', sort_dir=('desc' if sort_by == 'location' and sort_dir == 'asc' else 'asc')) }}">
+                  Ubicación
+                  {% if sort_by == 'location' %}
+                    <span class="archive-sort-indicator">{{ '↑' if sort_dir == 'asc' else '↓' }}</span>
+                  {% endif %}
+                </a>
+              </th>
               <th style="width:110px; text-align:right;">Acciones</th>
             </tr>
           </thead>

@@ -336,6 +336,21 @@
           <div class="db-focus-value">{{ focus.structured_share }}%</div>
           <div class="db-focus-meta">{{ focus.structured_active }} activas con proyecto frente a {{ focus.reactive_active }} sin proyecto.</div>
         </div>
+        <div class="db-focus-item">
+          <div class="db-focus-label">Tiempo medio hasta completar</div>
+          <div class="db-focus-value">{{ focus.avg_completion_days }}d</div>
+          <div class="db-focus-meta">Media días desde creación hasta cierre en los últimos {{ period_days }}d.</div>
+        </div>
+        <div class="db-focus-item">
+          <div class="db-focus-label">Rescate de overdue</div>
+          <div class="db-focus-value">{{ focus.overdue_rescue_today }} <span style="font-size:1rem; font-weight:400;">hoy</span></div>
+          <div class="db-focus-meta">{{ focus.overdue_rescue_week }} tareas vencidas cerradas esta semana.</div>
+        </div>
+        <div class="db-focus-item">
+          <div class="db-focus-label">Completadas estructuradas</div>
+          <div class="db-focus-value">{{ focus.comp_project_share }}%</div>
+          <div class="db-focus-meta">{{ focus.comp_with_project }} de {{ focus.comp_total_week }} completadas esta semana tenían proyecto.</div>
+        </div>
       </div>
     </article>
 

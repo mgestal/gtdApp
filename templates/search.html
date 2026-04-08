@@ -34,7 +34,7 @@
 
   <div class="page-title">
     <h1>Buscar 🕵🏻</h1>
-    <p class="subtitle">Multibúsqueda: tareas, filtros, proyectos, carpetas y etiquetas.</p>
+    <p class="subtitle">Multibúsqueda: tareas, filtros, proyectos, carpetas, etiquetas, archivo y papelera.</p>
   </div>
 
 <form method="get" action="{{ url_for('search') }}" class="form">
@@ -49,6 +49,8 @@
     <button type="submit" class="btn {% if search_type == 'tags' %}btn-primary{% else %}btn-soft{% endif %}" onclick="document.getElementById('searchTypeInput').value='tags'">Etiquetas</button>
     <button type="submit" class="btn {% if search_type == 'projects' %}btn-primary{% else %}btn-soft{% endif %}" onclick="document.getElementById('searchTypeInput').value='projects'">Proyectos</button>
     <button type="submit" class="btn {% if search_type == 'folders' %}btn-primary{% else %}btn-soft{% endif %}" onclick="document.getElementById('searchTypeInput').value='folders'">Carpetas</button>
+    <button type="submit" class="btn {% if search_type == 'archive' %}btn-primary{% else %}btn-soft{% endif %}" onclick="document.getElementById('searchTypeInput').value='archive'">Archivo</button>
+    <button type="submit" class="btn {% if search_type == 'trash' %}btn-primary{% else %}btn-soft{% endif %}" onclick="document.getElementById('searchTypeInput').value='trash'">Papelera</button>
   </div>
 </form>
 
@@ -240,6 +242,103 @@
           </div>
         {% endfor %}
       </div>
+    {% elif search_type == 'archive' %}
+      <div class="list" style="margin-top:10px;">
+        {% for it in rows %}
+          <div class="list-row">
+            <div>
+              {% if it.item_type == 'task' %}
+                <a class="link" href="{{ url_for('task_edit', task_id=it.id, next=url_for('search', q=qtxt, type=search_type, page=page)) }}">✅ {{ it.title }}</a>
+                <span class="pill" style="margin-left:8px; font-size:10px;">tarea archivada</span>
+              {% else %}
+                <a class="link" href="{{ url_for('project_detail', project_id=it.id) }}">💼 {{ it.title }}</a>
+                <span class="pill" style="margin-left:8px; font-size:10px;">proyecto archivado</span>
+              {% endif %}
+
+              {% if it.details %}
+                <div class="muted" style="margin-top:4px; font-size:12px;">{{ it.details }}</div>
+              {% endif %}
+
+              <div class="muted" style="margin-top:4px; font-size:12px;">
+                {% if it.folder_id %}
+                  <a class="link" href="{{ url_for('folder_detail', folder_id=it.folder_id) }}">📂 {{ it.folder_name }}</a>
+                {% else %}
+                  📥 Sin carpeta
+                {% endif %}
+                {% if it.state_at %}
+                  · Archivado: {{ it.state_at.strftime('%d-%m-%Y %H:%M') if it.state_at.strftime is defined else it.state_at }}
+                {% endif %}
+              </div>
+            </div>
+            <div class="actions">
+              {% if it.item_type == 'task' %}
+                <form method="post" action="{{ url_for('task_unarchive', task_id=it.id) }}" style="display:inline; margin:0;">
+                  <input type="hidden" name="next" value="{{ url_for('search', q=qtxt, type=search_type, page=page) }}">
+                  <button class="btn btn-soft" type="submit" title="Desarchivar">↺</button>
+                </form>
+              {% else %}
+                <form method="post" action="{{ url_for('project_unarchive', project_id=it.id) }}" style="display:inline; margin:0;">
+                  <input type="hidden" name="next" value="{{ url_for('search', q=qtxt, type=search_type, page=page) }}">
+                  <button class="btn btn-soft" type="submit" title="Desarchivar">↺</button>
+                </form>
+              {% endif %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% elif search_type == 'trash' %}
+      {% if can_search_trash %}
+        <div class="list" style="margin-top:10px;">
+          {% for it in rows %}
+            <div class="list-row">
+              <div>
+                {% if it.item_type == 'task' %}
+                  <span>🗑 {{ it.title }}</span>
+                  <span class="pill" style="margin-left:8px; font-size:10px;">tarea en papelera</span>
+                {% else %}
+                  <span>🗑 {{ it.title }}</span>
+                  <span class="pill" style="margin-left:8px; font-size:10px;">proyecto en papelera</span>
+                {% endif %}
+
+                {% if it.details %}
+                  <div class="muted" style="margin-top:4px; font-size:12px;">{{ it.details }}</div>
+                {% endif %}
+
+                <div class="muted" style="margin-top:4px; font-size:12px;">
+                  {% if it.folder_id %}
+                    📂 {{ it.folder_name }}
+                  {% else %}
+                    📥 Sin carpeta
+                  {% endif %}
+                  {% if it.state_at %}
+                    · Eliminado: {{ it.state_at.strftime('%d-%m-%Y %H:%M') if it.state_at.strftime is defined else it.state_at }}
+                  {% endif %}
+                </div>
+              </div>
+              <div class="actions">
+                {% if it.item_type == 'task' %}
+                  <form method="post" action="{{ url_for('trash_view') }}" style="display:inline; margin:0;">
+                    <input type="hidden" name="next" value="{{ url_for('search', q=qtxt, type=search_type, page=page) }}">
+                    <input type="hidden" name="action" value="trash_restore_task">
+                    <input type="hidden" name="task_id" value="{{ it.id }}">
+                    <button class="btn btn-soft" type="submit" title="Restaurar">↺</button>
+                  </form>
+                {% else %}
+                  <form method="post" action="{{ url_for('trash_view') }}" style="display:inline; margin:0;">
+                    <input type="hidden" name="next" value="{{ url_for('search', q=qtxt, type=search_type, page=page) }}">
+                    <input type="hidden" name="action" value="trash_restore_project">
+                    <input type="hidden" name="project_id" value="{{ it.id }}">
+                    <button class="btn btn-soft" type="submit" title="Restaurar">↺</button>
+                  </form>
+                {% endif %}
+                <a class="btn btn-soft" href="{{ url_for('trash_view') }}" title="Abrir papelera">Abrir</a>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty">No autorizado para buscar en papelera.</div>
+      {% endif %}
     {% endif %}
 
     <div class="pager" style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-top:12px;">

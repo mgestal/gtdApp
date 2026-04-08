@@ -2288,8 +2288,9 @@ def build_folder_breadcrumb(folder_id: Optional[int], include_self: bool = True)
 def search():
     qtxt = (request.args.get("q") or "").strip()
     search_type = request.args.get("type", "tasks")
-    if search_type not in ("tasks", "projects", "folders", "tags", "filters"):
+    if search_type not in ("tasks", "projects", "folders", "tags", "filters", "archive", "trash"):
         search_type = "tasks"
+    can_search_trash = admin_required()
 
     per_page = cfg_int(["app", "pagination", "search_per_page"], default=25, min_v=5, max_v=500)
 
@@ -2438,12 +2439,92 @@ def search():
                 (like, like, per_page, offset),
             )
 
+        elif search_type == "archive":
+            total_row = q1(
+                "SELECT ("
+                "  SELECT COUNT(*) FROM tasks t "
+                "  WHERE t.archived=1 AND t.deleted_at IS NULL "
+                "  AND (LOWER(t.title) LIKE %s OR LOWER(COALESCE(t.notes, '')) LIKE %s)"
+                ") + ("
+                "  SELECT COUNT(*) FROM projects p "
+                "  WHERE p.archived=1 AND p.deleted_at IS NULL "
+                "  AND (LOWER(p.name) LIKE %s OR LOWER(COALESCE(p.description, '')) LIKE %s)"
+                ") AS c",
+                (like, like, like, like),
+            )
+            total = int(total_row["c"]) if total_row else 0
+            pages = max(1, (total + per_page - 1) // per_page)
+            page = min(page, pages)
+            offset = (page - 1) * per_page
+            rows = q(
+                "SELECT * FROM ("
+                "  SELECT 'task' AS item_type, t.id, t.title, t.notes AS details, t.archived_at AS state_at, t.completed_at, "
+                "         p.id AS project_id, p.name AS project_name, fd.id AS folder_id, fd.name AS folder_name "
+                "  FROM tasks t "
+                "  LEFT JOIN projects p ON p.id=t.project_id "
+                "  LEFT JOIN folders fd ON fd.id=COALESCE(t.folder_id, p.folder_id) "
+                "  WHERE t.archived=1 AND t.deleted_at IS NULL "
+                "    AND (LOWER(t.title) LIKE %s OR LOWER(COALESCE(t.notes, '')) LIKE %s) "
+                "  UNION ALL "
+                "  SELECT 'project' AS item_type, p.id, p.name AS title, p.description AS details, p.archived_at AS state_at, NULL AS completed_at, "
+                "         p.id AS project_id, p.name AS project_name, f.id AS folder_id, f.name AS folder_name "
+                "  FROM projects p "
+                "  LEFT JOIN folders f ON f.id=p.folder_id "
+                "  WHERE p.archived=1 AND p.deleted_at IS NULL "
+                "    AND (LOWER(p.name) LIKE %s OR LOWER(COALESCE(p.description, '')) LIKE %s) "
+                ") archive_search "
+                "ORDER BY (state_at IS NULL) ASC, state_at DESC, title ASC "
+                "LIMIT %s OFFSET %s",
+                (like, like, like, like, per_page, offset),
+            )
+
+        elif search_type == "trash":
+            if can_search_trash:
+                total_row = q1(
+                    "SELECT ("
+                    "  SELECT COUNT(*) FROM tasks t "
+                    "  WHERE t.deleted_at IS NOT NULL "
+                    "  AND (LOWER(t.title) LIKE %s OR LOWER(COALESCE(t.notes, '')) LIKE %s)"
+                    ") + ("
+                    "  SELECT COUNT(*) FROM projects p "
+                    "  WHERE p.deleted_at IS NOT NULL "
+                    "  AND (LOWER(p.name) LIKE %s OR LOWER(COALESCE(p.description, '')) LIKE %s)"
+                    ") AS c",
+                    (like, like, like, like),
+                )
+                total = int(total_row["c"]) if total_row else 0
+                pages = max(1, (total + per_page - 1) // per_page)
+                page = min(page, pages)
+                offset = (page - 1) * per_page
+                rows = q(
+                    "SELECT * FROM ("
+                    "  SELECT 'task' AS item_type, t.id, t.title, t.notes AS details, t.deleted_at AS state_at, NULL AS completed_at, "
+                    "         p.id AS project_id, p.name AS project_name, fd.id AS folder_id, fd.name AS folder_name "
+                    "  FROM tasks t "
+                    "  LEFT JOIN projects p ON p.id=t.project_id "
+                    "  LEFT JOIN folders fd ON fd.id=COALESCE(t.folder_id, p.folder_id) "
+                    "  WHERE t.deleted_at IS NOT NULL "
+                    "    AND (LOWER(t.title) LIKE %s OR LOWER(COALESCE(t.notes, '')) LIKE %s) "
+                    "  UNION ALL "
+                    "  SELECT 'project' AS item_type, p.id, p.name AS title, p.description AS details, p.deleted_at AS state_at, NULL AS completed_at, "
+                    "         p.id AS project_id, p.name AS project_name, f.id AS folder_id, f.name AS folder_name "
+                    "  FROM projects p "
+                    "  LEFT JOIN folders f ON f.id=p.folder_id "
+                    "  WHERE p.deleted_at IS NOT NULL "
+                    "    AND (LOWER(p.name) LIKE %s OR LOWER(COALESCE(p.description, '')) LIKE %s) "
+                    ") trash_search "
+                    "ORDER BY (state_at IS NULL) ASC, state_at DESC, title ASC "
+                    "LIMIT %s OFFSET %s",
+                    (like, like, like, like, per_page, offset),
+                )
+
     return render_template(
         "search.html",
         qtxt=qtxt,
         search_type=search_type,
         rows=rows,
         tags_map=tags_map,
+        can_search_trash=can_search_trash,
         page=page,
         pages=pages,
         total=total,

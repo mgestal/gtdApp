@@ -285,6 +285,25 @@ def ensure_imported_calendar_events_table() -> None:
     )
     commit()
 
+def ensure_calendar_pending_events_table() -> None:
+    exec_sql(
+        "CREATE TABLE IF NOT EXISTS calendar_pending_events ("
+        "id INT AUTO_INCREMENT PRIMARY KEY, "
+        "google_event_id VARCHAR(255) NOT NULL UNIQUE, "
+        "google_calendar_id VARCHAR(500), "
+        "title VARCHAR(500), "
+        "due_date DATE NULL, "
+        "due_time TIME NULL, "
+        "notes TEXT, "
+        "event_data TEXT, "
+        "discovered_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "
+        "state ENUM('pending','imported','ignored') NOT NULL DEFAULT 'pending', "
+        "task_id INT NULL, "
+        "INDEX idx_cpe_state (state)"
+        ")"
+    )
+    commit()
+
 
 def calendar_event_already_imported(event_id: str) -> bool:
     row = q1(
@@ -807,6 +826,36 @@ def _create_task_from_calendar_event(ev: Dict[str, Any], calendar_id: str) -> Op
     return task_id
 
 
+def _stage_calendar_event_for_review(ev: Dict[str, Any], calendar_id: str) -> bool:
+    """Stage a discovered GCal event for user review instead of auto-creating a GTD task."""
+    event_id = (ev.get("id") or "").strip()
+    if not event_id or (ev.get("status") or "").strip().lower() == "cancelled":
+        return False
+    if q1("SELECT id FROM tasks WHERE google_event_id=%s", (event_id,)):
+        return False
+    ensure_calendar_pending_events_table()
+    payload = _google_event_to_task_fields(ev)
+    exec_sql(
+        "INSERT INTO calendar_pending_events "
+        "(google_event_id, google_calendar_id, title, due_date, due_time, notes, event_data, state) "
+        "VALUES (%s, %s, %s, %s, %s, %s, %s, 'pending') "
+        "ON DUPLICATE KEY UPDATE "
+        "title=VALUES(title), due_date=VALUES(due_date), due_time=VALUES(due_time), "
+        "notes=VALUES(notes), event_data=VALUES(event_data), "
+        "state=IF(state='imported','imported','pending')",
+        (
+            event_id,
+            calendar_id,
+            (payload.get("title") or "")[:500],
+            payload.get("due_date"),
+            payload.get("due_time"),
+            (payload.get("notes") or "")[:65535],
+            json.dumps(ev),
+        ),
+    )
+    return True
+
+
 def run_calendar_pull_sync(
     force: bool = False,
     service=None,
@@ -814,6 +863,7 @@ def run_calendar_pull_sync(
     time_budget_seconds: Optional[int] = None,
     discover_mode: str = "event_date",
     discover_range: Optional[str] = None,
+    stage_only: bool = False,
 ) -> Dict[str, int]:
     global _calendar_last_auto_sync
 
@@ -929,9 +979,13 @@ def run_calendar_pull_sync(
             )
 
         for ev in discover_events:
-            tid = _create_task_from_calendar_event(ev, calendar_sync_calendar_id())
-            if tid:
-                imported += 1
+            if stage_only:
+                if _stage_calendar_event_for_review(ev, calendar_sync_calendar_id()):
+                    imported += 1
+            else:
+                tid = _create_task_from_calendar_event(ev, calendar_sync_calendar_id())
+                if tid:
+                    imported += 1
 
         _calendar_last_auto_sync = datetime.now()
         return {
@@ -5859,9 +5913,52 @@ def _load_calendar_sync_view_data(page: int, only_conflicts: bool = False) -> Di
         if st in calendar_sync_stats:
             calendar_sync_stats[st] = int(r.get("c") or 0)
 
+    # Cargar eventos de GCal pendientes de revisión (staging)
+    pending_gcal_items: List[Dict[str, Any]] = []
+    pending_gcal_total = 0
+    try:
+        ensure_calendar_pending_events_table()
+        pending_count_row = q1("SELECT COUNT(*) AS c FROM calendar_pending_events WHERE state='pending'")
+        pending_gcal_total = int((pending_count_row or {}).get("c") or 0)
+        pending_rows = q(
+            "SELECT id, google_event_id, title, due_date, due_time, "
+            "TIME_FORMAT(due_time, '%%H:%%i') AS due_time_text, notes, discovered_at "
+            "FROM calendar_pending_events "
+            "WHERE state='pending' "
+            "ORDER BY discovered_at DESC "
+            "LIMIT 200"
+        )
+        for pr in pending_rows:
+            pitem: Dict[str, Any] = {
+                "id": f"p_{pr['id']}",
+                "title": pr.get("title") or "(sin título)",
+                "notes": pr.get("notes") or "",
+                "due_date": pr.get("due_date"),
+                "due_time": pr.get("due_time"),
+                "due_time_text": pr.get("due_time_text") or "—",
+                "calendar_sync_state": "gcal_pending",
+                "calendar_sync_error": None,
+                "calendar_conflict_at": None,
+                "calendar_conflict_payload": None,
+                "origin": "GCalendar",
+                "state_label": "Sin importar",
+                "action_defs": [
+                    {"key": "import_gtd", "label": "Crear en GTD"},
+                    {"key": "solo_gcal", "label": "Solo GCal"},
+                ],
+                "actionable": True,
+                "reason": "Evento de Google Calendar sin tarea GTD asociada",
+                "default_action_key": "import_gtd",
+            }
+            pending_gcal_items.append(pitem)
+    except Exception:
+        pass
+
     return {
         "calendar_sync_items": calendar_sync_items,
         "calendar_sync_stats": calendar_sync_stats,
+        "pending_gcal_items": pending_gcal_items,
+        "pending_gcal_total": pending_gcal_total,
         "page": page,
         "pages": pages,
         "total": total,
@@ -5889,6 +5986,12 @@ def _handle_calendar_conflicts_action(action: str, default_endpoint: str):
 
     if action == "sync_calendar_now":
         acquired = False
+        import_mode = (request.form.get("import_mode") or "event_date").strip().lower()
+        if import_mode not in ("event_date", "created_date"):
+            import_mode = "event_date"
+        range_value = (request.form.get("range_value") or "15days").strip().lower()
+        if range_value not in ("today", "7days", "15days"):
+            range_value = "15days"
         try:
             acquired = _calendar_sync_lock_acquire(timeout_seconds=2)
             if not acquired:
@@ -5913,6 +6016,9 @@ def _handle_calendar_conflicts_action(action: str, default_endpoint: str):
                         service=service,
                         max_pages=4,
                         time_budget_seconds=12,
+                        discover_mode=import_mode,
+                        discover_range=range_value,
+                        stage_only=True,
                     )
                     push_res = run_calendar_push_sync(limit=500, service=service)
                     commit()
@@ -5931,7 +6037,7 @@ def _handle_calendar_conflicts_action(action: str, default_endpoint: str):
             partial = " (parcial por límite de tiempo/páginas)" if pull_res.get("truncated") else ""
             session["calendar_sync_last_info"] = (
                 "Sync Calendar: "
-                f"en GTD (updated={pull_res['updated']}, imported={pull_res.get('imported', 0)}, conflicts={pull_res['conflicts']}, archived={pull_res['archived']}) "
+                f"en GTD (updated={pull_res['updated']}, conflictos={pull_res['conflicts']}, archivados={pull_res['archived']}, pendientes_revisar={pull_res.get('imported', 0)}) "
                 f"en GCalendar (ok={push_res['ok']}, fail={push_res['fail']}).{partial}"
             )
             session["calendar_sync_last_level"] = "ok"
@@ -5947,24 +6053,35 @@ def _handle_calendar_conflicts_action(action: str, default_endpoint: str):
     if action == "apply_calendar_sync_changes":
         raw_ids = request.form.getlist("task_ids")
         task_ids: List[int] = []
+        pending_pids: List[int] = []
         for rid in raw_ids:
-            try:
-                task_ids.append(int(rid))
-            except Exception:
-                pass
+            rid = rid.strip()
+            if rid.startswith("p_"):
+                try:
+                    pending_pids.append(int(rid[2:]))
+                except Exception:
+                    pass
+            else:
+                try:
+                    task_ids.append(int(rid))
+                except Exception:
+                    pass
         task_ids = sorted(set(task_ids))[:500]
+        pending_pids = sorted(set(pending_pids))[:200]
 
-        if not task_ids:
+        if not task_ids and not pending_pids:
             flash("No hay elementos seleccionados para aplicar cambios.", "error")
             return redirect(next_url)
 
-        placeholders = ",".join(["%s"] * len(task_ids))
-        rows = q(
-            "SELECT id, calendar_sync_state, calendar_conflict_payload "
-            "FROM tasks "
-            f"WHERE id IN ({placeholders})",
-            tuple(task_ids),
-        )
+        rows = []
+        if task_ids:
+            placeholders = ",".join(["%s"] * len(task_ids))
+            rows = q(
+                "SELECT id, calendar_sync_state, calendar_conflict_payload "
+                "FROM tasks "
+                f"WHERE id IN ({placeholders})",
+                tuple(task_ids),
+            )
 
         state_by_id: Dict[int, str] = {int(r["id"]): (r.get("calendar_sync_state") or "") for r in rows}
         payload_by_id: Dict[int, Any] = {int(r["id"]): r.get("calendar_conflict_payload") for r in rows}
@@ -6044,6 +6161,46 @@ def _handle_calendar_conflicts_action(action: str, default_endpoint: str):
                         continue
 
                     skipped += 1
+                except Exception as e:
+                    failed += 1
+                    if first_error is None:
+                        first_error = str(e)
+
+            # Procesar eventos de GCal pendientes de revisión (staging)
+            for pid in pending_pids:
+                chosen = (request.form.get(f"row_action_p_{pid}") or "").strip().lower()
+                if not chosen:
+                    skipped += 1
+                    continue
+                try:
+                    pending_row = q1(
+                        "SELECT id, google_event_id, google_calendar_id, event_data "
+                        "FROM calendar_pending_events WHERE id=%s AND state='pending'",
+                        (pid,),
+                    )
+                    if not pending_row:
+                        skipped += 1
+                        continue
+                    if chosen == "import_gtd":
+                        ev_data = json.loads(pending_row.get("event_data") or "{}")
+                        cal_id = (pending_row.get("google_calendar_id") or calendar_sync_calendar_id())
+                        new_task_id = _create_task_from_calendar_event(ev_data, cal_id)
+                        if new_task_id:
+                            exec_sql(
+                                "UPDATE calendar_pending_events SET state='imported', task_id=%s WHERE id=%s",
+                                (new_task_id, pid),
+                            )
+                            applied += 1
+                        else:
+                            skipped += 1
+                    elif chosen == "solo_gcal":
+                        exec_sql(
+                            "UPDATE calendar_pending_events SET state='ignored' WHERE id=%s",
+                            (pid,),
+                        )
+                        applied += 1
+                    else:
+                        skipped += 1
                 except Exception as e:
                     failed += 1
                     if first_error is None:
@@ -8703,6 +8860,7 @@ def calendar_sync_now():
             time_budget_seconds=12,
             discover_mode=import_mode,
             discover_range=range_value,
+            stage_only=True,
         )
         push_res = run_calendar_push_sync(limit=500, service=service)
         commit()
@@ -8718,9 +8876,9 @@ def calendar_sync_now():
 
         msg = (
             "Sync Calendar: "
-            f"en GTD (updated={pull_res['updated']}, imported={pull_res.get('imported', 0)}, conflicts={pull_res['conflicts']}, archived={pull_res['archived']}) "
+            f"en GTD (updated={pull_res['updated']}, pendientes_revisar={pull_res.get('imported', 0)}, conflicts={pull_res['conflicts']}, archived={pull_res['archived']}) "
             f"en GCalendar (ok={push_res['ok']}, fail={push_res['fail']}) "
-            f"[importación no enlazados: {mode_txt}, {range_txt}].{partial}"
+            f"[detección no enlazados: {mode_txt}, {range_txt}].{partial}"
         )
         session["calendar_sync_last_info"] = msg
         session["calendar_sync_last_level"] = "ok"

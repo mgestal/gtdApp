@@ -258,10 +258,10 @@
   <div class="card">
     <div class="card-header">
       <div class="card-title">Elementos detectados</div>
-      <div class="muted">{{ total }} resultados</div>
+      <div class="muted">{{ total + (pending_gcal_total or 0) }} resultados</div>
     </div>
 
-    {% if calendar_sync_items %}
+    {% if calendar_sync_items or pending_gcal_items %}
       <form method="post" id="calendar-sync-form" action="{{ url_for('calendar_sync_view') }}">
         <input type="hidden" name="next" value="{{ request.full_path }}">
         <input type="hidden" name="action" value="apply_calendar_sync_changes">
@@ -301,6 +301,48 @@
               </tr>
             </thead>
             <tbody>
+              {% for item in pending_gcal_items or [] %}
+                <tr>
+                  <td>
+                    <input
+                      type="checkbox"
+                      name="task_ids"
+                      value="{{ item.id }}"
+                      class="sync-item-checkbox"
+                      data-origin="{{ item.origin }}"
+                      data-actionable="1"
+                    >
+                  </td>
+                  <td>
+                    <div style="font-weight:600; margin-bottom:4px;">{{ item.title }}</div>
+                    <div class="hint" style="margin:0;">{{ item.reason }}</div>
+                  </td>
+                  <td><span class="calendar-sync-origin">{{ item.origin }}</span></td>
+                  <td>
+                    <span class="calendar-sync-state">{{ item.state_label }}</span>
+                  </td>
+                  <td>
+                    <div>{% if item.due_date %}{{ item.due_date.strftime('%d-%m-%Y') }}{% else %}<span class="muted">—</span>{% endif %}</div>
+                    <div class="muted" style="font-size:0.92em; margin-top:2px;">{% if item.due_time_text %}{{ item.due_time_text }}{% else %}—{% endif %}</div>
+                  </td>
+                  <td>
+                    <div class="calendar-sync-action-wrap">
+                      <input type="hidden" name="row_action_{{ item.id }}" value="{{ item.default_action_key }}" class="row-action-hidden">
+                      {% for action in item.action_defs %}
+                        <button
+                          class="btn btn-soft calendar-sync-row-action {% if action.key == item.default_action_key %}active{% endif %}"
+                          type="button"
+                          data-task-id="{{ item.id }}"
+                          data-action-key="{{ action.key }}"
+                        >
+                          {{ action.label }}
+                        </button>
+                      {% endfor %}
+                    </div>
+                  </td>
+                </tr>
+              {% endfor %}
+
               {% for item in calendar_sync_items %}
                 <tr>
                   <td>

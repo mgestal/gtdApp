@@ -4584,7 +4584,7 @@ def task_toggle(task_id: int):
                 recurrence_due_choice = (request.form.get("recurrence_due_choice") or "").strip().lower()
                 today_d = now.date()
 
-                if next_due <= today_d and recurrence_due_choice == "future":
+                if next_due <= today_d and recurrence_due_choice != "keep":
                     next_due = next_due_date_after_today(task["due_date"], rule, today_d)
                 exec_sql(
                     "UPDATE tasks SET last_completed_at=%s, due_date=%s, completed_at=NULL WHERE id=%s",

@@ -46,6 +46,30 @@
       justify-content: center;
       text-align: center;
     }
+
+    .folder-dnd-hint {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    .folder-drop-zone {
+      border: 1px dashed var(--border);
+      border-radius: 10px;
+      padding: 8px 10px;
+      margin: 8px 10px 0 10px;
+      background: #f8fafc;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .folder-task-draggable {
+      cursor: grab;
+    }
+
+    .folder-task-draggable:active {
+      cursor: grabbing;
+    }
   </style>
 
   <div class="page-title">
@@ -103,9 +127,10 @@
   <div class="grid2">
     <div class="card">
       <div class="card-header"><div class="card-title">Proyectos en esta carpeta 📜</div></div>
+
       <div class="list">
         {% for p in projects %}
-          <div class="list-row" style="padding: 10px;">
+          <div class="list-row js-drop-target" data-drop-type="project" data-target-id="{{ p.id }}" style="padding: 10px;" title="Soltar tarea aquí para mover a proyecto">
             <a class="link" style="font-weight: 500;" href="{{ url_for('project_detail', project_id=p.id) }}">💼 {{ p.name }}</a>
           </div>
         {% else %}
@@ -163,6 +188,7 @@
 
   <div class="card" style="margin-top:14px;">
     <div class="card-header"><div class="card-title">Tareas de la carpeta</div></div>
+    <div class="folder-dnd-hint">Arrastra una tarea y suéltala en un proyecto de esta card o en carpeta/proyecto de la barra lateral.</div>
 
     {% if tasks and tasks|length > 0 %}
       <table class="table">
@@ -176,7 +202,7 @@
         </thead>
         <tbody>
         {% for t in tasks %}
-          <tr class="{% if t.completed_at %}row-done{% endif %}">
+          <tr class="{% if t.completed_at %}row-done{% endif %} js-draggable-task folder-task-draggable" data-task-id="{{ t.id }}" draggable="true" title="Arrastra para mover tarea a carpeta/proyecto">
             <td style="vertical-align:top; padding-top:6px;">
               <div class="folder-check-wrap">
                 {% if t.priority in [1, 2, 3] %}

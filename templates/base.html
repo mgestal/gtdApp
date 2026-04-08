@@ -524,6 +524,7 @@
     })();
 
     (function initSidebarDnd(){
+      const taskMoveUrlBase = "{{ url_for('api_task_move', task_id=0) }}";
       const projectMoveUrlBase = "{{ url_for('api_project_move', project_id=0) }}";
       const folderMoveUrlBase = "{{ url_for('api_folder_move', folder_id=0) }}";
       let dragPayload = null;
@@ -534,6 +535,9 @@
 
       function targetAccepts(dropType, payload, targetId) {
         if (!payload) return false;
+        if (payload.kind === 'task') {
+          return (dropType === 'folder' || dropType === 'project') && Number.isFinite(targetId);
+        }
         if (payload.kind === 'project') {
           return dropType === 'folder' && Number.isFinite(targetId);
         }
@@ -557,6 +561,42 @@
         }
         return data;
       }
+
+      function payloadFromTransfer(ev) {
+        const raw = ev && ev.dataTransfer ? (ev.dataTransfer.getData('text/plain') || '') : '';
+        const txt = String(raw || '').trim();
+        if (!txt) return null;
+        if (txt.startsWith('task:')) {
+          const id = Number(txt.slice(5));
+          if (Number.isFinite(id)) return { kind: 'task', id };
+        }
+        if (txt.startsWith('sidebar-project:')) {
+          const id = Number(txt.slice('sidebar-project:'.length));
+          if (Number.isFinite(id)) return { kind: 'project', id };
+        }
+        if (txt.startsWith('sidebar-folder:')) {
+          const id = Number(txt.slice('sidebar-folder:'.length));
+          if (Number.isFinite(id)) return { kind: 'folder', id };
+        }
+        return null;
+      }
+
+      document.querySelectorAll('.js-draggable-task').forEach((el) => {
+        el.addEventListener('dragstart', (ev) => {
+          const id = Number(el.getAttribute('data-task-id'));
+          if (!Number.isFinite(id)) return;
+          dragPayload = { kind: 'task', id };
+          ev.dataTransfer.effectAllowed = 'move';
+          ev.dataTransfer.setData('text/plain', `task:${id}`);
+          el.classList.add('dnd-dragging');
+        });
+
+        el.addEventListener('dragend', () => {
+          el.classList.remove('dnd-dragging');
+          clearDropHighlights();
+          dragPayload = null;
+        });
+      });
 
       document.querySelectorAll('.js-draggable-sidebar-project').forEach((el) => {
         el.addEventListener('dragstart', (ev) => {
@@ -592,6 +632,9 @@
 
       document.querySelectorAll('.js-drop-target').forEach((el) => {
         el.addEventListener('dragover', (ev) => {
+          if (!dragPayload) {
+            dragPayload = payloadFromTransfer(ev);
+          }
           const dropType = (el.getAttribute('data-drop-type') || '').toLowerCase();
           const targetId = Number(el.getAttribute('data-target-id'));
           if (!targetAccepts(dropType, dragPayload, targetId)) return;
@@ -605,6 +648,9 @@
         });
 
         el.addEventListener('drop', async (ev) => {
+          if (!dragPayload) {
+            dragPayload = payloadFromTransfer(ev);
+          }
           const dropType = (el.getAttribute('data-drop-type') || '').toLowerCase();
           const targetId = Number(el.getAttribute('data-target-id'));
           if (!targetAccepts(dropType, dragPayload, targetId)) return;
@@ -614,7 +660,12 @@
           el.classList.remove('dnd-drop-active');
 
           try {
-            if (dragPayload.kind === 'project') {
+            if (dragPayload.kind === 'task') {
+              await postJson(taskMoveUrlBase.replace('/0/', `/${dragPayload.id}/`), {
+                target_type: dropType,
+                target_id: targetId,
+              });
+            } else if (dragPayload.kind === 'project') {
               await postJson(projectMoveUrlBase.replace('/0/', `/${dragPayload.id}/`), {
                 folder_id: targetId,
               });

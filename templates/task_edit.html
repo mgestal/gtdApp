@@ -134,23 +134,14 @@
         class="st-form">
     <input type="hidden" name="next" value="{{ next_url }}">
 
-    <div class="st-top">
-      <input class="input" name="title" value="{{ s.title }}" required>
+    <div class="st-inline-row">
+      <input class="input st-title" name="title" value="{{ s.title }}" required>
+      <textarea class="input st-desc" name="description" rows="1"
+                placeholder="Sin descripción">{% if s.description %}{{ s.description }}{% endif %}</textarea>
       <input class="input st-date" name="due_date"
              value="{% if s.due_date %}{{ s.due_date.strftime('%d-%m-%Y') }}{% endif %}"
              placeholder="dd-mm-aaaa">
-    </div>
-
-    <!-- La descripción va en su propia fila (grid) con botones a la derecha -->
-    <div class="st-desc-row">
-      <textarea class="input st-desc" name="description" rows="1"
-                placeholder="Sin descripción">{% if s.description %}{{ s.description }}{% endif %}</textarea>
-
-
-      <!-- 💾 envía el form de update -->
       <button type="submit" class="btn btn-soft st-btn" title="Guardar subtarea">💾</button>
-
-      <!-- 🗑 envía el form de delete (se define debajo) -->
       <button type="submit"
               class="btn btn-soft st-btn"
               form="stdel-{{ s.id }}"

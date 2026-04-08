@@ -807,40 +807,37 @@ code{
 
 .st-edit { margin-top: 6px; }
 
-.st-top{
+.st-inline-row{
   display:flex;
-  gap:10px;
-  flex-wrap:wrap;
+  gap:6px;
   align-items:center;
+  flex-wrap:nowrap;
 }
 
-.st-top .input{
+.st-title{
   flex:1;
-  min-width:220px;
+  min-width:0;
 }
 
 .st-date{
-  flex:0 0 160px;
-  min-width:160px;
-}
-
-.st-desc-row{
-  display:grid;
-  grid-template-columns: 1fr auto auto; /* descripción + botones */
-  gap:10px;
-  align-items:stretch;
-  margin-top:6px;
+  flex:0 0 120px;
+  width:120px;
+  min-width:0;
 }
 
 .st-desc{
+  flex:2;
+  min-width:0;
+  height:38px;
   min-height:38px;
   resize:none;
 }
 
 .st-btn{
-  height:38px;          /* igual altura que inputs */
-  padding: 8px 10px;
-  align-self: stretch;
+  flex:0 0 auto;
+  height:38px;
+  padding: 6px 10px;
+  align-self:center;
 }
 
 .st-meta{

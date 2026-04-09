@@ -3996,13 +3996,13 @@ def dashboard():
 
     # --- TOP PROYECTOS COMPLETADOS EN PERIODO ---
     completed_by_project = q(
-        "SELECT COALESCE(p.name, 'Inbox') AS name, COUNT(*) AS c "
+        "SELECT p.id AS id, COALESCE(p.name, 'Inbox') AS name, COUNT(*) AS c "
         "FROM tasks t "
         "LEFT JOIN projects p ON p.id=t.project_id "
         "WHERE t.completed_at IS NOT NULL "
         "AND t.deleted_at IS NULL "
         "AND DATE(t.completed_at) >= %s "
-        "GROUP BY COALESCE(p.name, 'Inbox') "
+        "GROUP BY p.id, COALESCE(p.name, 'Inbox') "
         "ORDER BY c DESC, name ASC "
         "LIMIT 6",
         (period_start,),

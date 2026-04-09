@@ -391,7 +391,13 @@
         {% if completed_by_project %}
           {% for p in completed_by_project %}
             <div class="db-project-row">
-              <div>{{ p.name }}</div>
+              <div>
+                {% if p.id %}
+                  <a href="{{ url_for('project_detail', project_id=p.id) }}">{{ p.name }}</a>
+                {% else %}
+                  {{ p.name }}
+                {% endif %}
+              </div>
               <div class="db-bar-bg">
                 <div class="db-bar-fill" data-pct="{{ (p.c * 100 / project_max)|round(1) }}"></div>
               </div>

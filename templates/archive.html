@@ -19,6 +19,52 @@
       opacity: 0.75;
     }
 
+    .archive-actions-toggle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 42px;
+      padding: 6px 10px;
+    }
+
+    .archive-actions-body[hidden] {
+      display: none;
+    }
+
+    .archive-actions-form {
+      display: flex;
+      flex-direction: row;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: nowrap;
+      margin: 0;
+    }
+
+    .archive-actions-form + .archive-actions-form {
+      margin-top: 10px;
+    }
+
+    .archive-actions-form .label {
+      margin: 0;
+      white-space: nowrap;
+      flex: 0 0 auto;
+    }
+
+    .archive-actions-form .input {
+      width: auto;
+      margin: 0;
+    }
+
+    .archive-actions-scope {
+      min-width: 260px;
+      flex: 0 1 360px;
+    }
+
+    .archive-actions-backup-file {
+      min-width: 280px;
+      flex: 0 1 420px;
+    }
+
     @media (max-width: 980px) {
       .archive-table-wrap {
         width: 100%;
@@ -57,12 +103,58 @@
         width: 100%;
         flex-wrap: wrap;
       }
+
+      .archive-actions-form {
+        flex-wrap: wrap;
+      }
+
+      .archive-actions-form .input {
+        min-width: 0;
+      }
     }
   </style>
 
   <div class="archive-page page-title">
     <h1>Archivo 🗄️</h1>
     <p class="subtitle">Tareas archivadas y proyectos archivados.</p>
+  </div>
+
+  <div class="card" style="margin-bottom:12px;">
+    <div class="card-header">
+      <div class="card-title">Acciones de archivo</div>
+      <button class="btn btn-soft archive-actions-toggle" type="button" id="archiveActionsToggle" aria-expanded="true" aria-controls="archiveActionsBody">▾</button>
+    </div>
+
+    <div id="archiveActionsBody" class="archive-actions-body">
+      <form method="post" class="form archive-actions-form" style="margin:0 0 10px 0;">
+        <input type="hidden" name="next" value="{{ request.full_path }}">
+        <label class="label">Alcance</label>
+        <select class="input archive-actions-scope" name="archive_scope">
+          <option value="all">Todas las tareas archivadas</option>
+          <option value="older_1m">Solo tareas archivadas con antigüedad superior a 1 mes</option>
+          <option value="before_current_year">Solo tareas archivadas anteriores al año actual</option>
+        </select>
+        <button class="btn btn-soft" type="submit" name="action" value="archive_backup_tasks">Backup</button>
+        <button class="btn btn-soft" type="submit" name="action" value="archive_delete_tasks" onclick="return confirm('¿Enviar a papelera las tareas archivadas del alcance seleccionado?');">Eliminar</button>
+      </form>
+
+      <form method="post" class="form archive-actions-form">
+        <input type="hidden" name="next" value="{{ request.full_path }}">
+        <select class="input archive-actions-backup-file" name="archive_backup_file" required>
+          <option value="">(elige un backup de archivo)</option>
+          {% for b in archive_task_backups %}
+            <option value="{{ b }}">{{ b }}</option>
+          {% endfor %}
+        </select>
+        <button class="btn btn-soft" type="submit" name="action" value="archive_import_backup">Importar backup</button>
+      </form>
+
+      {% if archive_task_backups and archive_task_backups|length > 0 %}
+        <div class="hint" style="margin-top:8px;">Backups de archivo disponibles: {{ archive_task_backups|length }}</div>
+      {% else %}
+        <div class="hint" style="margin-top:8px;">No hay backups de archivo todavía.</div>
+      {% endif %}
+    </div>
   </div>
 
   <div class="card" style="margin-bottom:12px;">
@@ -258,4 +350,19 @@
       <div class="empty">No hay proyectos archivados.</div>
     {% endif %}
   </div>
+
+  <script>
+    (function () {
+      const btn = document.getElementById('archiveActionsToggle');
+      const body = document.getElementById('archiveActionsBody');
+      if (!btn || !body) return;
+
+      btn.addEventListener('click', function () {
+        const expanded = btn.getAttribute('aria-expanded') === 'true';
+        body.hidden = expanded;
+        btn.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+        btn.textContent = expanded ? '▸' : '▾';
+      });
+    })();
+  </script>
 {% endblock %}

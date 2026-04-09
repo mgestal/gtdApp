@@ -169,6 +169,97 @@ def safe_backup_filename(name: str) -> Optional[str]:
         return None
     return name
 
+
+def safe_archive_backup_filename(name: str) -> Optional[str]:
+    """
+    Acepta solo nombres de backup de archivo tipo: archive_tasks_YYYYmmdd_HHMMSS.json
+    """
+    name = (name or "").strip()
+    if not name:
+        return None
+    if "/" in name or "\\" in name or ".." in name:
+        return None
+    if not re.fullmatch(r"archive_tasks_\d{8}_\d{6}\.json", name):
+        return None
+    return name
+
+
+def _archive_scope_sql(scope: str) -> Tuple[str, Tuple[Any, ...], str]:
+    scope = (scope or "all").strip().lower()
+    if scope == "older_1m":
+        return (
+            " AND COALESCE(t.archived_at, t.completed_at, t.created_at) < (NOW() - INTERVAL 1 MONTH)",
+            (),
+            "más de 1 mes",
+        )
+    if scope == "before_current_year":
+        return (
+            " AND COALESCE(t.archived_at, t.completed_at, t.created_at) < MAKEDATE(YEAR(CURDATE()), 1)",
+            (),
+            "anteriores al año actual",
+        )
+    return ("", (), "todas")
+
+
+def _dt_to_str(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if hasattr(value, "strftime"):
+        try:
+            return value.strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            return str(value)
+    return str(value)
+
+
+def _d_to_str(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if hasattr(value, "strftime"):
+        try:
+            return value.strftime("%Y-%m-%d")
+        except Exception:
+            return str(value)
+    return str(value)
+
+
+def _parse_date_or_none(value: Any) -> Optional[date]:
+    raw = (str(value or "")).strip()
+    if not raw:
+        return None
+    try:
+        return date.fromisoformat(raw[:10])
+    except Exception:
+        return None
+
+
+def _parse_time_or_none(value: Any) -> Optional[time]:
+    raw = (str(value or "")).strip()
+    if not raw:
+        return None
+    if len(raw) == 5:
+        raw = raw + ":00"
+    try:
+        return time.fromisoformat(raw[:8])
+    except Exception:
+        return None
+
+
+def _parse_datetime_or_none(value: Any) -> Optional[datetime]:
+    raw = (str(value or "")).strip()
+    if not raw:
+        return None
+    raw = raw.replace("T", " ")
+    if raw.endswith("Z"):
+        raw = raw[:-1]
+    try:
+        dt = datetime.fromisoformat(raw)
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(ZoneInfo("Europe/Madrid")).replace(tzinfo=None)
+        return dt
+    except Exception:
+        return None
+
 def ensure_instance_config() -> None:
     INSTANCE_DIR.mkdir(parents=True, exist_ok=True)
     if not CONFIG_PATH.exists():
@@ -6598,6 +6689,349 @@ def _handle_calendar_conflicts_action(action: str, default_endpoint: str):
 
     return redirect(next_url)
 
+
+def _handle_archive_action(action: str, default_endpoint: str):
+    handled = {"archive_backup_tasks", "archive_delete_tasks", "archive_import_backup"}
+    if action not in handled:
+        return None
+
+    next_url = safe_next_url(request.form.get("next"), default_endpoint)
+
+    if not admin_required():
+        flash("No autorizado.", "error")
+        return redirect(next_url)
+
+    if action == "archive_backup_tasks":
+        scope = (request.form.get("archive_scope") or "all").strip().lower()
+        scope_sql, scope_params, scope_label = _archive_scope_sql(scope)
+
+        try:
+            rows = q(
+                "SELECT t.id, t.project_id, t.folder_id, t.title, t.notes, t.due_date, t.due_time, "
+                "t.created_at, t.completed_at, t.last_completed_at, t.recurrence_rule, t.archived_at "
+                "FROM tasks t "
+                "WHERE t.archived=1 AND t.deleted_at IS NULL"
+                + scope_sql
+                + " ORDER BY t.id ASC",
+                scope_params,
+            )
+
+            task_ids = [int(r["id"]) for r in rows]
+            tags_map: Dict[int, List[str]] = {}
+            if task_ids:
+                placeholders = ",".join(["%s"] * len(task_ids))
+                tag_rows = q(
+                    "SELECT tt.task_id, tg.name "
+                    "FROM task_tags tt "
+                    "JOIN tags tg ON tg.id=tt.tag_id "
+                    f"WHERE tt.task_id IN ({placeholders}) "
+                    "ORDER BY tt.task_id ASC, tg.name ASC",
+                    tuple(task_ids),
+                )
+                for tr in tag_rows:
+                    tid = int(tr["task_id"])
+                    tags_map.setdefault(tid, []).append(str(tr.get("name") or ""))
+
+            export_rows: List[Dict[str, Any]] = []
+            for r in rows:
+                export_rows.append(
+                    {
+                        "source_task_id": int(r["id"]),
+                        "project_id": r.get("project_id"),
+                        "folder_id": r.get("folder_id"),
+                        "title": r.get("title"),
+                        "notes": r.get("notes"),
+                        "due_date": _d_to_str(r.get("due_date")),
+                        "due_time": _dt_to_str(r.get("due_time")),
+                        "created_at": _dt_to_str(r.get("created_at")),
+                        "completed_at": _dt_to_str(r.get("completed_at")),
+                        "last_completed_at": _dt_to_str(r.get("last_completed_at")),
+                        "recurrence_rule": r.get("recurrence_rule"),
+                        "archived_at": _dt_to_str(r.get("archived_at")),
+                        "tags": tags_map.get(int(r["id"]), []),
+                    }
+                )
+
+            archived_projects = q(
+                "SELECT p.id, p.folder_id, p.name, p.description, p.archived_at, p.created_at, p.updated_at "
+                "FROM projects p "
+                "WHERE p.archived=1 AND p.deleted_at IS NULL "
+                "ORDER BY p.id ASC"
+            )
+
+            export_projects: List[Dict[str, Any]] = []
+            for p in archived_projects:
+                export_projects.append(
+                    {
+                        "source_project_id": int(p["id"]),
+                        "folder_id": p.get("folder_id"),
+                        "name": p.get("name"),
+                        "description": p.get("description"),
+                        "archived_at": _dt_to_str(p.get("archived_at")),
+                        "created_at": _dt_to_str(p.get("created_at")),
+                        "updated_at": _dt_to_str(p.get("updated_at")),
+                    }
+                )
+
+            payload = {
+                "format": "gtd_archive_backup_v2",
+                "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "scope": scope,
+                "projects_count": len(export_projects),
+                "projects": export_projects,
+                "tasks_count": len(export_rows),
+                "tasks": export_rows,
+            }
+
+            BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            fname = f"archive_tasks_{ts}.json"
+            path = BACKUP_DIR / fname
+            path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+            flash(
+                f"Backup de archivo creado ({scope_label}): {fname} ({len(export_rows)} tareas, {len(export_projects)} proyectos).",
+                "ok",
+            )
+        except Exception as e:
+            flash(f"No se pudo crear el backup de archivo: {e}", "error")
+
+        return redirect(next_url)
+
+    if action == "archive_delete_tasks":
+        scope = (request.form.get("archive_scope") or "all").strip().lower()
+        scope_sql, scope_params, scope_label = _archive_scope_sql(scope)
+
+        try:
+            total_row = q1(
+                "SELECT COUNT(*) AS c "
+                "FROM tasks t "
+                "WHERE t.archived=1 AND t.deleted_at IS NULL"
+                + scope_sql,
+                scope_params,
+            )
+            total = int((total_row or {}).get("c") or 0)
+
+            if total > 0:
+                exec_sql(
+                    "UPDATE tasks t "
+                    "SET t.deleted_prev_archived=t.archived, t.deleted_at=NOW(), t.archived=1, t.archived_at=COALESCE(t.archived_at, NOW()) "
+                    "WHERE t.archived=1 AND t.deleted_at IS NULL"
+                    + scope_sql,
+                    scope_params,
+                )
+
+                exec_sql(
+                    "UPDATE tasks t "
+                    "SET t.calendar_sync_state='pending_delete', t.calendar_local_changed_at=NOW() "
+                    "WHERE t.archived=1 "
+                    "AND t.deleted_at IS NOT NULL "
+                    "AND t.google_event_id IS NOT NULL"
+                    + scope_sql,
+                    scope_params,
+                )
+
+            commit()
+            flash(
+                f"Tareas del archivo enviadas a papelera ({scope_label}): {total}.",
+                "ok",
+            )
+        except Exception as e:
+            rollback()
+            flash(f"No se pudieron eliminar tareas del archivo: {e}", "error")
+
+        return redirect(next_url)
+
+    fname = safe_archive_backup_filename(request.form.get("archive_backup_file", ""))
+    if not fname:
+        flash("Backup de archivo inválido.", "error")
+        return redirect(next_url)
+
+    path = BACKUP_DIR / fname
+    if not path.exists():
+        flash("El backup de archivo seleccionado no existe.", "error")
+        return redirect(next_url)
+
+    imported = 0
+    imported_projects = 0
+    skipped = 0
+
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        projects_data = payload.get("projects", []) if isinstance(payload, dict) else []
+        tasks_data = payload.get("tasks", []) if isinstance(payload, dict) else []
+
+        if projects_data is None:
+            projects_data = []
+        if not isinstance(projects_data, list):
+            flash("Formato de backup inválido.", "error")
+            return redirect(next_url)
+        if not isinstance(tasks_data, list):
+            flash("Formato de backup inválido.", "error")
+            return redirect(next_url)
+
+        project_id_map: Dict[int, int] = {}
+
+        for item in projects_data:
+            if not isinstance(item, dict):
+                continue
+
+            project_name = (str(item.get("name") or "")).strip()
+            if not project_name:
+                continue
+
+            source_project_id_raw = item.get("source_project_id")
+            source_project_id: Optional[int] = None
+            try:
+                if source_project_id_raw is not None:
+                    source_project_id = int(source_project_id_raw)
+            except Exception:
+                source_project_id = None
+
+            folder_id = item.get("folder_id")
+            valid_folder_id: Optional[int] = None
+            try:
+                if folder_id is not None:
+                    fid = int(folder_id)
+                    f = q1("SELECT id FROM folders WHERE id=%s", (fid,))
+                    if f:
+                        valid_folder_id = fid
+            except Exception:
+                valid_folder_id = None
+
+            reused_project_id: Optional[int] = None
+            if source_project_id is not None:
+                existing_by_id = q1(
+                    "SELECT id, name, archived FROM projects WHERE id=%s AND deleted_at IS NULL",
+                    (source_project_id,),
+                )
+                if existing_by_id and normalize_name(existing_by_id.get("name") or "") == normalize_name(project_name) and int(existing_by_id.get("archived") or 0) == 1:
+                    reused_project_id = int(existing_by_id["id"])
+
+            if reused_project_id is None:
+                if valid_folder_id is None:
+                    existing_archived = q1(
+                        "SELECT id FROM projects WHERE archived=1 AND deleted_at IS NULL AND name=%s AND folder_id IS NULL ORDER BY id ASC LIMIT 1",
+                        (project_name,),
+                    )
+                else:
+                    existing_archived = q1(
+                        "SELECT id FROM projects WHERE archived=1 AND deleted_at IS NULL AND name=%s AND folder_id=%s ORDER BY id ASC LIMIT 1",
+                        (project_name, valid_folder_id),
+                    )
+                if existing_archived:
+                    reused_project_id = int(existing_archived["id"])
+
+            if reused_project_id is None:
+                description = item.get("description")
+                archived_at = _parse_datetime_or_none(item.get("archived_at")) or datetime.now()
+                created_at = _parse_datetime_or_none(item.get("created_at")) or datetime.now()
+                updated_at = _parse_datetime_or_none(item.get("updated_at"))
+                reused_project_id = int(
+                    exec_sql(
+                        "INSERT INTO projects(folder_id, name, description, archived, archived_at, created_at, updated_at) "
+                        "VALUES(%s,%s,%s,1,%s,%s,%s)",
+                        (valid_folder_id, project_name, description, archived_at, created_at, updated_at),
+                    )
+                    or 0
+                )
+                imported_projects += 1
+
+            if source_project_id is not None and reused_project_id:
+                project_id_map[source_project_id] = reused_project_id
+
+        for item in tasks_data:
+            if not isinstance(item, dict):
+                skipped += 1
+                continue
+
+            title = (str(item.get("title") or "")).strip()
+            if not title:
+                skipped += 1
+                continue
+
+            project_id = item.get("project_id")
+            folder_id = item.get("folder_id")
+
+            valid_project_id: Optional[int] = None
+            valid_folder_id: Optional[int] = None
+
+            try:
+                if project_id is not None:
+                    pid = int(project_id)
+                    if pid in project_id_map:
+                        valid_project_id = int(project_id_map[pid])
+                    else:
+                        p = q1("SELECT id FROM projects WHERE id=%s AND deleted_at IS NULL", (pid,))
+                        if p:
+                            valid_project_id = pid
+            except Exception:
+                valid_project_id = None
+
+            try:
+                if folder_id is not None:
+                    fid = int(folder_id)
+                    f = q1("SELECT id FROM folders WHERE id=%s", (fid,))
+                    if f:
+                        valid_folder_id = fid
+            except Exception:
+                valid_folder_id = None
+
+            created_at = _parse_datetime_or_none(item.get("created_at")) or datetime.now()
+            completed_at = _parse_datetime_or_none(item.get("completed_at"))
+            last_completed_at = _parse_datetime_or_none(item.get("last_completed_at"))
+            archived_at = _parse_datetime_or_none(item.get("archived_at")) or datetime.now()
+            due_date = _parse_date_or_none(item.get("due_date"))
+            due_time = _parse_time_or_none(item.get("due_time"))
+
+            notes = item.get("notes")
+            recurrence_rule = item.get("recurrence_rule")
+
+            new_task_id = exec_sql(
+                "INSERT INTO tasks("
+                "project_id, folder_id, title, notes, due_date, due_time, created_at, completed_at, last_completed_at, recurrence_rule, archived, archived_at"
+                ") VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,1,%s)",
+                (
+                    valid_project_id,
+                    valid_folder_id,
+                    title,
+                    notes,
+                    due_date,
+                    due_time,
+                    created_at,
+                    completed_at,
+                    last_completed_at,
+                    recurrence_rule,
+                    archived_at,
+                ),
+            )
+            new_task_id = int(new_task_id or 0)
+
+            raw_tags = item.get("tags", [])
+            if isinstance(raw_tags, list):
+                for tg in raw_tags:
+                    tag_name = (str(tg or "")).strip()
+                    if not tag_name:
+                        continue
+                    tag_id = get_or_create_tag(tag_name)
+                    exec_sql(
+                        "INSERT IGNORE INTO task_tags(task_id, tag_id) VALUES(%s,%s)",
+                        (new_task_id, tag_id),
+                    )
+
+            imported += 1
+
+        commit()
+        flash(
+            f"Backup de archivo importado: {imported_projects} proyectos y {imported} tareas cargadas en archivo, {skipped} omitidas.",
+            "ok",
+        )
+    except Exception as e:
+        rollback()
+        flash(f"No se pudo importar el backup de archivo: {e}", "error")
+
+    return redirect(next_url)
+
 def admin_required() -> bool:
     pwd = os.environ.get("GTD_ADMIN_PASSWORD", "")
     if not pwd:
@@ -6897,6 +7331,10 @@ def admin():
         handled_calendar = _handle_calendar_conflicts_action(action, "admin")
         if handled_calendar is not None:
             return handled_calendar
+
+        handled_archive = _handle_archive_action(action, "admin")
+        if handled_archive is not None:
+            return handled_archive
             
         if action == "purge_completed_tasks":
             if not admin_required():
@@ -7077,6 +7515,7 @@ def admin():
     cfg = load_config()
     archive_orphans_preview = []
     trash_counts = {"tasks": 0, "projects": 0}
+    archive_counts = {"tasks": 0, "projects": 0}
     calendar_sync_stats = {
         "pending_push": 0,
         "pending_delete": 0,
@@ -7131,6 +7570,16 @@ def admin():
         )
 
         trash_counts = _load_trash_view_data(task_page=1, project_page=1)["trash_counts"]
+        archive_counts_row = q1(
+            "SELECT "
+            "(SELECT COUNT(*) FROM tasks WHERE archived=1 AND deleted_at IS NULL) AS tasks, "
+            "(SELECT COUNT(*) FROM projects WHERE archived=1 AND deleted_at IS NULL) AS projects"
+        )
+        if archive_counts_row:
+            archive_counts = {
+                "tasks": int(archive_counts_row.get("tasks") or 0),
+                "projects": int(archive_counts_row.get("projects") or 0),
+            }
 
         stats_rows = q(
             "SELECT calendar_sync_state, COUNT(*) AS c "
@@ -7153,8 +7602,10 @@ def admin():
         is_admin=admin_required(),
         env_pwd_set=env_pwd_set,
         backups=list_backups(),
+        archive_task_backups=list_archive_task_backups(),
         archive_orphans_preview=archive_orphans_preview,
         trash_counts=trash_counts,
+        archive_counts=archive_counts,
         calendar_sync_stats=calendar_sync_stats,
         calendar_sync_last_info=calendar_sync_last_info,
         calendar_sync_last_level=calendar_sync_last_level,
@@ -7326,8 +7777,16 @@ def execute_sql_view():
     )
 
 
-@app.route("/archive")
+@app.route("/archive", methods=["GET", "POST"])
 def archive_view():
+    if request.method == "POST":
+        action = (request.form.get("action") or "").strip()
+        handled = _handle_archive_action(action, "archive_view")
+        if handled is not None:
+            return handled
+        flash("Acción de archivo no válida.", "error")
+        return redirect(url_for("archive_view"))
+
     qtxt = (request.args.get("q") or "").strip()
     archive_legacy_per_page = cfg_int(["app", "pagination", "archive_per_page"], default=25, min_v=5, max_v=500)
     task_per_page = cfg_int(
@@ -7459,6 +7918,7 @@ def archive_view():
         total_projects=total_projects,
         task_per_page=task_per_page,
         project_per_page=project_per_page,
+        archive_task_backups=list_archive_task_backups(),
     )
 
 # ---------------- Errors ----------------
@@ -7477,6 +7937,15 @@ def list_backups() -> List[str]:
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     files = []
     for p in BACKUP_DIR.glob("*.sql"):
+        if p.is_file():
+            files.append(p.name)
+    return sorted(files, reverse=True)
+
+
+def list_archive_task_backups() -> List[str]:
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    files = []
+    for p in BACKUP_DIR.glob("archive_tasks_*.json"):
         if p.is_file():
             files.append(p.name)
     return sorted(files, reverse=True)

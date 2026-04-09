@@ -82,6 +82,24 @@
 
         <div class="card" style="margin-top:20px;">
           <div class="card-header">
+            <div>
+              <div class="card-title">Archivo</div>
+              <div class="card-sub">Gestión de tareas/proyectos archivados y backups de archivo.</div>
+            </div>
+          </div>
+
+          <div class="list" style="gap:12px;">
+            <div class="list-row" style="align-items:flex-start;">
+              <div style="flex:1;">
+                <div class="hint">Elementos en archivo: tareas={{ archive_counts.tasks }}, proyectos={{ archive_counts.projects }}</div>
+              </div>
+              <a class="btn btn-primary" href="{{ url_for('archive_view') }}">Ir a archivo</a>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:20px;">
+          <div class="card-header">
             <div class="card-title">Copias de seguridad</div>
           </div>
 

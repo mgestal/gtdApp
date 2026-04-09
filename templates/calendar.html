@@ -102,7 +102,7 @@
     }
   </style>
 
-  {% set view_names = {'day': 'Día', 'week': 'Semana', 'month': 'Mes'} %}
+  {% set view_names = {'day': 'Hoy', 'week': 'Esta Semana', 'next7': 'Próximos 7 días', 'month': 'Mes'} %}
 
   <div class="page-title">
     <h1>Calendario</h1>
@@ -133,12 +133,11 @@
   </div>
 
   <div style="display:flex; gap:6px; margin-bottom:12px;">
-    <a class="btn {{ 'btn-primary' if view=='day' else 'btn-soft' }}" href="{{ url_for('calendar', view='day', date=selected_date.isoformat(), show_completed=1 if show_completed else None) }}">Día</a>
-    <a class="btn {{ 'btn-primary' if view=='week' else 'btn-soft' }}" href="{{ url_for('calendar', view='week', date=selected_date.isoformat(), show_completed=1 if show_completed else None) }}">Semana</a>
+    <a class="btn {{ 'btn-primary' if view=='day' else 'btn-soft' }}" href="{{ url_for('calendar', view='day', date=selected_date.isoformat(), show_completed=1 if show_completed else None) }}">Hoy</a>
+    <a class="btn {{ 'btn-primary' if view=='week' else 'btn-soft' }}" href="{{ url_for('calendar', view='week', date=selected_date.isoformat(), show_completed=1 if show_completed else None) }}">Esta Semana</a>
+    <a class="btn {{ 'btn-primary' if view=='next7' else 'btn-soft' }}" href="{{ url_for('calendar', view='next7', date=selected_date.isoformat(), show_completed=1 if show_completed else None) }}">Próximos 7 días</a>
     <a class="btn {{ 'btn-primary' if view=='month' else 'btn-soft' }}" href="{{ url_for('calendar', view='month', date=selected_date.isoformat(), show_completed=1 if show_completed else None) }}">Mes</a>
   </div>
-
-  <div class="card" style="padding:12px;">
 
   <div class="card" style="padding:12px;">
 
@@ -333,6 +332,76 @@
         </div>
       {% endif %}
 
+    {% elif view == 'next7' %}
+      {% if next7_rows and next7_rows|length > 0 %}
+        <table class="table">
+          <thead>
+            <tr>
+              <th style="width:58px;"></th>
+              <th>Tarea</th>
+              <th style="width:110px;">Fecha</th>
+              <th style="width:180px;">Ubicación</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for t in next7_rows %}
+              <tr>
+                <td>
+                  <div class="calendar-check-wrap">
+                    {% if t.priority in [1, 2, 3] %}
+                      <span class="calendar-priority-bar calendar-priority-{{ t.priority }}" aria-hidden="true"></span>
+                    {% endif %}
+                    <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}">
+                      <input type="hidden" name="next" value="{{ url_for('calendar', view='next7', date=selected_date.isoformat(), show_completed=1 if show_completed else None) }}">
+                      <button class="radio" aria-label="toggle" title="Marcar como completada"></button>
+                    </form>
+                  </div>
+                </td>
+                <td>
+                  <div style="font-weight:600; display:flex; align-items:center; gap:6px;">
+                    <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('calendar', view='next7', date=selected_date.isoformat(), show_completed=1 if show_completed else None)) }}" style="font-weight:600; display:flex; align-items:center; gap:6px; text-decoration:none; color:inherit;">
+                      {{ t.title }}
+                    </a>
+                    {% if t.notes %}
+                      <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('calendar', view='next7', date=selected_date.isoformat(), show_completed=1 if show_completed else None)) }}"
+                         title="{{ t.notes }}"
+                         style="text-decoration:none; font-size:0.9rem; opacity:.75;">
+                         📝
+                      </a>
+                    {% endif %}
+                  </div>
+
+                  <div class="task-tags" style="font-size:0.8rem; opacity:0.8; margin-top:2px;">
+                    {% for tag in tags_map.get(t.id, []) %}
+                      <a class="taglink" href="{{ url_for('tag_detail', tag_id=tag.id) }}" style="margin-right:5px;">@{{ tag.name }}</a>
+                    {% endfor %}
+                  </div>
+                </td>
+                <td style="font-size:0.9rem;">
+                  <span style="{% if t.due_date < today_date %}color:#b91c1c; font-weight:700;{% endif %}">{{ t.due_date.strftime('%d-%m-%Y') }}</span>
+                </td>
+                <td style="font-size:0.8rem;">
+                  {% if t.folder_name %}
+                    <a href="{{ url_for('folder_detail', folder_id=t.folder_id) }}">📂 {{ t.folder_name }}</a>
+                  {% endif %}
+                  {% if t.folder_name and t.project_name %}
+                    <span class="muted"> · </span>
+                  {% endif %}
+                  {% if t.project_name %}
+                    <a href="{{ url_for('project_detail', project_id=t.project_id) }}">💼 {{ t.project_name }}</a>
+                  {% endif %}
+                  {% if not t.folder_name and not t.project_name %}
+                    <span class="muted">Inbox</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <div class="empty">Nada próximo para los siguientes 7 días.</div>
+      {% endif %}
+
     {% else %}
       <div style="margin-bottom:12px;"><strong>{{ weekday_full_es[selected_date.weekday()] }} {{ '%02d'|format(selected_date.day) }}-{{ '%02d'|format(selected_date.month) }}-{{ selected_date.year }}</strong></div>
 
@@ -431,7 +500,7 @@
         </table>
         </div>
       {% else %}
-        <div class="empty">No hay tareas pendientes para este día.</div>
+        <div class="empty">No hay tareas pendientes para hoy.</div>
       {% endif %}
 
       {% if has_done and show_completed %}

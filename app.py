@@ -2905,7 +2905,7 @@ def _build_month_weeks(year: int, month: int) -> List[List[Optional[date]]]:
 @app.route("/calendar", endpoint="calendar")
 def calendar_view():
     view = (request.args.get("view") or "month").strip().lower()
-    if view not in ("day", "week", "month"):
+    if view not in ("day", "week", "next7", "month"):
         view = "month"
 
     today_date = _today_madrid()
@@ -2925,6 +2925,12 @@ def calendar_view():
         prev_date = start_date - timedelta(days=7)
         next_date = start_date + timedelta(days=7)
         week_days = [start_date + timedelta(days=i) for i in range(7)]
+    elif view == "next7":
+        start_date = selected_date
+        end_date = selected_date + timedelta(days=7)
+        prev_date = selected_date - timedelta(days=7)
+        next_date = selected_date + timedelta(days=7)
+        week_days = None
     else:
         start_date = selected_date
         end_date = selected_date
@@ -2987,6 +2993,7 @@ def calendar_view():
 
     selected_day_pending = [t for t in pending_rows if t.get("due_date") == selected_date] if view == "day" else []
     selected_day_completed = [t for t in completed_rows if t.get("completed_at") and t.get("completed_at").date() == selected_date] if view == "day" else []
+    next7_rows = pending_rows if view == "next7" else []
 
     selected_day_tasks = list(selected_day_pending)
     if show_completed:
@@ -2997,6 +3004,10 @@ def calendar_view():
 
     tags_map = load_tags_map([t["id"] for t in selected_day_tasks]) if selected_day_tasks else {}
     has_done = len(selected_day_completed)
+
+    if view == "next7":
+        next7_task_ids = [t["id"] for t in next7_rows]
+        tags_map = load_tags_map(next7_task_ids) if next7_task_ids else {}
 
     if view == "week":
         week_list_rows = q(
@@ -3036,6 +3047,7 @@ def calendar_view():
         selected_day_tasks=selected_day_tasks,
         selected_day_pending=selected_day_pending,
         selected_day_completed=selected_day_completed,
+        next7_rows=next7_rows,
         week_list_rows=week_list_rows,
         has_done=has_done,
         tags_map=tags_map,
@@ -3689,7 +3701,41 @@ def dashboard():
     )["c"]
     trash_tasks = q1("SELECT COUNT(*) AS c FROM tasks WHERE deleted_at IS NOT NULL")["c"]
     archived_tasks_cnt = q1("SELECT COUNT(*) AS c FROM tasks WHERE archived=1 AND deleted_at IS NULL")["c"]
-    projects_cnt = q1("SELECT COUNT(*) AS c FROM projects WHERE archived=0 AND deleted_at IS NULL")["c"]
+
+    # Proyectos activos excluyendo las carpetas Rutinas/Agenda/Sometime y sus subdirectorios.
+    excluded_root_names = {"rutinas", "agenda", "sometime"}
+    folder_rows = q("SELECT id, parent_id, name FROM folders")
+    children_by_parent: Dict[Optional[int], List[int]] = {}
+    excluded_folder_ids: set[int] = set()
+
+    for fr in folder_rows:
+        parent_id = fr.get("parent_id")
+        children_by_parent.setdefault(parent_id, []).append(int(fr["id"]))
+        if normalize_tag_key(fr.get("name") or "") in excluded_root_names:
+            excluded_folder_ids.add(int(fr["id"]))
+
+    stack = list(excluded_folder_ids)
+    while stack:
+        fid = stack.pop()
+        for ch_id in children_by_parent.get(fid, []):
+            if ch_id not in excluded_folder_ids:
+                excluded_folder_ids.add(ch_id)
+                stack.append(ch_id)
+
+    if excluded_folder_ids:
+        placeholders = ",".join(["%s"] * len(excluded_folder_ids))
+        projects_cnt = q1(
+            "SELECT COUNT(*) AS c "
+            "FROM projects "
+            "WHERE archived=0 AND deleted_at IS NULL "
+            f"AND (folder_id IS NULL OR folder_id NOT IN ({placeholders}))",
+            tuple(sorted(excluded_folder_ids)),
+        )["c"]
+    else:
+        projects_cnt = q1(
+            "SELECT COUNT(*) AS c FROM projects WHERE archived=0 AND deleted_at IS NULL"
+        )["c"]
+
     archived_cnt = q1("SELECT COUNT(*) AS c FROM projects WHERE archived=1 AND deleted_at IS NULL")["c"]
     pending_active = q1(
         "SELECT COUNT(*) AS c "

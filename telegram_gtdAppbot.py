@@ -911,7 +911,7 @@ def get_today_tasks():
 
     with conn.cursor() as cur:
         cur.execute("""
-            SELECT id, title
+            SELECT t.id, t.title
             FROM tasks t
             LEFT JOIN projects p ON p.id=t.project_id
             WHERE t.due_date = CURDATE()

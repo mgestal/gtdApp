@@ -213,13 +213,13 @@
               {% endif %}
               ·
               {% if t.folder_name %}
-                📂 {{ t.folder_name }}
+                <a href="{{ url_for('folder_detail', folder_id=t.folder_id) }}">📂 {{ t.folder_name }}</a>
               {% endif %}
               {% if t.folder_name and t.project_name %}
                 ·
               {% endif %}
               {% if t.project_name %}
-                💼 {{ t.project_name }}
+                <a href="{{ url_for('project_detail', project_id=t.project_id) }}">💼 {{ t.project_name }}</a>
               {% endif %}
               {% if not t.folder_name and not t.project_name %}
                 Inbox

@@ -100,6 +100,24 @@
     .calendar-week-jump:hover {
       text-decoration: none;
     }
+
+    .calendar-next7-date-cell {
+      padding-right: 20px;
+    }
+
+    .calendar-next7-location-cell {
+      padding-left: 20px;
+    }
+
+    .calendar-next7-table th:nth-child(3),
+    .calendar-next7-table td:nth-child(3) {
+      padding-right: 20px;
+    }
+
+    .calendar-next7-table th:nth-child(4),
+    .calendar-next7-table td:nth-child(4) {
+      padding-left: 20px;
+    }
   </style>
 
   {% set view_names = {'day': 'Hoy', 'week': 'Esta Semana', 'next7': 'Próximos 7 días', 'month': 'Mes'} %}
@@ -240,6 +258,7 @@
                   <tr>
                     <th style="width:58px;"></th>
                     <th>Tarea</th>
+                    <th style="width:80px;">Hora</th>
                     <th style="width:180px;">Ubicación</th>
                     <th style="width:95px;"></th>
                   </tr>
@@ -294,6 +313,19 @@
                         {% endif %}
                       </td>
 
+                      <td style="font-size:0.8rem; white-space:nowrap; text-align:{{ 'right' if t.due_time else 'center' }};">
+                        {% if t.due_time %}
+                          {% if t.due_time.strftime is defined %}
+                            {{ t.due_time.strftime('%H:%M') }}
+                          {% else %}
+                            {% set ts = t.due_time|string %}
+                            {{ ts[:5] if ts|length >= 5 else '—' }}
+                          {% endif %}
+                        {% else %}
+                          <span class="muted">—</span>
+                        {% endif %}
+                      </td>
+
                       <td style="font-size:0.8rem;">
                         {% if t.folder_name %}
                           <a href="{{ url_for('folder_detail', folder_id=t.folder_id) }}">📂 {{ t.folder_name }}</a>
@@ -334,13 +366,13 @@
 
     {% elif view == 'next7' %}
       {% if next7_rows and next7_rows|length > 0 %}
-        <table class="table">
+        <table class="table calendar-next7-table">
           <thead>
             <tr>
               <th style="width:58px;"></th>
               <th>Tarea</th>
-              <th style="width:110px;">Fecha</th>
-              <th style="width:180px;">Ubicación</th>
+              <th style="width:140px;">Fecha</th>
+              <th style="width:220px;">Ubicación</th>
             </tr>
           </thead>
           <tbody>
@@ -377,10 +409,20 @@
                     {% endfor %}
                   </div>
                 </td>
-                <td style="font-size:0.9rem;">
+                <td class="calendar-next7-date-cell" style="font-size:0.9rem; white-space:nowrap; text-align:{{ 'right' if t.due_date else 'center' }};">
                   <span style="{% if t.due_date < today_date %}color:#b91c1c; font-weight:700;{% endif %}">{{ t.due_date.strftime('%d-%m-%Y') }}</span>
+                  {% if t.due_time %}
+                    <div class="muted" style="font-size:12px; margin-top:2px;">
+                      {% if t.due_time.strftime is defined %}
+                        {{ t.due_time.strftime('%H:%M') }}
+                      {% else %}
+                        {% set ts = t.due_time|string %}
+                        {{ ts[:5] if ts|length >= 5 else '—' }}
+                      {% endif %}
+                    </div>
+                  {% endif %}
                 </td>
-                <td style="font-size:0.8rem;">
+                <td class="calendar-next7-location-cell" style="font-size:0.8rem;">
                   {% if t.folder_name %}
                     <a href="{{ url_for('folder_detail', folder_id=t.folder_id) }}">📂 {{ t.folder_name }}</a>
                   {% endif %}
@@ -417,7 +459,6 @@
               <th style="width:58px;"></th>
               <th>Título</th>
               <th style="width:130px;">Ubicación</th>
-              <th style="width:110px;">Fecha</th>
               <th style="width:80px;">Hora</th>
               <th style="width:120px;"></th>
             </tr>
@@ -468,14 +509,7 @@
                   {% if t.folder_id and t.folder_name and t.project_id and t.project_name %} · {% endif %}
                   {% if t.project_id and t.project_name %}<a href="{{ url_for('project_detail', project_id=t.project_id) }}" style="text-decoration:none;">💼 {{ t.project_name }}</a>{% endif %}
                 </td>
-                <td>
-                  {% if t.due_date %}
-                    {{ t.due_date.strftime('%d-%m-%Y') }}
-                  {% else %}
-                    <span class="muted">—</span>
-                  {% endif %}
-                </td>
-                <td>
+                <td style="text-align:{{ 'right' if t.due_time else 'center' }}; white-space:nowrap;">
                   {% if t.due_time %}
                     {% if t.due_time.strftime is defined %}
                       {{ t.due_time.strftime('%H:%M') }}

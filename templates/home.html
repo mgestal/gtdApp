@@ -134,11 +134,21 @@
                 <a class="tagchip taglink" href="{{ url_for('tag_detail', tag_id=tag.id) }}">@{{ tag.name }}</a>
               {% endfor %}
             </td>
-            <td>
+            <td style="text-align:right; white-space:nowrap;">
               {% if t.due_date %}
                 {{ t.due_date.strftime('%d-%m-%Y') }}
               {% else %}
                 <span class="muted">—</span>
+              {% endif %}
+              {% if t.due_time %}
+                <div class="muted" style="font-size:12px; margin-top:2px;">
+                  {% if t.due_time.strftime is defined %}
+                    {{ t.due_time.strftime('%H:%M') }}
+                  {% else %}
+                    {% set ts = t.due_time|string %}
+                    {{ ts[:5] if ts|length >= 5 else '—' }}
+                  {% endif %}
+                </div>
               {% endif %}
             </td>
             <td class="actions">

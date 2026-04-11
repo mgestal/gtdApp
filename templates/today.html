@@ -19,6 +19,26 @@
     .today-priority-1 { background: #d9534f; }
     .today-priority-2 { background: #f0ad4e; }
     .today-priority-3 { background: #5cb85c; }
+
+    .today-date-cell {
+      white-space: nowrap;
+      padding-right: 34px;
+    }
+
+    .today-location-cell {
+      padding-left: 34px;
+      padding-right: 8px;
+    }
+
+    .today-actions-cell {
+      width: 82px;
+      padding-left: 6px;
+    }
+
+    .today-actions-cell.actions {
+      flex-wrap: nowrap;
+      gap: 6px;
+    }
   </style>
 
   {% set pending_rows = pending_rows if pending_rows is defined else (rows | rejectattr('completed_at') | list) %}
@@ -42,9 +62,9 @@
           <tr>
             <th style="width:58px;"></th>
             <th>Tarea</th>
-            <th style="width:90px;">Hora</th>
+            <th style="width:100px;">Fecha</th>
             <th style="width:150px;">Ubicación</th>
-            <th style="width:95px;"></th>
+            <th style="width:82px;"></th>
           </tr>
         </thead>
         <tbody>
@@ -84,20 +104,21 @@
               </div>
             </td>
 
-            <td style="font-size:0.8rem;">
+            <td class="today-date-cell" style="font-size:0.8rem; text-align:right;">
+              {{ today.strftime('%d-%m-%Y') }}
               {% if t.due_time %}
-                {% if t.due_time.strftime is defined %}
-                  {{ t.due_time.strftime('%H:%M') }}
-                {% else %}
-                  {% set ts = t.due_time|string %}
-                  {{ ts[:5] if ts|length >= 5 else '—' }}
-                {% endif %}
-              {% else %}
-                <span class="muted">—</span>
+                <div class="muted" style="font-size:12px; margin-top:2px;">
+                  {% if t.due_time.strftime is defined %}
+                    {{ t.due_time.strftime('%H:%M') }}
+                  {% else %}
+                    {% set ts = t.due_time|string %}
+                    {{ ts[:5] if ts|length >= 5 else '—' }}
+                  {% endif %}
+                </div>
               {% endif %}
             </td>
 
-            <td style="font-size:0.8rem;">
+            <td class="today-location-cell" style="font-size:0.8rem;">
               {% if t.folder_name %}
                 <a href="{{ url_for('folder_detail', folder_id=t.folder_id) }}">📂 {{ t.folder_name }}</a>
               {% endif %}
@@ -115,7 +136,7 @@
               {% endif %}
             </td>
 
-            <td class="actions">
+            <td class="actions today-actions-cell">
               <a class="btn btn-soft" href="{{ url_for('task_edit', task_id=t.id, next=request.full_path) }}">✎</a>
               <form method="post" action="{{ url_for('task_delete', task_id=t.id) }}" style="display:inline;">
                 <button class="btn btn-soft" onclick="return confirm('¿Borrar esta tarea?');">🗑</button>
@@ -142,10 +163,9 @@
           <tr>
             <th style="width:58px;"></th>
             <th>Tarea</th>
-            <th style="width:95px;">Fecha</th>
-            <th style="width:90px;">Hora</th>
+            <th style="width:100px;">Fecha</th>
             <th style="width:150px;">Ubicación</th>
-            <th style="width:95px;"></th>
+            <th style="width:82px;"></th>
           </tr>
         </thead>
         <tbody>
@@ -185,28 +205,25 @@
               </div>
             </td>
 
-            <td style="font-size:0.8rem; color:#c04545; font-weight:600;">
+            <td class="today-date-cell" style="font-size:0.8rem; color:#c04545; font-weight:600; text-align:{{ 'right' if t.due_date else 'center' }};">
               {% if t.due_date %}
                 {{ t.due_date.strftime('%d-%m-%Y') }}
               {% else %}
                 <span class="muted">—</span>
               {% endif %}
-            </td>
-
-            <td style="font-size:0.8rem;">
               {% if t.due_time %}
-                {% if t.due_time.strftime is defined %}
-                  {{ t.due_time.strftime('%H:%M') }}
-                {% else %}
-                  {% set ts = t.due_time|string %}
-                  {{ ts[:5] if ts|length >= 5 else '—' }}
-                {% endif %}
-              {% else %}
-                <span class="muted">—</span>
+                <div class="muted" style="font-size:12px; margin-top:2px; color:inherit;">
+                  {% if t.due_time.strftime is defined %}
+                    {{ t.due_time.strftime('%H:%M') }}
+                  {% else %}
+                    {% set ts = t.due_time|string %}
+                    {{ ts[:5] if ts|length >= 5 else '—' }}
+                  {% endif %}
+                </div>
               {% endif %}
             </td>
 
-            <td style="font-size:0.8rem;">
+            <td class="today-location-cell" style="font-size:0.8rem;">
               {% if t.folder_name %}
                 <a href="{{ url_for('folder_detail', folder_id=t.folder_id) }}">📂 {{ t.folder_name }}</a>
               {% endif %}
@@ -224,7 +241,7 @@
               {% endif %}
             </td>
 
-            <td class="actions">
+            <td class="actions today-actions-cell">
               <a class="btn btn-soft" href="{{ url_for('task_edit', task_id=t.id, next=request.full_path) }}">✎</a>
               <form method="post" action="{{ url_for('task_delete', task_id=t.id) }}" style="display:inline;">
                 <button class="btn btn-soft" onclick="return confirm('¿Borrar esta tarea?');">🗑</button>
@@ -251,9 +268,9 @@
           <tr>
             <th style="width:58px;"></th>
             <th>Tarea</th>
-            <th style="width:90px;">Hora</th>
+            <th style="width:100px;">Fecha</th>
             <th style="width:150px;">Ubicación</th>
-            <th style="width:95px;"></th>
+            <th style="width:82px;"></th>
           </tr>
         </thead>
         <tbody>
@@ -293,20 +310,28 @@
               </div>
             </td>
 
-            <td style="font-size:0.8rem;">
+            <td class="today-date-cell" style="font-size:0.8rem; text-align:{{ 'right' if t.completed_at else 'center' }};">
               {% if t.completed_at %}
                 {% if t.completed_at.strftime is defined %}
-                  {{ t.completed_at.strftime('%H:%M') }}
+                  {{ t.completed_at.strftime('%d-%m-%Y') }}
                 {% else %}
                   {% set cs = t.completed_at|string %}
-                  {{ cs[11:16] if cs|length >= 16 else '—' }}
+                  {{ cs[8:10] }}-{{ cs[5:7] }}-{{ cs[0:4] if cs|length >= 10 else cs }}
                 {% endif %}
+                <div class="muted" style="font-size:12px; margin-top:2px;">
+                  {% if t.completed_at.strftime is defined %}
+                    {{ t.completed_at.strftime('%H:%M') }}
+                  {% else %}
+                    {% set cs = t.completed_at|string %}
+                    {{ cs[11:16] if cs|length >= 16 else '—' }}
+                  {% endif %}
+                </div>
               {% else %}
                 <span class="muted">—</span>
               {% endif %}
             </td>
 
-            <td style="font-size:0.8rem;">
+            <td class="today-location-cell" style="font-size:0.8rem;">
               {% if t.folder_name %}
                 <a href="{{ url_for('folder_detail', folder_id=t.folder_id) }}">📂 {{ t.folder_name }}</a>
               {% endif %}
@@ -324,7 +349,7 @@
               {% endif %}
             </td>
 
-            <td class="actions">
+            <td class="actions today-actions-cell">
               <a class="btn btn-soft" href="{{ url_for('task_edit', task_id=t.id, next=request.full_path) }}">✎</a>
               <form method="post" action="{{ url_for('task_delete', task_id=t.id) }}" style="display:inline;">
                 <button class="btn btn-soft" onclick="return confirm('¿Borrar esta tarea?');">🗑</button>

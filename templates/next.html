@@ -71,6 +71,16 @@
     .next-priority-medium { background: #f59e0b; }
     .next-priority-low { background: #22c55e; }
 
+    .next-table-wrap .table th:nth-child(3),
+    .next-table-wrap .table td:nth-child(3) {
+      padding-right: 18px;
+    }
+
+    .next-table-wrap .table th:nth-child(4),
+    .next-table-wrap .table td:nth-child(4) {
+      padding-left: 18px;
+    }
+
     @media (max-width: 640px) {
       .next-pager {
         align-items: flex-start !important;
@@ -211,6 +221,15 @@
               {% else %}
                 —
               {% endif %}
+              {% if t.due_time %}
+                ·
+                {% if t.due_time.strftime is defined %}
+                  {{ t.due_time.strftime('%H:%M') }}
+                {% else %}
+                  {% set ts_mobile = t.due_time|string %}
+                  {{ ts_mobile[:5] if ts_mobile|length >= 5 else '—' }}
+                {% endif %}
+              {% endif %}
               ·
               {% if t.folder_name %}
                 <a href="{{ url_for('folder_detail', folder_id=t.folder_id) }}">📂 {{ t.folder_name }}</a>
@@ -227,11 +246,21 @@
             </div>
           </td>
 
-          <td style="font-size:0.85rem; text-align:center;">
+          <td style="font-size:0.85rem; text-align:{{ 'right' if t.due_date else 'center' }}; white-space:nowrap;">
             {% if t.due_date %}
               {{ t.due_date.strftime('%d-%m-%Y') }}
             {% else %}
-              <span class="muted" align="center"></span>
+              <span class="muted">—</span>
+            {% endif %}
+            {% if t.due_time %}
+              <div class="muted" style="font-size:12px; margin-top:2px;">
+                {% if t.due_time.strftime is defined %}
+                  {{ t.due_time.strftime('%H:%M') }}
+                {% else %}
+                  {% set ts = t.due_time|string %}
+                  {{ ts[:5] if ts|length >= 5 else '—' }}
+                {% endif %}
+              </div>
             {% endif %}
           </td>
 

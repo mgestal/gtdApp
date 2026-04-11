@@ -2764,7 +2764,7 @@ def inject_sidebar_counts():
 def home():       
     
     inbox = q(
-        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule "
+        "SELECT t.id, t.title, t.notes, t.due_date, t.due_time, t.completed_at, t.recurrence_rule "
         "FROM tasks t "
         "WHERE t.project_id IS NULL AND t.folder_id IS NULL AND t.archived=0 AND t.deleted_at IS NULL "
         "ORDER BY (t.due_date IS NULL), t.due_date ASC, t.id DESC "
@@ -3226,7 +3226,7 @@ def project_detail(project_id: int):
     folder_breadcrumb = build_folder_breadcrumb(project.get("folder_id"), include_self=True)
 
     active_tasks = q(
-        "SELECT id, title, notes, due_date, completed_at, recurrence_rule, priority "
+        "SELECT id, title, notes, due_date, due_time, completed_at, recurrence_rule, priority "
         "FROM tasks "
         "WHERE project_id=%s AND completed_at IS NULL AND archived=0 AND deleted_at IS NULL "
         "ORDER BY (due_date IS NULL) ASC, due_date ASC, id",
@@ -5120,7 +5120,7 @@ def folder_detail(folder_id: int):
 
     # Tareas asignadas directamente a la carpeta (no a proyectos)
     tasks = q(
-        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority "
+        "SELECT t.id, t.title, t.notes, t.due_date, t.due_time, t.completed_at, t.recurrence_rule, t.priority "
         "FROM tasks t "
         "WHERE t.folder_id=%s AND t.project_id IS NULL AND t.archived=0 AND t.deleted_at IS NULL "
         "ORDER BY (t.completed_at IS NOT NULL) ASC, (t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC",
@@ -8903,7 +8903,7 @@ def next_actions():
         offset = (page - 1) * per_page
 
         rows = q(
-            "SELECT t.id, t.title, t.notes, t.due_date, t.recurrence_rule, t.completed_at, t.priority, "
+            "SELECT t.id, t.title, t.notes, t.due_date, t.due_time, t.recurrence_rule, t.completed_at, t.priority, "
             "p.name AS project_name, p.id AS project_id, "
             "fd.name AS folder_name, fd.id AS folder_id "
             "FROM tasks t "

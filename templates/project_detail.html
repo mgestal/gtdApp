@@ -170,8 +170,27 @@
                 </div>
               {% endif %}
             </td>
-            <td style="white-space:nowrap; font-size:13px;">
-              {% if t.due_date %}{{ t.due_date.strftime('%d-%m-%Y') }}{% else %}<span class="muted">—</span>{% endif %}
+            <td style="white-space:nowrap; font-size:13px; text-align:{{ 'right' if t.due_date else 'center' }};">
+              {% if t.due_date %}
+                {% if t.due_date.strftime is defined %}
+                  {{ t.due_date.strftime('%d-%m-%Y') }}
+                {% else %}
+                  {% set ds = t.due_date|string %}
+                  {{ ds[8:10] }}-{{ ds[5:7] }}-{{ ds[0:4] if ds|length >= 10 else ds }}
+                {% endif %}
+              {% else %}
+                <span class="muted">—</span>
+              {% endif %}
+              {% if t.due_time %}
+                <div class="muted" style="font-size:12px; margin-top:2px;">
+                  {% if t.due_time.strftime is defined %}
+                    {{ t.due_time.strftime('%H:%M') }}
+                  {% else %}
+                    {% set ts = t.due_time|string %}
+                    {{ ts[:5] if ts|length >= 5 else '—' }}
+                  {% endif %}
+                </div>
+              {% endif %}
             </td>
             <td style="text-align:right;">
               {% if not project.archived %}

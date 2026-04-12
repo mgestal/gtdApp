@@ -2943,7 +2943,7 @@ def week():
     sunday_d = monday_d + timedelta(days=6)
 
     rows = q(
-        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
+        "SELECT t.id, t.title, t.notes, t.due_date, t.due_time, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.name AS folder_name, fd.id AS folder_id "
         "FROM tasks t "
@@ -5658,7 +5658,7 @@ def filter_run(filter_id: int):
 
     # Página de resultados
     sql = (
-        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
+        "SELECT t.id, t.title, t.notes, t.due_date, t.due_time, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.name AS folder_name, fd.id AS folder_id "
         "FROM tasks t "

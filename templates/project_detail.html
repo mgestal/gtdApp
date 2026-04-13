@@ -1,6 +1,10 @@
 {% extends "base.html" %}
 {% block content %} 
   <style>
+    .project-detail-page {
+      overflow-x: hidden;
+    }
+
     .project-check-wrap {
       display: flex;
       align-items: center;
@@ -18,8 +22,43 @@
     .project-priority-1 { background: #d9534f; }
     .project-priority-2 { background: #f0ad4e; }
     .project-priority-3 { background: #5cb85c; }
+
+    .project-table-wrap {
+      width: 100%;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .project-task-title {
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+
+    @media (max-width: 768px) {
+      .project-detail-page .card {
+        overflow: hidden;
+      }
+
+      .project-table {
+        min-width: 620px;
+      }
+
+      .project-actions-cell .btn {
+        padding: 4px 7px !important;
+      }
+
+      .project-quick-add {
+        flex-direction: column;
+        align-items: stretch !important;
+      }
+
+      .project-quick-add .btn {
+        width: 100%;
+      }
+    }
   </style>
 
+  <div class="project-detail-page">
   <div class="page-title">
     {% if folder_breadcrumb and folder_breadcrumb|length > 0 %}
       <p class="subtitle" style="margin-bottom:6px;">
@@ -96,7 +135,8 @@
   <div class="card">
     <div class="card-header"><div class="card-title">Activas</div></div>
     {% if active_tasks %}
-      <table class="table">
+      <div class="project-table-wrap">
+      <table class="table project-table">
         <thead>
           <tr>
             <th style="width:58px;"></th>
@@ -125,7 +165,7 @@
 			</td>
             <td>
               <div style="font-weight:600; margin-bottom:4px;">
-                            		<div style="font-weight:600; display:flex; align-items:center; gap:6px;">
+            <div class="project-task-title" style="font-weight:600; display:flex; align-items:center; gap:6px;">
 							{{ t.title }} {% if t.notes %}
 							<a href="{{ url_for('task_edit', task_id=t.id, next=request.full_path) }}"
 							title="{{ t.notes }}"
@@ -194,7 +234,7 @@
             </td>
             <td style="text-align:right;">
               {% if not project.archived %}
-              <div style="display:inline-flex; gap:5px;">
+              <div class="project-actions-cell" style="display:inline-flex; gap:5px;">
                 <a class="btn btn-soft" style="padding:5px 8px;" href="{{ url_for('task_edit', task_id=t.id, next=request.full_path) }}">✎</a>
                 <form method="post" action="{{ url_for('task_delete', task_id=t.id) }}" style="display:inline;">
                   <input type="hidden" name="next" value="{{ request.full_path }}">
@@ -207,6 +247,7 @@
         {% endfor %}
         </tbody>
       </table>
+      </div>
     {% else %}
       <div class="empty">No hay tareas activas.</div>
     {% endif %}
@@ -217,7 +258,7 @@
   <div class="card" style="margin-top:14px;">
     <form method="post" action="{{ url_for('task_create') }}" class="form">
       <input type="hidden" name="project_id" value="{{ project.id }}">
-<div style="display:flex; gap:10px; align-items:flex-start;">
+<div class="project-quick-add" style="display:flex; gap:10px; align-items:flex-start;">
   <div class="quick-input-wrap" style="flex:1;">
     <input
       class="input"
@@ -240,7 +281,8 @@
   <div class="card" style="margin-top:14px;">
     <div class="card-header"><div class="card-title">Completadas</div></div>
     {% if done_tasks %}
-      <table class="table">
+      <div class="project-table-wrap">
+      <table class="table project-table">
         <tbody>
         {% for t in done_tasks %}
           <tr class="row-done">
@@ -259,7 +301,7 @@
         </div>
 			</td>
             <td>
-              <div style="text-decoration: line-through; opacity:0.7; font-weight:600; display:flex; align-items:center; gap:6px;">
+              <div class="project-task-title" style="text-decoration: line-through; opacity:0.7; font-weight:600; display:flex; align-items:center; gap:6px;">
                 {{ t.title }} {% if t.notes %}
                 <a href="{{ url_for('task_edit', task_id=t.id, next=request.full_path) }}"
                 title="{{ t.notes }}"
@@ -289,9 +331,12 @@
         {% endfor %}
         </tbody>
       </table>
+      </div>
     {% else %}
       <div class="empty">No hay tareas completadas.</div>
     {% endif %}
+  </div>
+
   </div>
 
   <script>

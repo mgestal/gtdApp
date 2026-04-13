@@ -4556,9 +4556,11 @@ def task_quick_add():
         project_id = None
 
     try:
-        # 1) Resolver asignación textual si no viene selección explícita.
+        # 1) Resolver asignación textual cuando no hay proyecto explícito.
+        #    Si venimos de carpeta (folder_id), #proyecto debe poder crear
+        #    el proyecto dentro de esa carpeta y asignar la tarea ahí.
         #    Prioridad: f:carpeta > #proyecto
-        if project_id is None and folder_id is None:
+        if project_id is None:
             if quick_folder_name:
                 folder_id = find_folder_by_name(quick_folder_name)
             elif quick_project_name:

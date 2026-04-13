@@ -66,7 +66,13 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>{{ APP_TITLE }}{% if title %} - {{ title }}{% endif %}</title>
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='0.9em' font-size='90'%3E%E2%9C%8D%F0%9F%8F%BC%3C/text%3E%3C/svg%3E">
+  <meta name="theme-color" content="#e7a7ad">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="manifest" href="{{ url_for('webmanifest') }}" crossorigin="use-credentials">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-192.png') }}">
+  <link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='icons/icon-192.png') }}">
+  <link rel="shortcut icon" type="image/png" href="{{ url_for('static', filename='icons/icon-192.png') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 
   <style>
@@ -779,6 +785,21 @@
     applyDesktopState();
   }
 })();
+</script>
+
+<script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", function () {
+    navigator.serviceWorker.register("{{ url_for('service_worker') }}").catch(function (err) {
+      console.warn("No se pudo registrar el service worker:", err);
+    });
+  });
+}
+
+window.__gtdInstallPromptAvailable = false;
+window.addEventListener("beforeinstallprompt", function () {
+  window.__gtdInstallPromptAvailable = true;
+});
 </script>
 
 

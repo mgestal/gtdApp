@@ -32,6 +32,27 @@
       }
     }
 
+    @media (max-width: 640px) {
+      .calendar-next7-table th:nth-child(4),
+      .calendar-next7-table td:nth-child(4),
+      .calendar-day-table th:nth-child(3),
+      .calendar-day-table td:nth-child(3),
+      .calendar-week-list-table th:nth-child(4),
+      .calendar-week-list-table td:nth-child(4) {
+        display: none;
+      }
+
+      .calendar-next7-table th,
+      .calendar-next7-table td,
+      .calendar-day-table th,
+      .calendar-day-table td,
+      .calendar-week-list-table th,
+      .calendar-week-list-table td {
+        padding-left: 4px;
+        padding-right: 4px;
+      }
+    }
+
     .calendar-check-wrap {
       display: flex;
       align-items: center;
@@ -253,7 +274,8 @@
                 </div>
               </div>
 
-              <table class="table">
+              <div class="table-wrap-responsive">
+              <table class="table calendar-week-list-table">
                 <thead>
                   <tr>
                     <th style="width:58px;"></th>
@@ -279,8 +301,8 @@
                       </td>
 
                       <td>
-                        <div style="font-weight:600; display:flex; align-items:center; gap:6px;">
-                          {{ t.title }}
+                        <div class="task-title-row" style="font-weight:600;">
+                          <span class="task-title-text">{{ t.title }}</span>
 
                           {% if t.notes %}
                             <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('calendar', view='week', date=selected_date.isoformat(), show_completed=1 if show_completed else None)) }}"
@@ -355,6 +377,7 @@
                   {% endfor %}
                 </tbody>
               </table>
+              </div>
             </div>
           {% endfor %}
         </div>
@@ -366,6 +389,7 @@
 
     {% elif view == 'next7' %}
       {% if next7_rows and next7_rows|length > 0 %}
+        <div class="table-wrap-responsive">
         <table class="table calendar-next7-table">
           <thead>
             <tr>
@@ -390,9 +414,9 @@
                   </div>
                 </td>
                 <td>
-                  <div style="font-weight:600; display:flex; align-items:center; gap:6px;">
+                  <div class="task-title-row" style="font-weight:600;">
                     <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('calendar', view='next7', date=selected_date.isoformat(), show_completed=1 if show_completed else None)) }}" style="font-weight:600; display:flex; align-items:center; gap:6px; text-decoration:none; color:inherit;">
-                      {{ t.title }}
+                      <span class="task-title-text">{{ t.title }}</span>
                     </a>
                     {% if t.notes %}
                       <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('calendar', view='next7', date=selected_date.isoformat(), show_completed=1 if show_completed else None)) }}"
@@ -440,6 +464,7 @@
             {% endfor %}
           </tbody>
         </table>
+        </div>
       {% else %}
         <div class="empty">Nada próximo para los siguientes 7 días.</div>
       {% endif %}
@@ -453,7 +478,7 @@
 
       {% if has_pending or show_done_rows %}
         <div class="calendar-day-wrap">
-        <table class="table">
+        <table class="table calendar-day-table">
           <thead>
             <tr>
               <th style="width:58px;"></th>
@@ -483,8 +508,8 @@
                   </div>
                 </td>
                 <td>
-                  <div style="font-weight:600; display:flex; align-items:center; gap:6px;">
-                    {{ t.title }}
+                  <div class="task-title-row" style="font-weight:600;">
+                    <span class="task-title-text">{{ t.title }}</span>
 
                     {% if t.notes %}
                       <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('calendar', view='day', date=selected_date.isoformat(), show_completed=1 if show_completed else None)) }}"

@@ -58,6 +58,27 @@
   .week-priority-1 { background: #d9534f; }
   .week-priority-2 { background: #f0ad4e; }
   .week-priority-3 { background: #5cb85c; }
+
+  .week-table-wrap .table{
+    min-width: 700px;
+  }
+
+  @media (max-width: 640px){
+    .week-table-wrap .table{
+      min-width: 620px;
+    }
+
+    .week-table th:nth-child(4),
+    .week-table td:nth-child(4){
+      display:none;
+    }
+
+    .week-table th,
+    .week-table td{
+      padding-left:4px;
+      padding-right:4px;
+    }
+  }
 </style>
 
 {% set dias = ['lunes','martes','miércoles','jueves','viernes','sábado','domingo'] %}
@@ -96,7 +117,8 @@
           </div>
         </div>
 
-        <table class="table">
+        <div class="table-wrap-responsive week-table-wrap">
+        <table class="table week-table">
           <thead>
             <tr>
               <th style="width:58px;"></th>
@@ -125,8 +147,8 @@
 				
 				
 				
-				<div style="font-weight:600; display:flex; align-items:center; gap:6px;">
-				  {{ t.title }}
+        <div class="task-title-row" style="font-weight:600;">
+          <span class="task-title-text">{{ t.title }}</span>
 
 				  {% if t.notes %}
 					<a href="{{ url_for('task_edit', task_id=t.id, next=url_for('next_actions')) }}"
@@ -214,6 +236,7 @@
             {% endfor %}
           </tbody>
         </table>
+        </div>
       </div>
     {% endfor %}
   </div>

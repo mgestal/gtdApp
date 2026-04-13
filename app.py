@@ -1253,6 +1253,70 @@ def _before():
     ensure_schema_updates()
     maybe_run_calendar_autosync()
 
+
+@app.route("/manifest.webmanifest")
+def webmanifest():
+    cfg = load_config()
+    app_title = cfg.get("app", {}).get("title", "GTD App")
+    script_root = (request.script_root or "").rstrip("/")
+    base = script_root if script_root else ""
+
+    start_url = f"{base}/pwa-launch" if base else "/pwa-launch"
+
+    manifest = {
+        "name": app_title,
+        "short_name": (app_title[:12] if len(app_title) > 12 else app_title),
+        "id": f"{base}/" if base else "/",
+        "start_url": start_url,
+        "scope": f"{base}/" if base else "/",
+        "display": "standalone",
+        "display_override": ["standalone", "minimal-ui"],
+        "background_color": "#fff7f7",
+        "theme_color": "#e7a7ad",
+        "lang": "es",
+        "description": "GTD App para gestionar tareas y proyectos.",
+        "icons": [
+            {
+                "src": f"{base}/static/icons/icon-192.png",
+                "sizes": "192x192",
+                "type": "image/png",
+                "purpose": "any maskable",
+            },
+            {
+                "src": f"{base}/static/icons/icon-512.png",
+                "sizes": "512x512",
+                "type": "image/png",
+                "purpose": "any maskable",
+            },
+            {
+                "src": f"{base}/static/icons/icon-192.svg",
+                "sizes": "192x192",
+                "type": "image/svg+xml",
+                "purpose": "any",
+            },
+        ],
+    }
+
+    return app.response_class(
+        json.dumps(manifest, ensure_ascii=False),
+        mimetype="application/manifest+json",
+    )
+
+
+@app.route("/sw.js")
+def service_worker():
+    sw_path = BASE_DIR / "static" / "sw.js"
+    response = send_file(sw_path, mimetype="application/javascript")
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
+
+@app.route("/pwa-launch")
+def pwa_launch():
+    return render_template("pwa_launch.html")
+
 @app.teardown_request
 def _teardown(exc):
     conn = getattr(g, "db_conn", None)

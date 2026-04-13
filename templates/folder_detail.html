@@ -70,6 +70,25 @@
     .folder-task-draggable:active {
       cursor: grabbing;
     }
+
+    .folder-table-wrap .table {
+      min-width: 720px;
+    }
+
+    @media (max-width: 640px) {
+      .folder-inline-form {
+        flex-wrap: wrap;
+      }
+
+      .folder-inline-form .btn {
+        width: 100%;
+        flex: 1 1 100%;
+      }
+
+      .folder-table-wrap .table {
+        min-width: 640px;
+      }
+    }
   </style>
 
   <div class="page-title">
@@ -191,6 +210,7 @@
     <div class="folder-dnd-hint">Arrastra una tarea y suéltala en un proyecto de esta card o en carpeta/proyecto de la barra lateral.</div>
 
     {% if tasks and tasks|length > 0 %}
+      <div class="table-wrap-responsive folder-table-wrap">
       <table class="table">
         <thead>
           <tr>
@@ -217,15 +237,16 @@
 
             <td>
               <div style="font-weight:600; margin-bottom:4px;">
-                            		<div style="font-weight:600; display:flex; align-items:center; gap:6px;">
-							{{ t.title }} {% if t.notes %}
-							<a href="{{ url_for('task_edit', task_id=t.id, next=url_for('next_actions')) }}"
-							title="{{ t.notes }}"
-							style="text-decoration:none; font-size:0.9rem; opacity:.75;">
-							📝
-							</a>
-							             {% endif %}
-						</div>
+                <div class="task-title-row" style="font-weight:600;">
+                  <span class="task-title-text">{{ t.title }}</span>
+                  {% if t.notes %}
+                    <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('next_actions')) }}"
+                       title="{{ t.notes }}"
+                       style="text-decoration:none; font-size:0.9rem; opacity:.75;">
+                       📝
+                    </a>
+                  {% endif %}
+                </div>
               </div>
               
               <div style="display:flex; flex-wrap:wrap; gap:4px;">
@@ -301,6 +322,7 @@
         {% endfor %}
         </tbody>
       </table>
+      </div>
     {% else %}
       <div class="empty">No hay tareas asignadas directamente a esta carpeta.</div>
     {% endif %}

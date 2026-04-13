@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" role="img" aria-label="GTD App">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f3c4c8"/>
+      <stop offset="1" stop-color="#d88991"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="192" height="192" rx="42" fill="url(#bg)"/>
+  <rect x="34" y="34" width="124" height="124" rx="24" fill="#fff7f7" opacity="0.95"/>
+  <path d="M58 95h76M58 118h56" stroke="#d88991" stroke-width="10" stroke-linecap="round"/>
+  <circle cx="69" cy="71" r="9" fill="#d88991"/>
+  <path d="M88 71h46" stroke="#d88991" stroke-width="10" stroke-linecap="round"/>
+</svg>

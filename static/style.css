@@ -513,6 +513,26 @@ code{
 
 .actions form{ margin:0; }
 
+.task-title-row{
+  display:flex;
+  align-items:flex-start;
+  gap:6px;
+  min-width:0;
+  flex-wrap:wrap;
+}
+
+.task-title-text{
+  min-width:0;
+  overflow-wrap:anywhere;
+  word-break:break-word;
+}
+
+.table-wrap-responsive{
+  width:100%;
+  overflow-x:auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 .btn.disabled{
   pointer-events:none;
   opacity:.5;
@@ -1750,6 +1770,22 @@ hr{
 
   .main{
     display: block !important;
+  }
+
+  .actions{
+    gap: 4px;
+    flex-wrap: nowrap;
+  }
+
+  .actions .btn{
+    padding: 5px 8px;
+    min-width: 0;
+  }
+
+  .table th,
+  .table td{
+    padding-left: 4px;
+    padding-right: 4px;
   }
 }
 

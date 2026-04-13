@@ -22,11 +22,11 @@
 
     .today-date-cell {
       white-space: nowrap;
-      padding-right: 34px;
+      padding-right: 12px;
     }
 
     .today-location-cell {
-      padding-left: 34px;
+      padding-left: 12px;
       padding-right: 8px;
     }
 
@@ -38,6 +38,22 @@
     .today-actions-cell.actions {
       flex-wrap: nowrap;
       gap: 6px;
+    }
+
+    @media (max-width: 640px) {
+      .today-table th:nth-child(4),
+      .today-table td:nth-child(4) {
+        display: none;
+      }
+
+      .today-date-cell {
+        padding-right: 4px;
+      }
+
+      .today-actions-cell {
+        width: 64px;
+        padding-left: 2px;
+      }
     }
   </style>
 
@@ -57,7 +73,7 @@
     </div>
 
     {% if pending_rows and pending_rows|length > 0 %}
-      <table class="table">
+      <table class="table today-table">
         <thead>
           <tr>
             <th style="width:58px;"></th>
@@ -82,8 +98,8 @@
             </td>
 
             <td>
-				<div style="font-weight:600; display:flex; align-items:center; gap:6px;">
-				  {{ t.title }}
+        <div class="task-title-row" style="font-weight:600;">
+          <span class="task-title-text">{{ t.title }}</span>
 
 				  {% if t.notes %}
           <a href="{{ url_for('task_edit', task_id=t.id, next=request.full_path) }}"
@@ -158,7 +174,7 @@
     </div>
 
     {% if overdue_rows and overdue_rows|length > 0 %}
-      <table class="table">
+      <table class="table today-table">
         <thead>
           <tr>
             <th style="width:58px;"></th>
@@ -183,8 +199,8 @@
             </td>
 
             <td>
-              <div style="font-weight:600; display:flex; align-items:center; gap:6px;">
-                {{ t.title }}
+              <div class="task-title-row" style="font-weight:600;">
+                <span class="task-title-text">{{ t.title }}</span>
 
                 {% if t.notes %}
                   <a href="{{ url_for('task_edit', task_id=t.id, next=request.full_path) }}"
@@ -263,7 +279,7 @@
     </div>
 
     {% if done_rows and done_rows|length > 0 %}
-      <table class="table">
+      <table class="table today-table">
         <thead>
           <tr>
             <th style="width:58px;"></th>
@@ -288,8 +304,8 @@
             </td>
 
             <td>
-				<div style="font-weight:600; display:flex; align-items:center; gap:6px;">
-				  {{ t.title }}
+        <div class="task-title-row" style="font-weight:600;">
+          <span class="task-title-text">{{ t.title }}</span>
 
 				  {% if t.notes %}
           <a href="{{ url_for('task_edit', task_id=t.id, next=request.full_path) }}"

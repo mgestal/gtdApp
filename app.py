@@ -1264,8 +1264,8 @@ def webmanifest():
     start_url = f"{base}/pwa-launch" if base else "/pwa-launch"
 
     manifest = {
-        "name": app_title,
-        "short_name": (app_title[:12] if len(app_title) > 12 else app_title),
+        "name": "GTD App",
+        "short_name": "GTD App",
         "id": f"{base}/" if base else "/",
         "start_url": start_url,
         "scope": f"{base}/" if base else "/",
@@ -1277,30 +1277,28 @@ def webmanifest():
         "description": "GTD App para gestionar tareas y proyectos.",
         "icons": [
             {
-                "src": f"{base}/static/icons/icon-192.png",
+                "src": f"{base}/static/icons/emoji-icon-192.png?v=3",
                 "sizes": "192x192",
                 "type": "image/png",
-                "purpose": "any maskable",
+                "purpose": "any",
             },
             {
-                "src": f"{base}/static/icons/icon-512.png",
+                "src": f"{base}/static/icons/emoji-icon-512.png?v=3",
                 "sizes": "512x512",
                 "type": "image/png",
-                "purpose": "any maskable",
-            },
-            {
-                "src": f"{base}/static/icons/icon-192.svg",
-                "sizes": "192x192",
-                "type": "image/svg+xml",
                 "purpose": "any",
             },
         ],
     }
 
-    return app.response_class(
+    response = app.response_class(
         json.dumps(manifest, ensure_ascii=False),
         mimetype="application/manifest+json",
     )
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
 
 @app.route("/sw.js")

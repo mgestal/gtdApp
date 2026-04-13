@@ -59,24 +59,52 @@
   .week-priority-2 { background: #f0ad4e; }
   .week-priority-3 { background: #5cb85c; }
 
-  .week-table-wrap .table{
-    min-width: 700px;
+  .week-mobile-meta{
+    display:none;
+    margin-top:4px;
+    font-size:0.8rem;
+    color:var(--muted);
+    overflow-wrap:anywhere;
   }
 
   @media (max-width: 640px){
-    .week-table-wrap .table{
-      min-width: 620px;
+    .week-table-wrap{
+      overflow-x: visible;
     }
 
+    .week-table{
+      width:100%;
+      table-layout: fixed;
+    }
+
+    .week-table th:nth-child(3),
+    .week-table td:nth-child(3),
     .week-table th:nth-child(4),
     .week-table td:nth-child(4){
       display:none;
     }
 
+    .week-table th:nth-child(1){ width:52px !important; }
+    .week-table th:nth-child(5){ width:70px !important; }
+
     .week-table th,
     .week-table td{
       padding-left:4px;
       padding-right:4px;
+    }
+
+    .week-mobile-meta{
+      display:block;
+    }
+
+    .week-table .actions{
+      gap:4px;
+      flex-wrap:nowrap;
+    }
+
+    .week-table .actions .btn{
+      padding:5px 8px;
+      min-width:0;
     }
   }
 </style>
@@ -168,6 +196,41 @@
                     {% for tag in tags_map.get(t.id, []) %}
                       <a class="tagchip taglink" href="{{ url_for('tag_detail', tag_id=tag.id) }}" style="margin-right:5px;">@{{ tag.name }}</a>
                     {% endfor %}
+                  </div>
+
+                  <div class="week-mobile-meta">
+                    {% if t.due_date %}
+                      {% if t.due_date.strftime is defined %}
+                        {{ t.due_date.strftime('%d-%m-%Y') }}
+                      {% else %}
+                        {% set ds_m = t.due_date|string %}
+                        {{ ds_m[8:10] }}-{{ ds_m[5:7] }}-{{ ds_m[0:4] if ds_m|length >= 10 else ds_m }}
+                      {% endif %}
+                    {% else %}
+                      —
+                    {% endif %}
+                    {% if t.due_time %}
+                      ·
+                      {% if t.due_time.strftime is defined %}
+                        {{ t.due_time.strftime('%H:%M') }}
+                      {% else %}
+                        {% set ts_m = t.due_time|string %}
+                        {{ ts_m[:5] if ts_m|length >= 5 else '—' }}
+                      {% endif %}
+                    {% endif %}
+                    ·
+                    {% if t.folder_name %}
+                      <a href="{{ url_for('folder_detail', folder_id=t.folder_id) }}">📂 {{ t.folder_name }}</a>
+                    {% endif %}
+                    {% if t.folder_name and t.project_name %}
+                      ·
+                    {% endif %}
+                    {% if t.project_name %}
+                      <a href="{{ url_for('project_detail', project_id=t.project_id) }}">💼 {{ t.project_name }}</a>
+                    {% endif %}
+                    {% if not t.folder_name and not t.project_name %}
+                      Inbox
+                    {% endif %}
                   </div>
 				  
 				  {% if t.completed_at %}

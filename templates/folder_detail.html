@@ -75,6 +75,27 @@
       min-width: 720px;
     }
 
+    .folder-completed-wrap .table {
+      width: 100%;
+      table-layout: fixed;
+    }
+
+    .folder-completed-meta {
+      display: none;
+      margin-top: 4px;
+      font-size: 0.8rem;
+      color: var(--muted);
+      overflow-wrap: anywhere;
+    }
+
+    .folder-mobile-meta {
+      display: none;
+      margin-top: 4px;
+      font-size: 0.8rem;
+      color: var(--muted);
+      overflow-wrap: anywhere;
+    }
+
     @media (max-width: 640px) {
       .folder-inline-form {
         flex-wrap: wrap;
@@ -85,8 +106,55 @@
         flex: 1 1 100%;
       }
 
+      .folder-table-wrap {
+        overflow-x: visible;
+      }
+
       .folder-table-wrap .table {
-        min-width: 640px;
+        min-width: 0;
+        width: 100%;
+        table-layout: fixed;
+      }
+
+      .folder-table-wrap .table th:nth-child(3),
+      .folder-table-wrap .table td:nth-child(3) {
+        display: none;
+      }
+
+      .folder-table-wrap .table th:nth-child(1) { width: 52px !important; }
+      .folder-table-wrap .table th:nth-child(4) { width: 68px !important; }
+
+      .folder-table-wrap .table th,
+      .folder-table-wrap .table td {
+        padding-left: 4px;
+        padding-right: 4px;
+      }
+
+      .folder-mobile-meta {
+        display: block;
+      }
+
+      .folder-completed-wrap {
+        overflow-x: visible;
+      }
+
+      .folder-completed-wrap .table th:nth-child(3),
+      .folder-completed-wrap .table td:nth-child(3),
+      .folder-completed-wrap .table th:nth-child(4),
+      .folder-completed-wrap .table td:nth-child(4) {
+        display: none;
+      }
+
+      .folder-completed-wrap .table th:nth-child(1) { width: 52px !important; }
+
+      .folder-completed-wrap .table th,
+      .folder-completed-wrap .table td {
+        padding-left: 4px;
+        padding-right: 4px;
+      }
+
+      .folder-completed-meta {
+        display: block;
       }
     }
   </style>
@@ -256,6 +324,28 @@
                 {% endfor %}
               </div>
 
+              <div class="folder-mobile-meta">
+                {% if t.due_date %}
+                  {% if t.due_date.strftime is defined %}
+                    {{ t.due_date.strftime('%d-%m-%Y') }}
+                  {% else %}
+                    {% set ds_m = t.due_date|string %}
+                    {{ ds_m[8:10] }}-{{ ds_m[5:7] }}-{{ ds_m[0:4] if ds_m|length >= 10 else ds_m }}
+                  {% endif %}
+                {% else %}
+                  —
+                {% endif %}
+                {% if t.due_time %}
+                  ·
+                  {% if t.due_time.strftime is defined %}
+                    {{ t.due_time.strftime('%H:%M') }}
+                  {% else %}
+                    {% set ts_m = t.due_time|string %}
+                    {{ ts_m[:5] if ts_m|length >= 5 else '—' }}
+                  {% endif %}
+                {% endif %}
+              </div>
+
               {% set sc = sub_counts.get(t.id) if sub_counts is defined else None %}
               {% set st_total = sc.total if sc and sc.total is defined else (sc['total'] if sc and sc['total'] is defined else 0) %}
               {% set st_done = sc.done if sc and sc.done is defined else (sc['done'] if sc and sc['done'] is defined else 0) %}
@@ -332,6 +422,7 @@
     <div class="card-header"><div class="card-title">Tareas completadas</div></div>
 
     {% if completed_tasks and completed_tasks|length > 0 %}
+      <div class="table-wrap-responsive folder-completed-wrap">
       <table class="table">
         <thead>
           <tr>
@@ -350,8 +441,8 @@
               </form>
             </td>
             <td>
-              <div style="font-weight:600; margin-bottom:4px;">
-                {{ t.title }}
+              <div class="task-title-row" style="font-weight:600; margin-bottom:4px;">
+                <span class="task-title-text">{{ t.title }}</span>
               </div>
               
               <div style="display:flex; flex-wrap:wrap; gap:4px;">
@@ -359,6 +450,19 @@
                 {% for tag in completed_tags_map.get(t.id, []) %}
                   <a class="tagchip taglink" style="margin:0; font-size:9px;" href="{{ url_for('tag_detail', tag_id=tag.id) }}">@{{ tag.name }}</a>
                 {% endfor %}
+              </div>
+
+              <div class="folder-completed-meta">
+                {% if t.completed_at %}
+                  {% if t.completed_at.strftime is defined %}
+                    {{ t.completed_at.strftime('%d-%m-%Y') }} · {{ t.completed_at.strftime('%H:%M') }}
+                  {% else %}
+                    {% set cs = t.completed_at|string %}
+                    {{ cs[8:10] }}-{{ cs[5:7] }}-{{ cs[0:4] if cs|length >= 10 else cs }} · {{ cs[11:16] if cs|length >= 16 else '—' }}
+                  {% endif %}
+                {% else %}
+                  —
+                {% endif %}
               </div>
             </td>
 
@@ -391,6 +495,7 @@
         {% endfor %}
         </tbody>
       </table>
+      </div>
     {% else %}
       <div class="empty">No hay tareas completadas en esta carpeta.</div>
     {% endif %}

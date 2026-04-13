@@ -1,4 +1,4 @@
-const CACHE_VERSION = "gtdapp-v1";
+const CACHE_VERSION = "gtdapp-v4";
 const OFFLINE_URL = "./static/offline.html";
 
 self.addEventListener("install", (event) => {
@@ -10,8 +10,8 @@ self.addEventListener("install", (event) => {
         "./static/style.css",
         "./static/tag_autocomplete.js",
         "./static/periodic_toggle_confirm.js",
-        "./static/icons/icon-192.png",
-        "./static/icons/icon-512.png",
+        "./static/icons/emoji-icon-192.png?v=3",
+        "./static/icons/emoji-icon-512.png?v=3",
         OFFLINE_URL,
       ]);
     })

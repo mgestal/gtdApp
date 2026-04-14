@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>GTDApp</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main class="popup">
+    <header class="header">
+      <div>
+        <h1>GTDApp</h1>
+        <p class="subtitle">Tareas y captura rápida desde navegador</p>
+      </div>
+      <button id="reloadBtn" class="btn btn-soft" title="Recargar">Recargar</button>
+    </header>
+
+    <details id="settingsDetails" class="settings card">
+      <summary>
+        <span class="settings-label">⚙️ Configuración</span>
+        <span class="settings-url-preview" id="settingsUrlPreview"></span>
+      </summary>
+      <div class="settings-body">
+        <label for="baseUrlInput">URL base GTDApp</label>
+        <div class="settings-row">
+          <input id="baseUrlInput" type="url" placeholder="http://localhost:5000" autocomplete="off">
+          <button id="saveConfigBtn" class="btn">Guardar</button>
+        </div>
+      </div>
+    </details>
+
+    <section class="card">
+      <nav class="scope-nav" role="tablist" aria-label="Rango de tareas">
+        <button class="scope-btn active" data-scope="today" role="tab" aria-selected="true">Hoy</button>
+        <button class="scope-btn" data-scope="week" role="tab" aria-selected="false">Semana</button>
+        <button class="scope-btn" data-scope="next7" role="tab" aria-selected="false">7 días</button>
+        <button class="scope-btn" data-scope="next" role="tab" aria-selected="false">Next</button>
+      </nav>
+
+      <div id="status" class="status" aria-live="polite"></div>
+
+      <ul id="taskList" class="task-list"></ul>
+    </section>
+
+    <section class="card add-page">
+      <h2>Añadir página como tarea</h2>
+      <p id="activePageUrl" class="muted" title="URL de la pestaña activa">-</p>
+      <label for="replacementInput">Texto opcional (reemplaza el enlace en el título)</label>
+      <div class="capture-row">
+        <input id="replacementInput" type="text" placeholder="Ej: Revisar artículo..." maxlength="255">
+        <select id="prioritySelect">
+          <option value="">— Sin —</option>
+          <option value="1">🔴 Alta</option>
+          <option value="2">🟠 Media</option>
+          <option value="3">🟢 Baja</option>
+        </select>
+      </div>
+      <button id="addPageBtn" class="btn btn-primary">Añadir tarea</button>
+    </section>
+  </main>
+
+  <script src="popup.js"></script>
+</body>
+</html>

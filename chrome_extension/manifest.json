@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "GTDApp Quick Inbox",
+  "description": "Ver tareas de hoy/semana/próximos 7 días y guardar la pestaña activa en Inbox.",
+  "version": "1.1.0",
+  "icons": {
+    "192": "icons/icon-192.png",
+    "512": "icons/icon-512.png"
+  },
+  "action": {
+    "default_title": "GTDApp",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "192": "icons/icon-192.png"
+    }
+  },
+  "permissions": ["storage", "tabs"],
+  "host_permissions": ["<all_urls>"]
+}

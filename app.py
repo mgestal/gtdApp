@@ -9055,6 +9055,273 @@ def next_actions():
         total=total,
         per_page=per_page,
     )
+
+
+def _ext_parse_scope(scope_raw: str) -> Tuple[str, date, date]:
+    scope = (scope_raw or "today").strip().lower()
+    today_d = _today_madrid()
+
+    if scope == "today":
+        return scope, today_d, today_d
+
+    if scope == "week":
+        monday_d = today_d - timedelta(days=today_d.weekday())
+        sunday_d = monday_d + timedelta(days=6)
+        return scope, monday_d, sunday_d
+
+    if scope in ("next7", "7days"):
+        end_d = today_d + timedelta(days=6)
+        return "next7", today_d, end_d
+
+    raise ValueError("Scope inválido")
+
+
+def _to_hhmm(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if hasattr(value, "strftime"):
+        return value.strftime("%H:%M")
+    txt = str(value).strip()
+    return txt[:5] if len(txt) >= 5 else None
+
+
+@app.route("/api/extension/tasks")
+def api_extension_tasks():
+    scope_raw = (request.args.get("scope") or "today").strip().lower()
+
+    # Vista NextAction: tareas con etiqueta @NextAction (sin filtro de fecha)
+    if scope_raw == "next":
+        next_rows = q(
+            "SELECT t.id, t.title, t.due_date, t.due_time, t.priority, t.completed_at, "
+            "p.id AS project_id, p.name AS project_name, "
+            "fd.id AS folder_id, fd.name AS folder_name "
+            "FROM tasks t "
+            "JOIN task_tags tt ON tt.task_id = t.id "
+            "JOIN tags tg ON tg.id = tt.tag_id "
+            "LEFT JOIN projects p ON p.id = t.project_id "
+            "LEFT JOIN folders fd ON fd.id = COALESCE(t.folder_id, p.folder_id) "
+            "WHERE LOWER(tg.name) = %s "
+            "AND t.completed_at IS NULL "
+            "AND t.archived = 0 "
+            "AND t.deleted_at IS NULL "
+            "AND (t.project_id IS NULL OR p.archived = 0) "
+            "ORDER BY (t.priority IS NULL) ASC, t.priority ASC, "
+            "(t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC",
+            ("nextaction",),
+        )
+        next_items = []
+        for r in next_rows:
+            next_items.append({
+                "id": int(r["id"]),
+                "title": r.get("title") or "",
+                "priority": int(r["priority"]) if r.get("priority") in (1, 2, 3) else None,
+                "due_date": r["due_date"].isoformat() if r.get("due_date") else None,
+                "due_time": _to_hhmm(r.get("due_time")),
+                "project_id": int(r["project_id"]) if r.get("project_id") else None,
+                "project_name": r.get("project_name") or None,
+                "folder_id": int(r["folder_id"]) if r.get("folder_id") else None,
+                "folder_name": r.get("folder_name") or None,
+                "completed": bool(r.get("completed_at")),
+            })
+        return jsonify({"ok": True, "scope": "next", "from": None, "to": None, "items": next_items})
+
+    try:
+        scope, start_d, end_d = _ext_parse_scope(scope_raw)
+    except ValueError:
+        return jsonify({"ok": False, "error": "scope inválido. Usa today, week, next7 o next"}), 400
+
+    rows = q(
+        "SELECT t.id, t.title, t.due_date, t.due_time, t.priority, t.completed_at, "
+        "p.id AS project_id, p.name AS project_name, "
+        "fd.id AS folder_id, fd.name AS folder_name "
+        "FROM tasks t "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+        "LEFT JOIN folders fd ON fd.id = COALESCE(t.folder_id, p.folder_id) "
+        "WHERE t.completed_at IS NULL "
+        "AND t.archived=0 "
+        "AND t.deleted_at IS NULL "
+        "AND t.due_date IS NOT NULL "
+        "AND t.due_date >= %s "
+        "AND t.due_date <= %s "
+        "AND (t.project_id IS NULL OR p.archived = 0) "
+        "ORDER BY t.due_date ASC, (t.due_time IS NULL) ASC, t.due_time ASC, t.id DESC",
+        (start_d, end_d),
+    )
+
+    items = []
+    for r in rows:
+        items.append(
+            {
+                "id": int(r["id"]),
+                "title": r.get("title") or "",
+                "priority": int(r["priority"]) if r.get("priority") in (1, 2, 3) else None,
+                "due_date": r["due_date"].isoformat() if r.get("due_date") else None,
+                "due_time": _to_hhmm(r.get("due_time")),
+                "project_id": int(r["project_id"]) if r.get("project_id") else None,
+                "project_name": r.get("project_name") or None,
+                "folder_id": int(r["folder_id"]) if r.get("folder_id") else None,
+                "folder_name": r.get("folder_name") or None,
+                "completed": bool(r.get("completed_at")),
+            }
+        )
+
+    return jsonify(
+        {
+            "ok": True,
+            "scope": scope,
+            "from": start_d.isoformat(),
+            "to": end_d.isoformat(),
+            "items": items,
+        }
+    )
+
+
+@app.route("/api/extension/tasks/<int:task_id>/toggle", methods=["POST"])
+def api_extension_task_toggle(task_id: int):
+    task = q1(
+        "SELECT id, completed_at, due_date, recurrence_rule, project_id, archived "
+        "FROM tasks WHERE id=%s",
+        (task_id,),
+    )
+    if not task:
+        return jsonify({"ok": False, "error": "Tarea no encontrada"}), 404
+
+    now = datetime.now(ZoneInfo("Europe/Madrid")).replace(tzinfo=None)
+
+    try:
+        if task["completed_at"]:
+            exec_sql("UPDATE tasks SET completed_at=NULL WHERE id=%s", (task_id,))
+            completed = False
+        else:
+            if task.get("recurrence_rule") and task.get("due_date"):
+                rule = parse_rrule(task["recurrence_rule"])
+                previous_due = task["due_date"]
+                next_due = next_due_date(task["due_date"], rule)
+                today_d = now.date()
+
+                if next_due <= today_d:
+                    next_due = next_due_date_after_today(task["due_date"], rule, today_d)
+
+                exec_sql(
+                    "UPDATE tasks SET last_completed_at=%s, due_date=%s, completed_at=NULL WHERE id=%s",
+                    (now, next_due, task_id),
+                )
+                exec_sql(
+                    "INSERT INTO recurring_task_runs(task_id, executed_at, previous_due_date, next_due_date) "
+                    "VALUES(%s, %s, %s, %s)",
+                    (task_id, now, previous_due, next_due),
+                )
+                exec_sql(
+                    "UPDATE subtasks SET completed_at=NULL WHERE task_id=%s",
+                    (task_id,),
+                )
+                completed = False
+            else:
+                has_nextaction = q1(
+                    "SELECT 1 AS ok "
+                    "FROM task_tags tt "
+                    "JOIN tags tg ON tg.id=tt.tag_id "
+                    "WHERE tt.task_id=%s AND LOWER(tg.name)=LOWER(%s) "
+                    "LIMIT 1",
+                    (task_id, "NextAction"),
+                ) is not None
+
+                if has_nextaction:
+                    exec_sql(
+                        "DELETE tt FROM task_tags tt "
+                        "JOIN tags tg ON tg.id=tt.tag_id "
+                        "WHERE tt.task_id=%s AND LOWER(tg.name)=LOWER(%s)",
+                        (task_id, "NextAction"),
+                    )
+
+                exec_sql("UPDATE tasks SET completed_at=%s WHERE id=%s", (now, task_id))
+                completed = True
+
+                promote_nextaction = cfg_bool(
+                    ["app", "behavior", "promote_nextaction_on_complete"],
+                    default=True,
+                )
+
+                if promote_nextaction and has_nextaction and task.get("project_id"):
+                    next_task = q1(
+                        "SELECT id "
+                        "FROM tasks "
+                        "WHERE project_id=%s "
+                        "AND archived=0 "
+                        "AND completed_at IS NULL "
+                        "AND id<>%s "
+                        "ORDER BY (due_date IS NULL) ASC, due_date ASC, id ASC "
+                        "LIMIT 1",
+                        (task["project_id"], task_id),
+                    )
+                    if next_task:
+                        next_has_nextaction = q1(
+                            "SELECT 1 AS ok "
+                            "FROM task_tags tt "
+                            "JOIN tags tg ON tg.id=tt.tag_id "
+                            "WHERE tt.task_id=%s AND LOWER(tg.name)=LOWER(%s) "
+                            "LIMIT 1",
+                            (next_task["id"], "NextAction"),
+                        ) is not None
+                        if not next_has_nextaction:
+                            next_tag = q1(
+                                "SELECT id FROM tags WHERE LOWER(name)=LOWER(%s) ORDER BY id ASC LIMIT 1",
+                                ("NextAction",),
+                            )
+                            next_tag_id = int(next_tag["id"]) if next_tag else get_or_create_tag("NextAction")
+                            exec_sql(
+                                "INSERT IGNORE INTO task_tags(task_id, tag_id) VALUES(%s,%s)",
+                                (next_task["id"], next_tag_id),
+                            )
+
+        _mark_task_calendar_dirty(task_id)
+        commit()
+        return jsonify({"ok": True, "task_id": task_id, "completed": completed})
+    except Exception as e:
+        rollback()
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/extension/tasks/add_page", methods=["POST"])
+def api_extension_add_page_task():
+    payload = request.get_json(silent=True) or {}
+    page_url = (payload.get("url") or "").strip()
+    page_title = (payload.get("page_title") or "").strip()
+    replacement_text = normalize_name(payload.get("replacement_text") or "")
+    priority = coerce_priority(payload.get("priority"), default=None)
+
+    parsed = urlparse(page_url)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        return jsonify({"ok": False, "error": "URL inválida"}), 400
+
+    # Si hay texto de reemplazo, se guarda como título y el enlace en notas.
+    # Si no, el título es el enlace completo para mantenerlo visible en la lista.
+    task_title = replacement_text or page_url
+    notes = page_url if replacement_text else (page_title or None)
+
+    try:
+        task_id = exec_sql(
+            "INSERT INTO tasks(title, notes, project_id, folder_id, due_date, due_time, recurrence_rule, priority) "
+            "VALUES(%s,%s,NULL,NULL,NULL,NULL,NULL,%s)",
+            (task_title, notes, priority),
+        )
+        _mark_task_calendar_dirty(task_id, force_push_if_empty=True)
+        commit()
+        return jsonify(
+            {
+                "ok": True,
+                "task": {
+                    "id": int(task_id),
+                    "title": task_title,
+                    "notes": notes,
+                    "project_id": None,
+                    "project_name": None,
+                },
+            }
+        )
+    except Exception as e:
+        rollback()
+        return jsonify({"ok": False, "error": str(e)}), 500
     
   
 @app.route("/api/tags/search")

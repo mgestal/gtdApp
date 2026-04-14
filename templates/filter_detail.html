@@ -18,11 +18,117 @@
     .filter-priority-1 { background: #d9534f; }
     .filter-priority-2 { background: #f0ad4e; }
     .filter-priority-3 { background: #5cb85c; }
+
+    .filter-expression {
+      display: inline-block;
+      max-width: 100%;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+
+    .filter-results-wrap {
+      width: 100%;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .filter-results-table {
+      min-width: 760px;
+      table-layout: fixed;
+    }
+
+    .filter-results-table .filter-task-cell,
+    .filter-results-table .filter-location-cell {
+      min-width: 0;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+
+    .filter-task-title {
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .filter-task-title-text,
+    .filter-task-tags {
+      min-width: 0;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+
+    .filter-mobile-meta {
+      display: none;
+      margin-top: 4px;
+      font-size: 0.8rem;
+      color: var(--muted);
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+
+    .filter-location-cell .pill {
+      max-width: 100%;
+      margin: 0 0 4px 0;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      white-space: normal;
+    }
+
+    @media (max-width: 640px) {
+      .filter-results-wrap {
+        overflow-x: visible;
+      }
+
+      .filter-results-table {
+        min-width: 0;
+        width: 100%;
+        table-layout: fixed;
+      }
+
+      .filter-results-table th:nth-child(3),
+      .filter-results-table td:nth-child(3),
+      .filter-results-table th:nth-child(4),
+      .filter-results-table td:nth-child(4) {
+        display: none;
+      }
+
+      .filter-results-table th:nth-child(1) {
+        width: 52px !important;
+      }
+
+      .filter-results-table th:nth-child(5),
+      .filter-results-table td:nth-child(5) {
+        width: 72px !important;
+      }
+
+      .filter-results-table th,
+      .filter-results-table td {
+        padding-left: 4px;
+        padding-right: 4px;
+      }
+
+      .filter-results-table .actions {
+        justify-content: flex-start;
+        flex-wrap: wrap;
+        gap: 4px;
+      }
+
+      .filter-results-table .actions .btn {
+        padding: 5px 8px;
+        min-width: 0;
+      }
+
+      .filter-mobile-meta {
+        display: block;
+      }
+    }
   </style>
 
   <div class="page-title">
     <h1>✂ Filtro: {{ flt.name }}</h1> 
-    <p class="subtitle"><code>{{ flt.expression }}</code></p>
+    <p class="subtitle"><code class="filter-expression">{{ flt.expression }}</code></p>
   </div>
 
   <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px;">
@@ -62,7 +168,8 @@
 
   <div class="card">
     {% if rows and rows|length > 0 %}
-      <table class="table">
+      <div class="filter-results-wrap">
+      <table class="table filter-results-table">
         <thead>
           <tr>
             <th style="width:58px;"></th>
@@ -86,24 +193,50 @@
               </div>
             </td>
 
-            <td>
+            <td class="filter-task-cell">
               <div style="font-weight: 500; margin-bottom: 2px;">
-                		<div style="font-weight:600; display:flex; align-items:center; gap:6px;">
-							{{ t.title }} {% if t.notes %}
-							<a href="{{ url_for('task_edit', task_id=t.id, next=url_for('next_actions')) }}"
-							title="{{ t.notes }}"
-							style="text-decoration:none; font-size:0.9rem; opacity:.75;">
-							📝
-							</a>
-							             {% endif %}
-						</div>
+                <div class="filter-task-title" style="font-weight:600;">
+                  <span class="filter-task-title-text">{{ t.title }}</span>
+                  {% if t.notes %}
+                    <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('next_actions')) }}"
+                       title="{{ t.notes }}"
+                       style="text-decoration:none; font-size:0.9rem; opacity:.75; flex:0 0 auto;">
+                      📝
+                    </a>
+                  {% endif %}
+                </div>
               </div>
               
-              <div style="font-size: 0.8rem; opacity: 0.8;">
+              <div class="filter-task-tags" style="font-size: 0.8rem; opacity: 0.8;">
 			    {% if t.recurrence_rule %}<a class="pill taglink" style="font-size: 0.75rem;" href="{{ url_for('task_periodic_history', task_id=t.id, next=request.full_path) }}">⟲ periódica</a>{% endif %}
                 {% for tag in tags_map.get(t.id, []) %}
                   <a class="taglink" href="{{ url_for('tag_detail', tag_id=tag.id) }}" style="margin-right: 5px;">@{{ tag.name }}</a>
                 {% endfor %}
+              </div>
+
+              <div class="filter-mobile-meta">
+                {% if t.due_date %}
+                  {{ t.due_date.strftime('%d-%m-%Y') }}
+                  {% if t.due_time %}
+                    ·
+                    {% if t.due_time.strftime is defined %}
+                      {{ t.due_time.strftime('%H:%M') }}
+                    {% else %}
+                      {% set ts = t.due_time|string %}
+                      {{ ts[:5] if ts|length >= 5 else '—' }}
+                    {% endif %}
+                  {% endif %}
+                {% else %}
+                  Sin fecha
+                {% endif %}
+                ·
+                {% if t.project_name %}
+                  💼 {{ t.project_name }}
+                {% elif t.folder_name %}
+                  📂 {{ t.folder_name }}
+                {% else %}
+                  Inbox
+                {% endif %}
               </div>
             </td>
 
@@ -125,7 +258,7 @@
               {% endif %}
             </td>
 
-            <td style="font-size: 0.8rem;">
+            <td class="filter-location-cell" style="font-size: 0.8rem;">
               {% if t.project_name %}
                 <a class="pill" href="{{ url_for('project_detail', project_id=t.project_id) }}">💼 {{ t.project_name }}</a>
               {% endif %}
@@ -148,6 +281,7 @@
         {% endfor %}
         </tbody>
       </table>
+      </div>
     {% else %}
       <div class="empty">No hay tareas que cumplan el filtro.</div>
     {% endif %}

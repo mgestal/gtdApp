@@ -1311,7 +1311,7 @@ def service_worker():
     return response
 
 
-@app.route("/pwa-launch")
+@app.route("/pwa-launch", strict_slashes=False)
 def pwa_launch():
     return render_template("pwa_launch.html")
 

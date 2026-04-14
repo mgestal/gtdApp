@@ -306,7 +306,7 @@
             <td>
               <div style="font-weight:600; margin-bottom:4px;">
                 <div class="task-title-row" style="font-weight:600;">
-                  <span class="task-title-text">{{ t.title }}</span>
+                  <span class="task-title-text">{{ t.title | linkify_title }}</span>
                   {% if t.notes %}
                     <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('next_actions')) }}"
                        title="{{ t.notes }}"
@@ -442,7 +442,7 @@
             </td>
             <td>
               <div class="task-title-row" style="font-weight:600; margin-bottom:4px;">
-                <span class="task-title-text">{{ t.title }}</span>
+                <span class="task-title-text">{{ t.title | linkify_title }}</span>
               </div>
               
               <div style="display:flex; flex-wrap:wrap; gap:4px;">

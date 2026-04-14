@@ -24,46 +24,37 @@
     <h1>Bandeja de entrada 📥 </h1>
   </div>
 
+    <!-- CREAR TAREA -->
+
 <div class="card" style="margin-top:14px;">
-
-<form method="post" action="{{ url_for('gmail_import_to_inbox') }}" class="form">
-  <input type="hidden" name="next" value="{{ request.script_root ~ '/' }}">
-
-  <label class="label">Importar correos de gtdApp.inbox@gmail.com </label>
-
-  <div style="display:flex; gap:10px;">
-    <input
-      class="input"
-      type="text"
-      name="gmail_query"
-      value="label:ToGTD in:inbox"
-      placeholder="Query Gmail (ej: label:ToGTD in:inbox)"
-    >
-
-    <input
-      class="input"
-      type="number"
-      name="max_results"
-      value="20"
-      min="1"
-      max="100"
-      style="width:90px;"
-    >
-
-    <button class="btn btn-primary" type="submit">
-      Cargar correos a Inbox
-    </button>
+  <div class="card-header">
+    <div class="card-title">Añadir tarea rápida</div>
   </div>
-</form>
 
+  <form method="post" action="{{ url_for('task_create') }}" class="form">
+    <div class="hint">
+      Sintaxis: nombre + [@etiquetas] + [ [*]dd-mm-[aaaa] | *hoy | *mañana | *+nDias ] [h:HH:MM] [#proyecto | #"proyecto con espacios"] [f:carpeta | f:"carpeta con espacios"] [cada {día|semana|mes|año}] ^{alta|media|baja [titulo](https:, http:, www. url)} 
+    </div>
 
+    <div class="quick-input-wrap">
+      <input
+        class="input"
+        name="quick"
+        placeholder=""
+        autocomplete="off"
+        required
+      >
+    </div>
+    
+    <button class="btn btn-primary">Añadir a inbox</button>
+  </form>
 </div>
 
   <!-- TAREAS EN BANDEJA -->
   <div class="card" style="margin-top:0;">
 
     <div class="card-header">
-      <div class="card-title">Tareas sin carpeta</div>
+      <div class="card-title">Tareas en inbox</div>
       <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
         <form method="post" action="{{ url_for('inbox_archive_completed_tasks') }}">
           <button class="btn btn-soft" onclick="return confirm('¿Archivar tareas realizadas del inbox?');">🗄 Archivar realizadas</button>
@@ -96,7 +87,7 @@
             </td>
             <td>
               <div style="font-weight:600; display:flex; align-items:center; gap:6px;">
-                {{ t.title }}
+                {{ t.title | linkify_title }}
 
                 {% if t.notes %}
                   <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('next_actions')) }}"
@@ -169,7 +160,7 @@
   <!-- PROYECTOS SIN CARPETA -->
   <div class="card" style="margin-top:14px;">
     <div class="card-header">
-      <div class="card-title">Proyectos sin carpeta</div>
+      <div class="card-title">Proyectos en inbox (sin carpeta asignada)</div>
     </div>
 
     {% if orphan_projects and orphan_projects|length > 0 %}
@@ -208,31 +199,43 @@
     {% endif %}
   </div>
   
-  <!-- CREAR TAREA -->
+
 
 <div class="card" style="margin-top:14px;">
-  <div class="card-header">
-    <div class="card-title">Añadir tarea rápida</div>
+
+<form method="post" action="{{ url_for('gmail_import_to_inbox') }}" class="form">
+  <input type="hidden" name="next" value="{{ request.script_root ~ '/' }}">
+
+  <label class="label">Importar correos de gtdApp.inbox@gmail.com </label>
+
+  <div style="display:flex; gap:10px;">
+    <input
+      class="input"
+      type="text"
+      name="gmail_query"
+      value="label:ToGTD in:inbox"
+      placeholder="Query Gmail (ej: label:ToGTD in:inbox)"
+    >
+
+    <input
+      class="input"
+      type="number"
+      name="max_results"
+      value="20"
+      min="1"
+      max="100"
+      style="width:90px;"
+    >
+
+    <button class="btn btn-primary" type="submit">
+      Cargar correos a Inbox
+    </button>
   </div>
+</form>
 
-  <form method="post" action="{{ url_for('task_create') }}" class="form">
-    <div class="hint">
-      Sintaxis: nombre + [@etiquetas] + [ [*]dd-mm-[aaaa] | *hoy | *mañana | *+nDias ] [h:HH:MM] [#proyecto | #"proyecto con espacios"] [f:carpeta | f:"carpeta con espacios"] [cada {día|semana|mes|año}] ^{alta|media|baja} 
-    </div>
 
-    <div class="quick-input-wrap">
-      <input
-        class="input"
-        name="quick"
-        placeholder=""
-        autocomplete="off"
-        required
-      >
-    </div>
-    
-    <button class="btn btn-primary">Añadir a inbox</button>
-  </form>
 </div>
+
 
 <script>
   function toggleSubtasks(taskId){

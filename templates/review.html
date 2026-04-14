@@ -893,7 +893,7 @@
     <form method="post" action="{{ url_for('task_create') }}" class="form">
       <div class="hint" style="margin-bottom:8px;">
         Sintaxis: nombre + [@etiquetas] + [ [*]dd-mm-[aaaa] | *hoy | *mañana | *+nDias ] [h:HH:MM] [#proyecto | #"proyecto con espacios"] [f:carpeta | f:"carpeta con espacios"] [cada {día|semana|mes|año}]<br>
-        Enlaces: <code>www.ejemplo.com</code>, <code>https://ejemplo.com</code> o con texto personalizado <code>[Mi web](www.ejemplo.com)</code>.
+        Enlaces: <code>[NombreWeb]({http: https: www.}ejemplo.com)</code>.
       </div>
       <div class="review-quick-form">
         <input class="input" name="quick" placeholder="Ej: Idea nueva @NextAction #Proyecto" required>

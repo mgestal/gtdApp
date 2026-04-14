@@ -1,9 +1,9 @@
 /*M!999999\- enable the sandbox mode */ 
--- MariaDB dump 10.19-11.8.3-MariaDB, for debian-linux-gnu (aarch64)
+-- MariaDB dump 10.19-11.8.6-MariaDB, for debian-linux-gnu (aarch64)
 --
--- Host: localhost    Database: gtd
+-- Host: 127.0.0.1    Database: gtd
 -- ------------------------------------------------------
--- Server version	11.8.3-MariaDB-0+deb13u1 from Debian
+-- Server version	11.8.6-MariaDB-0+deb13u1 from Debian
 
 /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
 /*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
@@ -15,6 +15,31 @@
 /*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;
 /*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;
 /*M!100616 SET @OLD_NOTE_VERBOSITY=@@NOTE_VERBOSITY, NOTE_VERBOSITY=0 */;
+
+--
+-- Table structure for table `calendar_pending_events`
+--
+
+DROP TABLE IF EXISTS `calendar_pending_events`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `calendar_pending_events` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `google_event_id` varchar(255) NOT NULL,
+  `google_calendar_id` varchar(500) DEFAULT NULL,
+  `title` varchar(500) DEFAULT NULL,
+  `due_date` date DEFAULT NULL,
+  `due_time` time DEFAULT NULL,
+  `notes` text DEFAULT NULL,
+  `event_data` text DEFAULT NULL,
+  `discovered_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `state` enum('pending','imported','ignored') NOT NULL DEFAULT 'pending',
+  `task_id` int(11) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `google_event_id` (`google_event_id`),
+  KEY `idx_cpe_state` (`state`)
+) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
 
 --
 -- Table structure for table `filters`
@@ -31,7 +56,7 @@ CREATE TABLE `filters` (
   `updated_at` timestamp NULL DEFAULT NULL ON UPDATE current_timestamp(),
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_filter_name` (`name`)
-) ENGINE=InnoDB AUTO_INCREMENT=21 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=26 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -49,7 +74,25 @@ CREATE TABLE `folders` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_folder_parent_name` (`parent_id`,`name`),
   CONSTRAINT `fk_folders_parent` FOREIGN KEY (`parent_id`) REFERENCES `folders` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=25 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=34 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `imported_calendar_events`
+--
+
+DROP TABLE IF EXISTS `imported_calendar_events`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `imported_calendar_events` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `google_event_id` varchar(255) NOT NULL,
+  `task_id` int(11) NOT NULL,
+  `imported_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `google_event_id` (`google_event_id`),
+  KEY `idx_imported_calendar_events_task_id` (`task_id`)
+) ENGINE=InnoDB AUTO_INCREMENT=346 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -68,20 +111,8 @@ CREATE TABLE `imported_emails` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `gmail_message_id` (`gmail_message_id`),
   KEY `idx_imported_emails_task_id` (`task_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=19 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
-
-
-DROP TABLE IF EXISTS `imported_calendar_events`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE IF NOT EXISTS imported_calendar_events (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    google_event_id VARCHAR(255) NOT NULL UNIQUE,
-    task_id INT NOT NULL,
-    imported_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_imported_calendar_events_task_id (task_id)
-);
 
 --
 -- Table structure for table `projects`
@@ -97,6 +128,8 @@ CREATE TABLE `projects` (
   `description` text DEFAULT NULL,
   `archived` tinyint(1) NOT NULL DEFAULT 0,
   `archived_at` datetime DEFAULT NULL,
+  `deleted_at` datetime DEFAULT NULL,
+  `deleted_prev_archived` tinyint(1) NOT NULL DEFAULT 0,
   `active_name` varchar(255) GENERATED ALWAYS AS (if(`archived` = 0,`name`,NULL)) STORED,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NULL DEFAULT NULL,
@@ -105,8 +138,30 @@ CREATE TABLE `projects` (
   KEY `idx_projects_folder` (`folder_id`),
   KEY `idx_projects_archived` (`archived`),
   KEY `idx_projects_archived_at` (`archived_at`),
+  KEY `idx_projects_deleted_at` (`deleted_at`),
   CONSTRAINT `fk_projects_folder` FOREIGN KEY (`folder_id`) REFERENCES `folders` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=26 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=62 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `recurring_task_runs`
+--
+
+DROP TABLE IF EXISTS `recurring_task_runs`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `recurring_task_runs` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `task_id` int(11) NOT NULL,
+  `executed_at` datetime NOT NULL,
+  `previous_due_date` date DEFAULT NULL,
+  `next_due_date` date DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_recurring_task_runs_task` (`task_id`),
+  KEY `idx_recurring_task_runs_executed_at` (`executed_at`),
+  CONSTRAINT `fk_recurring_task_runs_task` FOREIGN KEY (`task_id`) REFERENCES `tasks` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=51 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -129,7 +184,7 @@ CREATE TABLE `subtasks` (
   KEY `idx_subtasks_due` (`due_date`),
   KEY `idx_subtasks_completed` (`completed_at`),
   CONSTRAINT `fk_subtasks_task` FOREIGN KEY (`task_id`) REFERENCES `tasks` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=35 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=62 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -145,9 +200,8 @@ CREATE TABLE `tags` (
   `type` varchar(80) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uq_tag_name` (`name`),
-  KEY `idx_tags_type` (`type`)
-) ENGINE=InnoDB AUTO_INCREMENT=21 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
+  UNIQUE KEY `uq_tag_name` (`name`)
+) ENGINE=InnoDB AUTO_INCREMENT=45 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -186,42 +240,46 @@ CREATE TABLE `tasks` (
   `completed_at` datetime DEFAULT NULL,
   `last_completed_at` datetime DEFAULT NULL,
   `recurrence_rule` varchar(255) DEFAULT NULL,
+  `priority` tinyint(4) DEFAULT NULL,
   `archived` tinyint(1) NOT NULL DEFAULT 0,
   `archived_at` datetime DEFAULT NULL,
+  `deleted_at` datetime DEFAULT NULL,
+  `deleted_prev_archived` tinyint(1) NOT NULL DEFAULT 0,
+  `google_calendar_id` varchar(255) DEFAULT NULL,
+  `google_event_id` varchar(255) DEFAULT NULL,
+  `google_event_etag` varchar(255) DEFAULT NULL,
+  `calendar_sync_state` varchar(40) NOT NULL DEFAULT 'none',
+  `calendar_sync_error` text DEFAULT NULL,
+  `calendar_last_synced_hash` char(64) DEFAULT NULL,
+  `calendar_last_synced_at` datetime DEFAULT NULL,
+  `calendar_local_changed_at` datetime DEFAULT NULL,
+  `calendar_remote_updated_at` datetime DEFAULT NULL,
+  `calendar_conflict_payload` longtext DEFAULT NULL,
+  `calendar_conflict_at` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `idx_tasks_project` (`project_id`),
   KEY `idx_tasks_due` (`due_date`),
-  KEY `idx_tasks_due_time` (`due_time`),
   KEY `idx_tasks_completed` (`completed_at`),
+  KEY `idx_tasks_folder` (`folder_id`),
   KEY `idx_tasks_archived` (`archived`),
   KEY `idx_tasks_archived_at` (`archived_at`),
-  KEY `idx_tasks_folder` (`folder_id`),
+  KEY `idx_tasks_google_event_id` (`google_event_id`),
+  KEY `idx_tasks_calendar_sync_state` (`calendar_sync_state`),
+  KEY `idx_tasks_priority` (`priority`),
+  KEY `idx_tasks_deleted_at` (`deleted_at`),
   FULLTEXT KEY `ftx_tasks_title_notes` (`title`,`notes`),
   CONSTRAINT `fk_tasks_folder` FOREIGN KEY (`folder_id`) REFERENCES `folders` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT `fk_tasks_project` FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=125 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=782 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
--- Table structure for table `recurring_task_runs`
+-- Dumping events for database 'gtd'
 --
 
-DROP TABLE IF EXISTS `recurring_task_runs`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `recurring_task_runs` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `task_id` int(11) NOT NULL,
-  `executed_at` datetime NOT NULL,
-  `previous_due_date` date DEFAULT NULL,
-  `next_due_date` date DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  PRIMARY KEY (`id`),
-  KEY `idx_recurring_task_runs_task` (`task_id`),
-  KEY `idx_recurring_task_runs_executed_at` (`executed_at`),
-  CONSTRAINT `fk_recurring_task_runs_task` FOREIGN KEY (`task_id`) REFERENCES `tasks` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
+--
+-- Dumping routines for database 'gtd'
+--
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
 /*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
@@ -232,4 +290,4 @@ CREATE TABLE `recurring_task_runs` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*M!100616 SET NOTE_VERBOSITY=@OLD_NOTE_VERBOSITY */;
 
--- Dump completed on 2026-03-13 11:49:03
+-- Dump completed on 2026-04-14 13:02:22

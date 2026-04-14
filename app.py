@@ -3018,7 +3018,6 @@ def today():
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "WHERE t.completed_at IS NOT NULL AND DATE(t.completed_at)=%s "
         "AND t.deleted_at IS NULL "
-        "AND (t.project_id IS NULL OR p.archived = 0) "
         "UNION ALL "
         "SELECT t.id, t.title, t.notes, t.due_date, t.last_completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
@@ -3029,7 +3028,6 @@ def today():
         "WHERE t.last_completed_at IS NOT NULL AND DATE(t.last_completed_at)=%s "
         "AND t.recurrence_rule IS NOT NULL AND TRIM(t.recurrence_rule) <> '' "
         "AND t.deleted_at IS NULL "
-        "AND (t.project_id IS NULL OR p.archived = 0) "
         ") "
         "ORDER BY completed_at DESC, id DESC",
         (today_d, today_d)
@@ -3061,6 +3059,7 @@ def week():
     sunday_d = monday_d + timedelta(days=6)
 
     rows = q(
+        "SELECT * FROM ("
         "SELECT t.id, t.title, t.notes, t.due_date, t.due_time, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.name AS folder_name, fd.id AS folder_id "
@@ -3070,10 +3069,24 @@ def week():
         "WHERE t.due_date IS NOT NULL "
         "AND t.due_date >= %s "
         "AND t.due_date <= %s "
+        "AND t.completed_at IS NULL "
         "AND t.deleted_at IS NULL "
         "AND (t.project_id IS NULL OR p.archived = 0) "
-        "ORDER BY (t.completed_at IS NOT NULL) ASC, t.due_date ASC, t.id DESC",
-        (monday_d, sunday_d)
+        "UNION ALL "
+        "SELECT t.id, t.title, t.notes, t.due_date, t.due_time, t.completed_at, t.recurrence_rule, t.priority, "
+        "p.name AS project_name, p.id AS project_id, "
+        "fd.name AS folder_name, fd.id AS folder_id "
+        "FROM tasks t "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+        "LEFT JOIN folders fd ON fd.id = COALESCE(t.folder_id, p.folder_id) "
+        "WHERE t.due_date IS NOT NULL "
+        "AND t.due_date >= %s "
+        "AND t.due_date <= %s "
+        "AND t.completed_at IS NOT NULL "
+        "AND t.deleted_at IS NULL "
+        ") AS week_rows "
+        "ORDER BY (completed_at IS NOT NULL) ASC, due_date ASC, id DESC",
+        (monday_d, sunday_d, monday_d, sunday_d)
     )
 
     task_ids = [r["id"] for r in rows]
@@ -3181,7 +3194,6 @@ def calendar_view():
         "AND t.deleted_at IS NULL "
         "AND DATE(t.completed_at) >= %s "
         "AND DATE(t.completed_at) <= %s "
-        "AND (t.project_id IS NULL OR p.archived = 0) "
         "ORDER BY t.completed_at DESC, t.id DESC",
         (start_date, end_date),
     )
@@ -3219,21 +3231,54 @@ def calendar_view():
         tags_map = load_tags_map(next7_task_ids) if next7_task_ids else {}
 
     if view == "week":
-        week_list_rows = q(
-            "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
-            "p.name AS project_name, p.id AS project_id, "
-            "fd.name AS folder_name, fd.id AS folder_id "
-            "FROM tasks t "
-            "LEFT JOIN projects p ON p.id=t.project_id "
-            "LEFT JOIN folders fd ON fd.id = COALESCE(t.folder_id, p.folder_id) "
-            "WHERE t.due_date IS NOT NULL "
-            "AND t.due_date >= %s "
-            "AND t.due_date <= %s "
-            "AND t.deleted_at IS NULL "
-            "AND (t.project_id IS NULL OR p.archived = 0) "
-            "ORDER BY (t.completed_at IS NOT NULL) ASC, t.due_date ASC, t.id DESC",
-            (start_date, end_date),
-        )
+        if show_completed:
+            week_list_rows = q(
+                "SELECT * FROM ("
+                "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
+                "p.name AS project_name, p.id AS project_id, "
+                "fd.name AS folder_name, fd.id AS folder_id "
+                "FROM tasks t "
+                "LEFT JOIN projects p ON p.id=t.project_id "
+                "LEFT JOIN folders fd ON fd.id = COALESCE(t.folder_id, p.folder_id) "
+                "WHERE t.due_date IS NOT NULL "
+                "AND t.due_date >= %s "
+                "AND t.due_date <= %s "
+                "AND t.completed_at IS NULL "
+                "AND t.deleted_at IS NULL "
+                "AND (t.project_id IS NULL OR p.archived = 0) "
+                "UNION ALL "
+                "SELECT t.id, t.title, t.notes, COALESCE(t.due_date, DATE(t.completed_at)) AS due_date, "
+                "t.completed_at, t.recurrence_rule, t.priority, "
+                "p.name AS project_name, p.id AS project_id, "
+                "fd.name AS folder_name, fd.id AS folder_id "
+                "FROM tasks t "
+                "LEFT JOIN projects p ON p.id=t.project_id "
+                "LEFT JOIN folders fd ON fd.id = COALESCE(t.folder_id, p.folder_id) "
+                "WHERE t.completed_at IS NOT NULL "
+                "AND DATE(t.completed_at) >= %s "
+                "AND DATE(t.completed_at) <= %s "
+                "AND t.deleted_at IS NULL "
+                ") AS week_rows "
+                "ORDER BY (completed_at IS NOT NULL) ASC, due_date ASC, id DESC",
+                (start_date, end_date, start_date, end_date),
+            )
+        else:
+            week_list_rows = q(
+                "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
+                "p.name AS project_name, p.id AS project_id, "
+                "fd.name AS folder_name, fd.id AS folder_id "
+                "FROM tasks t "
+                "LEFT JOIN projects p ON p.id=t.project_id "
+                "LEFT JOIN folders fd ON fd.id = COALESCE(t.folder_id, p.folder_id) "
+                "WHERE t.due_date IS NOT NULL "
+                "AND t.due_date >= %s "
+                "AND t.due_date <= %s "
+                "AND t.completed_at IS NULL "
+                "AND t.deleted_at IS NULL "
+                "AND (t.project_id IS NULL OR p.archived = 0) "
+                "ORDER BY t.due_date ASC, t.id DESC",
+                (start_date, end_date),
+            )
         week_task_ids = [t["id"] for t in week_list_rows]
         tags_map = load_tags_map(week_task_ids) if week_task_ids else {}
 
@@ -3963,7 +4008,6 @@ def dashboard():
         "LEFT JOIN projects p ON p.id=t.project_id "
         "WHERE t.completed_at IS NOT NULL "
         "AND t.deleted_at IS NULL "
-        "AND (t.project_id IS NULL OR p.archived=0) "
         "AND DATE(t.completed_at)=%s "
         "UNION ALL "
         "SELECT t.id FROM tasks t "
@@ -3971,7 +4015,6 @@ def dashboard():
         "WHERE t.last_completed_at IS NOT NULL "
         "AND t.recurrence_rule IS NOT NULL AND TRIM(t.recurrence_rule)<>'' "
         "AND t.deleted_at IS NULL "
-        "AND (t.project_id IS NULL OR p.archived=0) "
         "AND DATE(t.last_completed_at)=%s"
         ") AS completed_union",
         (today, today),
@@ -3982,7 +4025,6 @@ def dashboard():
         "LEFT JOIN projects p ON p.id=t.project_id "
         "WHERE t.completed_at IS NOT NULL "
         "AND t.deleted_at IS NULL "
-        "AND (t.project_id IS NULL OR p.archived=0) "
         "AND DATE(t.completed_at)>=%s "
         "UNION ALL "
         "SELECT t.id FROM tasks t "
@@ -3990,7 +4032,6 @@ def dashboard():
         "WHERE t.last_completed_at IS NOT NULL "
         "AND t.recurrence_rule IS NOT NULL AND TRIM(t.recurrence_rule)<>'' "
         "AND t.deleted_at IS NULL "
-        "AND (t.project_id IS NULL OR p.archived=0) "
         "AND DATE(t.last_completed_at)>=%s"
         ") AS completed_union",
         (monday, monday),
@@ -4001,7 +4042,6 @@ def dashboard():
         "LEFT JOIN projects p ON p.id=t.project_id "
         "WHERE t.completed_at IS NOT NULL "
         "AND t.deleted_at IS NULL "
-        "AND (t.project_id IS NULL OR p.archived=0) "
         "AND DATE(t.completed_at)>=%s "
         "UNION ALL "
         "SELECT t.id FROM tasks t "
@@ -4009,7 +4049,6 @@ def dashboard():
         "WHERE t.last_completed_at IS NOT NULL "
         "AND t.recurrence_rule IS NOT NULL AND TRIM(t.recurrence_rule)<>'' "
         "AND t.deleted_at IS NULL "
-        "AND (t.project_id IS NULL OR p.archived=0) "
         "AND DATE(t.last_completed_at)>=%s"
         ") AS completed_union",
         (first_of_month, first_of_month),
@@ -4020,7 +4059,6 @@ def dashboard():
         "LEFT JOIN projects p ON p.id=t.project_id "
         "WHERE t.completed_at IS NOT NULL "
         "AND t.deleted_at IS NULL "
-        "AND (t.project_id IS NULL OR p.archived=0) "
         "AND DATE(t.completed_at)>=%s "
         "UNION ALL "
         "SELECT t.id FROM tasks t "
@@ -4028,7 +4066,6 @@ def dashboard():
         "WHERE t.last_completed_at IS NOT NULL "
         "AND t.recurrence_rule IS NOT NULL AND TRIM(t.recurrence_rule)<>'' "
         "AND t.deleted_at IS NULL "
-        "AND (t.project_id IS NULL OR p.archived=0) "
         "AND DATE(t.last_completed_at)>=%s"
         ") AS completed_union",
         (period_start, period_start),
@@ -4044,7 +4081,6 @@ def dashboard():
         "FROM tasks t "
         "LEFT JOIN projects p ON p.id=t.project_id "
         "WHERE t.deleted_at IS NULL "
-        "AND (t.project_id IS NULL OR p.archived=0) "
         "AND ((t.completed_at IS NOT NULL AND DATE(t.completed_at)=%s) "
         "OR (t.last_completed_at IS NOT NULL "
         "AND t.recurrence_rule IS NOT NULL AND TRIM(t.recurrence_rule)<>'' "
@@ -4345,7 +4381,6 @@ def dashboard_completed():
         "LEFT JOIN projects p ON p.id=t.project_id "
         "WHERE t.completed_at IS NOT NULL "
         "AND t.deleted_at IS NULL "
-        "AND (t.project_id IS NULL OR p.archived=0) "
         f"AND {where_sql} "
         "UNION ALL "
         "SELECT t.id FROM tasks t "
@@ -4353,7 +4388,6 @@ def dashboard_completed():
         "WHERE t.last_completed_at IS NOT NULL "
         "AND t.recurrence_rule IS NOT NULL AND TRIM(t.recurrence_rule) <> '' "
         "AND t.deleted_at IS NULL "
-        "AND (t.project_id IS NULL OR p.archived=0) "
         f"AND {where_sql.replace('t.completed_at', 't.last_completed_at')} "
         ") AS combined_tasks",
         where_params + where_params,
@@ -4374,7 +4408,6 @@ def dashboard_completed():
         "LEFT JOIN folders fd ON fd.id=COALESCE(t.folder_id, p.folder_id) "
         "WHERE t.completed_at IS NOT NULL "
         "AND t.deleted_at IS NULL "
-        "AND (t.project_id IS NULL OR p.archived=0) "
         f"AND {where_sql} "
         "UNION ALL "
         "SELECT t.id, t.title, t.notes, t.due_date, t.last_completed_at, t.recurrence_rule, t.priority, "
@@ -4386,7 +4419,6 @@ def dashboard_completed():
         "WHERE t.last_completed_at IS NOT NULL "
         "AND t.recurrence_rule IS NOT NULL AND TRIM(t.recurrence_rule) <> '' "
         "AND t.deleted_at IS NULL "
-        "AND (t.project_id IS NULL OR p.archived=0) "
         f"AND {where_sql.replace('t.completed_at', 't.last_completed_at')} "
         ") AS completed_union "
         "ORDER BY completed_at DESC, id DESC "

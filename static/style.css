@@ -439,15 +439,17 @@ code{
 }
 
 .task-url-link{
-  color: var(--accent3);
+  color: #c62828 !important;
   text-decoration: underline;
-  text-decoration-color: rgba(216,137,145,0.45);
+  text-decoration-color: rgba(198,40,40,0.55);
   text-underline-offset: 3px;
   font-weight: inherit;
 }
-.task-url-link:hover{
-  color: var(--accent3);
-  text-decoration-color: var(--accent3);
+.task-url-link:visited,
+.task-url-link:hover,
+.task-url-link:active{
+  color: #c62828 !important;
+  text-decoration-color: #c62828;
 }
 
 /* Flash */

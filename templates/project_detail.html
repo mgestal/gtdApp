@@ -165,15 +165,9 @@
 			</td>
             <td>
               <div style="font-weight:600; margin-bottom:4px;">
-            <div class="project-task-title" style="font-weight:600; display:flex; align-items:center; gap:6px;">
-						{{ t.title | linkify_title }} {% if t.notes %}
-							<a href="{{ url_for('task_edit', task_id=t.id, next=request.full_path) }}"
-							title="{{ t.notes }}"
-							style="text-decoration:none; font-size:0.9rem; opacity:.75;">
-							📝
-							</a>
-							             {% endif %}
-						</div>
+            <div class="project-task-title" style="font-weight:600;">
+          {{ t.title | linkify_title }}{% if t.notes %} <a href="{{ url_for('task_edit', task_id=t.id, next=request.full_path) }}" title="{{ t.notes }}" style="text-decoration:none; font-size:0.9rem; opacity:.75;">📝</a>{% endif %}
+          </div>
               </div>
               
               <div style="display:flex; flex-wrap:wrap; gap:4px;">
@@ -301,14 +295,8 @@
         </div>
 			</td>
             <td>
-              <div class="project-task-title" style="text-decoration: line-through; opacity:0.7; font-weight:600; display:flex; align-items:center; gap:6px;">
-                {{ t.title | linkify_title }} {% if t.notes %}
-                <a href="{{ url_for('task_edit', task_id=t.id, next=request.full_path) }}"
-                title="{{ t.notes }}"
-                style="text-decoration:none; font-size:0.9rem; opacity:.75;">
-                📝
-                </a>
-                {% endif %}
+              <div class="project-task-title" style="text-decoration: line-through; opacity:0.7; font-weight:600;">
+                {{ t.title | linkify_title }}{% if t.notes %} <a href="{{ url_for('task_edit', task_id=t.id, next=request.full_path) }}" title="{{ t.notes }}" style="text-decoration:none; font-size:0.9rem; opacity:.75;">📝</a>{% endif %}
               </div>
               <div style="display:flex; gap:4px; margin-top:2px;">
                 {% for tag in tags_map.get(t.id, []) %}

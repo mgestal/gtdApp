@@ -793,22 +793,23 @@
         <div class="review-mini-list" style="margin-bottom:0;">
           {% for t in sometime_tasks_no_project %}
             <div class="review-mini-item review-mini-item-task">
-              <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}" class="review-mini-toggle-form">
-                {% if t.priority in [1, 2, 3] %}
-                  <span class="review-priority-bar review-priority-{{ t.priority }}" aria-hidden="true"></span>
-                {% endif %}
-                <button class="radio" aria-label="toggle" title="Marcar / desmarcar"></button>
-              </form>
-              <div class="review-mini-item-main">
-              <div class="review-mini-item-title">
-                <a class="link" href="{{ url_for('task_edit', task_id=t.id) }}">{{ t.title }}</a>
-                {% if t.notes %}
-                  <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('next_actions')) }}"
-                     title="{{ t.notes }}"
-                     style="text-decoration:none; font-size:0.9rem; opacity:.75;">
-                     📝
-                  </a>
-                {% endif %}
+              <div style="display:flex;align-items:center;gap:8px;width:100%">
+                <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}" class="review-mini-toggle-form" style="margin:0;">
+                  {% if t.priority in [1, 2, 3] %}
+                    <span class="review-priority-bar review-priority-{{ t.priority }}" aria-hidden="true"></span>
+                  {% endif %}
+                  <button class="radio" aria-label="toggle" title="Marcar / desmarcar"></button>
+                </form>
+                <div class="review-mini-item-title" style="flex:1;min-width:0;">
+                  <a class="link" href="{{ url_for('task_edit', task_id=t.id) }}">{{ t.title }}</a>
+                  {% if t.notes %}
+                    <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('next_actions')) }}"
+                       title="{{ t.notes }}"
+                       style="text-decoration:none; font-size:0.9rem; opacity:.75;">
+                       📝
+                    </a>
+                  {% endif %}
+                </div>
               </div>
               <div class="review-mini-meta">
                 {% if t.due_date %}{{ t.due_date.strftime('%d-%m-%Y') }}{% else %}Sin fecha{% endif %}
@@ -816,7 +817,6 @@
                   <span class="muted"> · </span>
                   <a href="{{ url_for('folder_detail', folder_id=t.folder_id) }}">📂 {{ t.folder_name }}</a>
                 {% endif %}
-              </div>
               </div>
             </div>
           {% endfor %}

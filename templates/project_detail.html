@@ -1,6 +1,30 @@
 {% extends "base.html" %}
 {% block content %} 
   <style>
+            .project-actions-mobile { display: none; }
+            @media (max-width: 640px) {
+              .project-date-desktop, .project-actions-desktop { display: none !important; }
+              .project-actions-mobile { display: flex !important; gap: 5px; justify-content: flex-end; margin-top: 6px; }
+              .project-task-flex { display: flex; flex-direction: column; align-items: stretch; }
+              .project-task-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+            }
+            @media (min-width: 641px) {
+              .project-actions-mobile { display: none !important; }
+              .project-actions-desktop { display: inline-flex; }
+              .project-date-desktop { display: table-cell; }
+              .project-task-flex { display: block; }
+              .project-task-row { display: block; }
+            }
+        /* Mostrar/ocultar meta de fecha/hora según dispositivo */
+        .project-mobile-meta { display: none; }
+        @media (max-width: 640px) {
+          .project-mobile-meta { display: block; margin-top: 4px; font-size: 0.8rem; color: var(--muted); overflow-wrap: anywhere; }
+          .project-date-desktop { display: none !important; }
+        }
+        @media (min-width: 641px) {
+          .project-mobile-meta { display: none !important; }
+          .project-date-desktop { display: table-cell; }
+        }
     .project-detail-page {
       overflow-x: hidden;
     }
@@ -34,17 +58,28 @@
       word-break: break-word;
     }
 
+    .project-table {
+      width: 100%;
+      table-layout: fixed;
+    }
+
+    .project-date-cell {
+      white-space: nowrap;
+      padding-right: 10px;
+    }
+
+    .project-actions-cell {
+      width: 82px;
+      padding-left: 6px;
+    }
+
+    .project-actions-cell .btn {
+      padding: 5px 8px;
+    }
+
     @media (max-width: 768px) {
       .project-detail-page .card {
         overflow: hidden;
-      }
-
-      .project-table {
-        min-width: 620px;
-      }
-
-      .project-actions-cell .btn {
-        padding: 4px 7px !important;
       }
 
       .project-quick-add {
@@ -54,6 +89,40 @@
 
       .project-quick-add .btn {
         width: 100%;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .project-table-wrap {
+        overflow-x: visible;
+      }
+
+      .project-table th:nth-child(3),
+      .project-table td:nth-child(3) {
+        display: none;
+      }
+
+      .project-table th:nth-child(1),
+      .project-table td:nth-child(1) {
+        width: 50px;
+        padding-left: 6px;
+        padding-right: 6px;
+      }
+
+      .project-table th:nth-child(4),
+      .project-table td:nth-child(4) {
+        width: 64px;
+        padding-left: 2px;
+        padding-right: 6px;
+      }
+
+      .project-actions-cell {
+        width: 64px;
+        padding-left: 2px;
+      }
+
+      .project-actions-cell .btn {
+        padding: 4px 7px;
       }
     }
   </style>
@@ -132,110 +201,131 @@
     </div>
   </div>
 
+
   <div class="card">
-    <div class="card-header"><div class="card-title">Activas</div></div>
-    {% if active_tasks %}
-      <div class="project-table-wrap">
-      <table class="table project-table">
+    <div class="card-header"><div class="card-title">Tareas del proyecto</div></div>
+    {% if active_tasks and active_tasks|length > 0 %}
+      <div class="table-wrap-responsive folder-table-wrap">
+      <table class="table">
         <thead>
           <tr>
             <th style="width:58px;"></th>
             <th>Tarea y Etiquetas</th>
-            <th style="width:100px;">Fecha</th>
+            <th class="project-date-desktop" style="width:100px;">Fecha</th>
             <th style="width:100px; text-align:right;">Acciones</th>
           </tr>
         </thead>
         <tbody>
         {% for t in active_tasks %}
-          {% set sc = sub_counts.get(t.id, {'total':0, 'done':0}) %}
-          <tr>
-			<td style="vertical-align:top; padding-top:6px;">
-        <div class="project-check-wrap">
-          {% if t.priority in [1, 2, 3] %}
-            <span class="project-priority-bar project-priority-{{ t.priority }}" aria-hidden="true"></span>
-          {% endif %}
-          {% if not project.archived %}
-          <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}">
-          <button class="radio"></button>
-          </form>
-          {% else %}
-            <span class="radio" style="opacity:0.3; cursor:default;"></span>
-          {% endif %}
-        </div>
-			</td>
+          <tr class="js-draggable-task folder-task-draggable" data-task-id="{{ t.id }}" draggable="true" title="Arrastra para mover tarea">
+            <td style="vertical-align:top; padding-top:6px;">
+              <div class="folder-check-wrap">
+                {% if t.priority in [1, 2, 3] %}
+                  <span class="folder-priority-bar folder-priority-{{ t.priority }}" aria-hidden="true"></span>
+                {% endif %}
+                <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}" style="margin:0;">
+                  <input type="hidden" name="next" value="{{ url_for('project_detail', project_id=project.id) }}">
+                  <button class="radio"></button>
+                </form>
+              </div>
+            </td>
             <td>
               <div style="font-weight:600; margin-bottom:4px;">
-            <div class="project-task-title" style="font-weight:600;">
-          {{ t.title | linkify_title }}{% if t.notes %} <a href="{{ url_for('task_edit', task_id=t.id, next=request.full_path) }}" title="{{ t.notes }}" style="text-decoration:none; font-size:0.9rem; opacity:.75;">📝</a>{% endif %}
-          </div>
+                <div class="task-title-row" style="font-weight:600;">
+                  <span class="task-title-text">{{ t.title }}</span>
+                  {% if t.notes %}
+                    <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('project_detail', project_id=project.id)) }}"
+                       title="{{ t.notes }}"
+                       style="text-decoration:none; font-size:0.9rem; opacity:.75;">
+                       📝
+                    </a>
+                  {% endif %}
+                </div>
               </div>
-              
               <div style="display:flex; flex-wrap:wrap; gap:4px;">
-			    {% if t.recurrence_rule %}<a class="pill taglink" style="font-size:10px;" href="{{ url_for('task_periodic_history', task_id=t.id, next=request.full_path) }}">⟲ periódica</a>{% endif %}
+                {% if t.recurrence_rule %}<a class="pill taglink" style="font-size:10px;" href="{{ url_for('task_periodic_history', task_id=t.id, next=request.full_path) }}">⟲ periódica</a>{% endif %}
                 {% for tag in tags_map.get(t.id, []) %}
-                  <a class="tagchip taglink" style="margin:0;" href="{{ url_for('tag_detail', tag_id=tag.id) }}">@{{ tag.name }}</a>
+                  <a class="tagchip taglink" style="margin:0; font-size:9px;" href="{{ url_for('tag_detail', tag_id=tag.id) }}">@{{ tag.name }}</a>
                 {% endfor %}
               </div>
-
-              {% if sc.total > 0 %}
+              <div class="project-mobile-meta">
+                {% if t.due_date or t.due_time %}
+                  {% if t.due_date %}
+                    {% if t.due_date.strftime is defined %}
+                      {{ t.due_date.strftime('%d-%m-%Y') }}
+                    {% else %}
+                      {% set ds_m = t.due_date|string %}
+                      {{ ds_m[8:10] }}-{{ ds_m[5:7] }}-{{ ds_m[0:4] if ds_m|length >= 10 else ds_m }}
+                    {% endif %}
+                  {% endif %}
+                  {% if t.due_time %}
+                    ·
+                    {% if t.due_time.strftime is defined %}
+                      {{ t.due_time.strftime('%H:%M') }}
+                    {% else %}
+                      {% set ts_m = t.due_time|string %}
+                      {{ ts_m[:5] if ts_m|length >= 5 else '—' }}
+                    {% endif %}
+                  {% endif %}
+                {% else %}
+                  —
+                {% endif %}
+              </div>
+              {% set sc = sub_counts.get(t.id) if sub_counts is defined else None %}
+              {% set st_total = sc.total if sc and sc.total is defined else (sc['total'] if sc and sc['total'] is defined else 0) %}
+              {% set st_done = sc.done if sc and sc.done is defined else (sc['done'] if sc and sc['done'] is defined else 0) %}
+              {% if st_total > 0 %}
                 <div class="muted" style="font-size:12px; margin-top:5px;">
                   <button type="button" class="subtask-toggle" onclick="toggleSubtasks({{ t.id }});">
-                    <span id="subtasks-icon-{{ t.id }}">▸</span> Subtareas: {{ sc.done }}/{{ sc.total }}
+                    <span id="subtasks-icon-{{ t.id }}">▸</span> Subtareas: {{ st_done }}/{{ st_total }}
                   </button>
                 </div>
                 <div id="subtasks-{{ t.id }}" style="display:none; margin-top:8px; padding-left:12px;">
-					{% for s in sub_map.get(t.id, []) %}
-					  <div class="subtask-item {% if s.completed_at %}row-done{% endif %}" style="display:flex; align-items:center; gap:6px; padding:4px 0;">
-
-						{% if not project.archived %}
-						<form method="post" action="{{ url_for('subtask_toggle', subtask_id=s.id) }}">
-						  <button class="radio subradio"></button>
-						</form>
-						{% else %}
-						  <span class="radio subradio" style="opacity:0.3; cursor:default;"></span>
-						{% endif %}
-
-						<span style="font-size:13px;">
-						  {{ s.title }}
-						</span>
-
-					  </div>
-					{% endfor %}
+                  {% for s in sub_map.get(t.id, []) %}
+                    <div class="subtask-item {% if t.completed_at or s.completed_at %}row-done{% endif %}" style="display:flex; align-items:center; gap:6px; padding:4px 0;">
+                      <form method="post" action="{{ url_for('subtask_toggle', subtask_id=s.id) }}">
+                        <button class="radio subradio"></button>
+                      </form>
+                      <span style="font-size:13px;">
+                        {{ s.title }}
+                      </span>
+                    </div>
+                  {% endfor %}
                 </div>
               {% endif %}
             </td>
-            <td style="white-space:nowrap; font-size:13px; text-align:{{ 'right' if t.due_date else 'center' }};">
-              {% if t.due_date %}
-                {% if t.due_date.strftime is defined %}
-                  {{ t.due_date.strftime('%d-%m-%Y') }}
-                {% else %}
-                  {% set ds = t.due_date|string %}
-                  {{ ds[8:10] }}-{{ ds[5:7] }}-{{ ds[0:4] if ds|length >= 10 else ds }}
+            <td class="project-date-desktop" style="white-space:nowrap; font-size:13px; text-align:{{ 'right' if t.due_date else 'center' }};">
+              {% if t.due_date or t.due_time %}
+                {% if t.due_date %}
+                  {% if t.due_date.strftime is defined %}
+                    {{ t.due_date.strftime('%d-%m-%Y') }}
+                  {% else %}
+                    {% set ds = t.due_date|string %}
+                    {{ ds[8:10] }}-{{ ds[5:7] }}-{{ ds[0:4] if ds|length >= 10 else ds }}
+                  {% endif %}
+                {% endif %}
+                {% if t.due_time %}
+                  <div class="muted" style="font-size:12px; margin-top:2px;">
+                    {% if t.due_time.strftime is defined %}
+                      {{ t.due_time.strftime('%H:%M') }}
+                    {% else %}
+                      {% set ts = t.due_time|string %}
+                      {{ ts[:5] if ts|length >= 5 else '—' }}
+                    {% endif %}
+                  </div>
                 {% endif %}
               {% else %}
                 <span class="muted">—</span>
               {% endif %}
-              {% if t.due_time %}
-                <div class="muted" style="font-size:12px; margin-top:2px;">
-                  {% if t.due_time.strftime is defined %}
-                    {{ t.due_time.strftime('%H:%M') }}
-                  {% else %}
-                    {% set ts = t.due_time|string %}
-                    {{ ts[:5] if ts|length >= 5 else '—' }}
-                  {% endif %}
-                </div>
-              {% endif %}
             </td>
             <td style="text-align:right;">
-              {% if not project.archived %}
-              <div class="project-actions-cell" style="display:inline-flex; gap:5px;">
-                <a class="btn btn-soft" style="padding:5px 8px;" href="{{ url_for('task_edit', task_id=t.id, next=request.full_path) }}">✎</a>
+              <div style="display:inline-flex; gap:5px;">
+                <a class="btn btn-soft" style="padding:5px 8px;" href="{{ url_for('task_edit', task_id=t.id, next=url_for('project_detail', project_id=project.id)) }}">✎</a>
                 <form method="post" action="{{ url_for('task_delete', task_id=t.id) }}" style="display:inline;">
-                  <input type="hidden" name="next" value="{{ request.full_path }}">
-                  <button class="btn btn-soft" style="padding:5px 8px;" onclick="return confirm('¿Borrar?');">🗑</button>
+                  <input type="hidden" name="next" value="{{ url_for('project_detail', project_id=project.id) }}">
+                  <button type="submit" class="btn btn-soft" style="padding:5px 8px;" onclick="return confirm('¿Borrar?');">🗑</button>
                 </form>
               </div>
-              {% endif %}
             </td>
           </tr>
         {% endfor %}
@@ -243,7 +333,7 @@
       </table>
       </div>
     {% else %}
-      <div class="empty">No hay tareas activas.</div>
+      <div class="empty">No hay tareas activas en este proyecto.</div>
     {% endif %}
   </div>
 
@@ -273,46 +363,71 @@
 
 
   <div class="card" style="margin-top:14px;">
-    <div class="card-header"><div class="card-title">Completadas</div></div>
-    {% if done_tasks %}
-      <div class="project-table-wrap">
-      <table class="table project-table">
+    <div class="card-header"><div class="card-title">Tareas completadas</div></div>
+    {% if done_tasks and done_tasks|length > 0 %}
+      <div class="table-wrap-responsive folder-completed-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th style="width:58px;"></th>
+            <th>Tarea</th>
+            <th style="width:100px;">Fecha</th>
+            <th style="width:100px;">Hora</th>
+          </tr>
+        </thead>
         <tbody>
         {% for t in done_tasks %}
           <tr class="row-done">
-			<td style="vertical-align:top; padding-top:6px;">
-        <div class="project-check-wrap">
-          {% if t.priority in [1, 2, 3] %}
-            <span class="project-priority-bar project-priority-{{ t.priority }}" aria-hidden="true"></span>
-          {% endif %}
-          {% if not project.archived %}
-          <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}">
-          <button class="radio"></button>
-          </form>
-          {% else %}
-            <span class="radio" style="opacity:0.3; cursor:default;"></span>
-          {% endif %}
-        </div>
-			</td>
+            <td style="vertical-align:top; padding-top:6px;">
+              <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}">
+                <button class="radio"></button>
+              </form>
+            </td>
             <td>
-              <div class="project-task-title" style="text-decoration: line-through; opacity:0.7; font-weight:600;">
-                {{ t.title | linkify_title }}{% if t.notes %} <a href="{{ url_for('task_edit', task_id=t.id, next=request.full_path) }}" title="{{ t.notes }}" style="text-decoration:none; font-size:0.9rem; opacity:.75;">📝</a>{% endif %}
+              <div class="task-title-row" style="font-weight:600; margin-bottom:4px;">
+                <span class="task-title-text">{{ t.title }}</span>
               </div>
-              <div style="display:flex; gap:4px; margin-top:2px;">
+              <div style="display:flex; flex-wrap:wrap; gap:4px;">
+                {% if t.recurrence_rule %}<a class="pill taglink" style="font-size:10px;" href="{{ url_for('task_periodic_history', task_id=t.id, next=request.full_path) }}">⟲ periódica</a>{% endif %}
                 {% for tag in tags_map.get(t.id, []) %}
-                  <span class="tagchip" style="font-size:9px; opacity:0.6;">@{{ tag.name }}</span>
+                  <a class="tagchip taglink" style="margin:0; font-size:9px; opacity:0.6;" href="{{ url_for('tag_detail', tag_id=tag.id) }}">@{{ tag.name }}</a>
                 {% endfor %}
               </div>
+              <div class="folder-completed-meta">
+                {% if t.completed_at %}
+                  {% if t.completed_at.strftime is defined %}
+                    {{ t.completed_at.strftime('%d-%m-%Y') }} · {{ t.completed_at.strftime('%H:%M') }}
+                  {% else %}
+                    {% set cs = t.completed_at|string %}
+                    {{ cs[8:10] }}-{{ cs[5:7] }}-{{ cs[0:4] if cs|length >= 10 else cs }} · {{ cs[11:16] if cs|length >= 16 else '—' }}
+                  {% endif %}
+                {% else %}
+                  —
+                {% endif %}
+              </div>
             </td>
-            <td style="width:100px; font-size:12px; text-align:right;" class="muted">
-              {{ t.completed_at.strftime('%d-%m-%Y') if t.completed_at else '' }} {{ t.completed_at.strftime('%H:%M') }}
+            <td style="white-space:nowrap; font-size:13px;">
+              {% if t.completed_at %}
+                {% if t.completed_at.strftime is defined %}
+                  {{ t.completed_at.strftime('%d-%m-%Y') }}
+                {% else %}
+                  {% set ds = t.completed_at|string %}
+                  {{ ds[8:10] }}-{{ ds[5:7] }}-{{ ds[0:4] if ds|length >= 10 else ds }}
+                {% endif %}
+              {% else %}
+                <span class="muted">—</span>
+              {% endif %}
             </td>
-            <td style="width:100px; text-align:right;">
-              {% if not project.archived %}
-                <form method="post" action="{{ url_for('task_delete', task_id=t.id) }}" style="display:inline;">
-                    <input type="hidden" name="next" value="{{ request.full_path }}">
-                    <button class="btn btn-soft" style="padding:5px 8px;" onclick="return confirm('¿Borrar?');">🗑</button>
-                </form>
+            <td style="white-space:nowrap; font-size:13px;">
+              {% if t.completed_at %}
+                {% if t.completed_at.strftime is defined %}
+                  {{ t.completed_at.strftime('%H:%M') }}
+                {% else %}
+                  {% set ts = t.completed_at|string %}
+                  {{ ts[11:16] if ts|length >= 16 else '—' }}
+                {% endif %}
+              {% else %}
+                <span class="muted">—</span>
               {% endif %}
             </td>
           </tr>
@@ -321,7 +436,7 @@
       </table>
       </div>
     {% else %}
-      <div class="empty">No hay tareas completadas.</div>
+      <div class="empty">No hay tareas completadas en este proyecto.</div>
     {% endif %}
   </div>
 

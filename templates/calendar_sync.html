@@ -314,7 +314,7 @@
                     >
                   </td>
                   <td>
-                    <div style="font-weight:600; margin-bottom:4px;">{{ item.title }}</div>
+                    <div style="font-weight:600; margin-bottom:4px;">{{ item.title | linkify_title }}</div>
                     <div class="hint" style="margin:0;">{{ item.reason }}</div>
                   </td>
                   <td><span class="calendar-sync-origin">{{ item.origin }}</span></td>
@@ -357,7 +357,8 @@
                   </td>
                   <td>
                     <div style="font-weight:600; margin-bottom:4px;">
-                      <a href="{{ url_for('task_edit', task_id=item.id, next=request.full_path) }}">{{ item.title }}</a>
+                      <span>{{ item.title | linkify_title }}</span>
+                      <a href="{{ url_for('task_edit', task_id=item.id, next=request.full_path) }}" title="Editar tarea" style="margin-left:6px; text-decoration:none; font-size:0.9rem; opacity:.75;">✎</a>
                     </div>
                     <div class="hint" style="margin:0;">{{ item.reason }}</div>
                   </td>

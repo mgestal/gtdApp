@@ -1567,6 +1567,26 @@ def rollback():
 
 from subtasks import DB as SubDB, register_subtask_routes, load_subtasks_map, load_subtask_counts
 
+# --- Funciones auxiliares para review y otros ---
+def tag_exists(name: str) -> bool:
+    row = q1("SELECT id FROM tags WHERE lower(name)=lower(%s)", (name,))
+    return row is not None
+
+def folder_exists(name: str) -> bool:
+    row = q1("SELECT id FROM folders WHERE lower(name)=lower(%s)", (name,))
+    return row is not None
+
+def get_folder_tree_ids(parent_id, include_self=True):
+    """Obtiene recursivamente los IDs de una carpeta y sus descendientes"""
+    result = set()
+    if include_self:
+        result.add(parent_id)
+    children = q("SELECT id FROM folders WHERE parent_id=%s", (parent_id,))
+    for child in children:
+        result.add(child['id'])
+        result.update(get_folder_tree_ids(child['id'], include_self=False))
+    return result
+
 subdb = SubDB(q=q, q1=q1, exec_sql=exec_sql, commit=commit, rollback=rollback)
 register_subtask_routes(app, subdb)
 
@@ -3035,12 +3055,17 @@ def today():
 
     all_ids = [r["id"] for r in pending_rows] + [r["id"] for r in overdue_rows] + [r["id"] for r in done_rows]
     tags_map = load_tags_map(all_ids) if all_ids else {}
+    sub_counts = load_subtask_counts(subdb, all_ids)
+    sub_map = load_subtasks_map(subdb, all_ids)
+
     return render_template(
         "today.html",
         pending_rows=pending_rows,
         overdue_rows=overdue_rows,
         done_rows=done_rows,
         tags_map=tags_map,
+        sub_counts=sub_counts,
+        sub_map=sub_map,
         today=today_d,
     )
 
@@ -5274,8 +5299,8 @@ def folder_detail(folder_id: int):
     tasks = q(
         "SELECT t.id, t.title, t.notes, t.due_date, t.due_time, t.completed_at, t.recurrence_rule, t.priority "
         "FROM tasks t "
-        "WHERE t.folder_id=%s AND t.project_id IS NULL AND t.archived=0 AND t.deleted_at IS NULL "
-        "ORDER BY (t.completed_at IS NOT NULL) ASC, (t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC",
+        "WHERE t.folder_id=%s AND t.project_id IS NULL AND t.archived=0 AND t.deleted_at IS NULL AND t.completed_at IS NULL "
+        "ORDER BY (t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC",
         (folder_id,)
     )
     tags_map = load_tags_map([t["id"] for t in tasks])
@@ -8588,24 +8613,23 @@ def filter_run_expression():
     
 @app.route("/review")
 def review():
-    def tag_exists(name: str) -> bool:
-        row = q1("SELECT id FROM tags WHERE lower(name)=lower(%s)", (name,))
-        return row is not None
 
-    def folder_exists(name: str) -> bool:
-        row = q1("SELECT id FROM folders WHERE lower(name)=lower(%s)", (name,))
-        return row is not None
 
-    def get_folder_tree_ids(parent_id, include_self=True):
-        """Obtiene recursivamente los IDs de una carpeta y sus descendientes"""
-        result = set()
-        if include_self:
-            result.add(parent_id)
-        children = q("SELECT id FROM folders WHERE parent_id=%s", (parent_id,))
-        for child in children:
-            result.add(child['id'])
-            result.update(get_folder_tree_ids(child['id'], include_self=False))
-        return result
+    # Proyectos en Seguimiento y subcarpetas
+    projects_seguimiento = []
+    seguimiento_folder = q1("SELECT id FROM folders WHERE name='Seguimiento'")
+    if seguimiento_folder and seguimiento_folder.get("id") is not None:
+        seguimiento_ids = get_folder_tree_ids(int(seguimiento_folder["id"]))
+        if seguimiento_ids:
+            placeholders = ",".join(["%s"] * len(seguimiento_ids))
+            projects_seguimiento = q(
+                f"SELECT p.id, p.name, p.description, p.archived, f.name AS folder_name "
+                f"FROM projects p "
+                f"LEFT JOIN folders f ON f.id=p.folder_id "
+                f"WHERE p.archived=0 AND p.deleted_at IS NULL AND p.folder_id IN ({placeholders}) "
+                f"ORDER BY p.name",
+                tuple(seguimiento_ids),
+            ) or []
 
     # 1) Inbox
     inbox = q(
@@ -8776,6 +8800,17 @@ def review():
     en_espera_exists = tag_exists("EnEspera")
     en_espera_folder_exists = folder_exists("EnEspera")
 
+    # Excluir tareas de proyectos en Seguimiento o subcarpetas
+    seguimiento_folder = q1("SELECT id FROM folders WHERE name='Seguimiento'")
+    seguimiento_ids = []
+    if seguimiento_folder and seguimiento_folder.get("id") is not None:
+        seguimiento_ids = get_folder_tree_ids(int(seguimiento_folder["id"]))
+    seguimiento_clause = ""
+    seguimiento_params = ()
+    if seguimiento_ids:
+        placeholders = ",".join(["%s"] * len(seguimiento_ids))
+        seguimiento_clause = f"AND (p.folder_id IS NULL OR p.folder_id NOT IN ({placeholders})) "
+        seguimiento_params = tuple(seguimiento_ids)
     en_espera_tasks = q(
         "SELECT t.id, t.title, t.due_date, t.notes, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
@@ -8788,9 +8823,10 @@ def review():
         "WHERE t.completed_at IS NULL "
         "AND t.deleted_at IS NULL "
         "AND tg.name=%s "
+        + seguimiento_clause +
         "AND (t.project_id IS NULL OR p.archived = 0) "
         "ORDER BY (t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC",
-        ("EnEspera",)
+        ("EnEspera",) + seguimiento_params
     ) if en_espera_exists else []
 
     en_espera_projects = []
@@ -8812,6 +8848,7 @@ def review():
             ) or []
 
     # 6) Proyectos (excluyendo Sometime y sus subcarpetas)
+
     excluded_folder_ids = set()
 
     sometime_folder = q1("SELECT id FROM folders WHERE name='Sometime'")
@@ -8821,6 +8858,15 @@ def review():
     agenda_folder = q1("SELECT id FROM folders WHERE name='🗃️ Agenda'")
     if agenda_folder:
         excluded_folder_ids.update(get_folder_tree_ids(agenda_folder['id']))
+
+
+    en_espera_folder = q1("SELECT id FROM folders WHERE name='EnEspera'")
+    if en_espera_folder:
+        excluded_folder_ids.update(get_folder_tree_ids(en_espera_folder['id']))
+
+    seguimiento_folder = q1("SELECT id FROM folders WHERE name='Seguimiento'")
+    if seguimiento_folder:
+        excluded_folder_ids.update(get_folder_tree_ids(seguimiento_folder['id']))
 
     if excluded_folder_ids:
         ids_placeholder = ','.join(str(fid) for fid in excluded_folder_ids)
@@ -9015,6 +9061,7 @@ def review():
         checklist_tasks=checklist_tasks,
         checklist_projects=checklist_projects,
         tags_map=tags_map,
+        projects_seguimiento=projects_seguimiento,
     )
     
     
@@ -9559,12 +9606,28 @@ def api_task_toggle_preview(task_id: int):
         return jsonify({"requires_choice": False})
 
     today_d = datetime.now(ZoneInfo("Europe/Madrid")).date()
-    keep_due = next_due_date(task["due_date"], rule)
+    # Usar la última fecha de realización como base, o due_date si no existe
+    base_date = task.get("last_completed_at")
+    if base_date is not None:
+        if isinstance(base_date, str):
+            base_date = datetime.fromisoformat(base_date).date()
+        else:
+            base_date = base_date.date() if hasattr(base_date, "date") else base_date
+    else:
+        base_date = task["due_date"]
 
+    keep_due = next_due_date(base_date, rule)
+
+    # Si la fecha base es hoy, proponemos hoy como válida
+    if base_date == today_d:
+        return jsonify({"requires_choice": False})
+
+    # Si la próxima fecha calculada es mayor que hoy, no hay conflicto
     if keep_due > today_d:
         return jsonify({"requires_choice": False})
 
-    future_due = next_due_date_after_today(task["due_date"], rule, today_d)
+    # Si la fecha es menor que hoy, buscar la siguiente futura
+    future_due = next_due_date_after_today(base_date, rule, today_d)
     return jsonify(
         {
             "requires_choice": True,

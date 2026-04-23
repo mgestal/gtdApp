@@ -1801,6 +1801,30 @@ hr{
     padding-left: 4px;
     padding-right: 4px;
   }
+
+  /* Ocultamos la columna de fecha dedicada en móvil para ganar espacio horizontal */
+  .table .col-date {
+    display: none;
+  }
+
+  /* La fecha se mostrará como un bloque pequeño debajo del título/etiquetas */
+  .task-date-mobile {
+    display: block !important;
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  /* Unificamos la densidad visual de las tareas en móvil */
+  .table td {
+    padding-top: 8px !important;
+    padding-bottom: 8px !important;
+  }
+}
+
+/* En escritorio ocultamos la versión inline de la fecha */
+.task-date-mobile {
+  display: none;
 }
 
 /* ============================

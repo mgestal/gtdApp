@@ -147,7 +147,7 @@
 </style>
 
 <div class="page-title">
-  <h1>Revisión semanal</h1>
+  <h1>Revisión semanal 🧠⚒️</h1>
   <p class="subtitle">Limpieza y revisión del sistema GTD.</p>
 </div>
 
@@ -184,7 +184,7 @@
     </div>
 
     <div class="list-row review-tip" data-tip="Activar o mover a los proyectos de EstaSemanaNo; Revisión ligera de ADTV para activar o eliminar">
-      7) Revisión SomeTime (ADTV/EstaSemanaNo)
+      7) Revisión SomeTime (ADTV/EstaSemanaNo/EnEspera)
     </div>
 
     <div class="list-row review-tip" data-tip="Rutinas, areas interes, libros...">
@@ -678,7 +678,7 @@
       <div class="muted">{{ active_projects|length }}</div>
     </div>
 
-    <div class="review-subtitle">Proyectos activos (resto)</div>
+    <div class="review-subtitle">Proyectos activos</div>
     <div class="card" style="padding:10px; margin-bottom:10px;">
       {% if active_projects_other %}
         <div class="review-mini-list" style="margin-bottom:0;">
@@ -739,9 +739,11 @@
     </div>
   </div>
 
+
+
   <div class="card">
     <div class="card-header">
-      <div class="card-title">7) Revisión ADTV / SomeTime</div>
+      <div class="card-title">7) Revisión ADTV / SomeTime / EnEspera</div>
       <div class="muted">{{ adtv_projects|length + esta_semana_no_projects|length + sometime_tasks_no_project|length }}</div>
     </div>
 
@@ -826,6 +828,41 @@
       {% endif %}
     </div>
   </div>
+
+
+
+ <div class="card">
+    <div class="card-header">
+      <div class="card-title">7) Revisión ADTV / SomeTime / EnEspera </div>
+      <div class="muted">{{ projects_seguimiento|length }}</div>
+    </div>
+
+    <div class="review-subtitle">Proyectos en Seguimiento</div>
+    <div class="card" style="padding:10px; margin-bottom:10px;">
+      {% if not projects_seguimiento %}
+        <div class="empty">No existen proyectos en Seguimiento.</div>
+      {% elif projects_seguimiento %}
+        <div class="review-mini-list" style="margin-bottom:0;">
+          {% for p in projects_seguimiento %}
+            <div class="review-mini-item">
+              <div class="review-mini-item-title">
+                <a class="link" href="{{ url_for('project_detail', project_id=p.id) }}">💼 {{ p.name }}</a>
+              </div>
+              <div class="review-mini-meta">
+                {% if p.folder_name %}📁 {{ p.folder_name }}{% else %}Sin carpeta{% endif %}
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty">No hay proyectos en Seguimiento.</div>
+      {% endif %}
+    </div>
+
+    </div>
+
+
+
 
   <div class="card">
     <div class="card-header">

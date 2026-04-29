@@ -99,7 +99,9 @@
 
             <td>
         <div class="task-title-row" style="font-weight:600;">
-          <span class="task-title-text">{{ t.title }}</span>
+          <!-- <span class="task-title-text">{{ t.title }}</span> -->
+        <span class="task-title-text">{{ t.title | linkify_title }}</span>
+
 
 				  {% if t.notes %}
           <a href="{{ url_for('task_edit', task_id=t.id, next=request.full_path) }}"
@@ -200,7 +202,7 @@
 
             <td>
               <div class="task-title-row" style="font-weight:600;">
-                <span class="task-title-text">{{ t.title }}</span>
+                    <span class="task-title-text">{{ t.title | linkify_title }}</span>
 
                 {% if t.notes %}
                   <a href="{{ url_for('task_edit', task_id=t.id, next=request.full_path) }}"
@@ -305,7 +307,7 @@
 
             <td>
         <div class="task-title-row" style="font-weight:600;">
-          <span class="task-title-text">{{ t.title }}</span>
+              <span class="task-title-text">{{ t.title | linkify_title }}</span>
 
 				  {% if t.notes %}
           <a href="{{ url_for('task_edit', task_id=t.id, next=request.full_path) }}"

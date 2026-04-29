@@ -3422,7 +3422,7 @@ def project_detail(project_id: int):
     )
 
     done_tasks = q(
-        "SELECT id, title, notes, due_date, completed_at, recurrence_rule, priority "
+        "SELECT id, title, notes, due_date, due_time, completed_at, recurrence_rule, priority "
         "FROM tasks "
         "WHERE project_id=%s AND completed_at IS NOT NULL AND archived=0 AND deleted_at IS NULL "
         "ORDER BY completed_at DESC, id",
@@ -5339,13 +5339,14 @@ def folder_detail(folder_id: int):
         "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority "
         "FROM tasks t "
         "WHERE t.folder_id=%s AND t.project_id IS NULL AND t.deleted_at IS NULL "
-        "AND t.completed_at IS NOT NULL "
+        "AND t.completed_at IS NOT NULL AND t.archived=0 "
         "UNION ALL "
         "SELECT t.id, t.title, t.notes, t.due_date, t.last_completed_at, t.recurrence_rule, t.priority "
         "FROM tasks t "
         "WHERE t.folder_id=%s AND t.project_id IS NULL AND t.deleted_at IS NULL "
         "AND t.last_completed_at IS NOT NULL "
         "AND t.recurrence_rule IS NOT NULL AND TRIM(t.recurrence_rule) <> '' "
+        "AND t.archived=0 "
         ") AS completed_union "
         "ORDER BY completed_at DESC, id DESC "
         "LIMIT 10",
@@ -9606,16 +9607,9 @@ def api_task_toggle_preview(task_id: int):
         return jsonify({"requires_choice": False})
 
     today_d = datetime.now(ZoneInfo("Europe/Madrid")).date()
-    # Usar la última fecha de realización como base, o due_date si no existe
-    base_date = task.get("last_completed_at")
-    if base_date is not None:
-        if isinstance(base_date, str):
-            base_date = datetime.fromisoformat(base_date).date()
-        else:
-            base_date = base_date.date() if hasattr(base_date, "date") else base_date
-    else:
-        base_date = task["due_date"]
 
+    # Usar siempre due_date como base, igual que en task_toggle
+    base_date = task["due_date"]
     keep_due = next_due_date(base_date, rule)
 
     # Si la fecha base es hoy, proponemos hoy como válida

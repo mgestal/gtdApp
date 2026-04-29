@@ -407,11 +407,11 @@
               </div>
             </td>
             <td style="white-space:nowrap; font-size:13px;">
-              {% if t.completed_at %}
-                {% if t.completed_at.strftime is defined %}
-                  {{ t.completed_at.strftime('%d-%m-%Y') }}
+              {% if t.due_date %}
+                {% if t.due_date.strftime is defined %}
+                  {{ t.due_date.strftime('%d-%m-%Y') }}
                 {% else %}
-                  {% set ds = t.completed_at|string %}
+                  {% set ds = t.due_date|string %}
                   {{ ds[8:10] }}-{{ ds[5:7] }}-{{ ds[0:4] if ds|length >= 10 else ds }}
                 {% endif %}
               {% else %}
@@ -419,16 +419,23 @@
               {% endif %}
             </td>
             <td style="white-space:nowrap; font-size:13px;">
-              {% if t.completed_at %}
-                {% if t.completed_at.strftime is defined %}
-                  {{ t.completed_at.strftime('%H:%M') }}
-                {% else %}
-                  {% set ts = t.completed_at|string %}
-                  {{ ts[11:16] if ts|length >= 16 else '—' }}
-                {% endif %}
+            {% if t.due_time %}
+              {% if t.due_time.strftime is defined %}
+                {{ t.due_time.strftime('%H:%M') }}
               {% else %}
-                <span class="muted">—</span>
+                {% set ts = t.due_time|string %}
+                {{ ts[:5] if ts|length >= 5 else '—' }}
               {% endif %}
+            {% elif t.due_date %}
+              {% if t.due_date.strftime is defined %}
+                {{ t.due_date.strftime('%H:%M') }}
+              {% else %}
+                {% set ts = t.due_date|string %}
+                {{ ts[11:16] if ts|length >= 16 else '—' }}
+              {% endif %}
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
             </td>
           </tr>
         {% endfor %}

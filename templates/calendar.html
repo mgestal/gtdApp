@@ -302,7 +302,7 @@
 
                       <td>
                         <div class="task-title-row" style="font-weight:600;">
-                          <span class="task-title-text">{{ t.title }}</span>
+                          <span class="task-title-text">{{ t.title | linkify_title }}</span>
 
                           {% if t.notes %}
                             <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('calendar', view='week', date=selected_date.isoformat(), show_completed=1 if show_completed else None)) }}"
@@ -416,7 +416,7 @@
                 <td>
                   <div class="task-title-row" style="font-weight:600;">
                     <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('calendar', view='next7', date=selected_date.isoformat(), show_completed=1 if show_completed else None)) }}" style="font-weight:600; display:flex; align-items:center; gap:6px; text-decoration:none; color:inherit;">
-                      <span class="task-title-text">{{ t.title }}</span>
+                      <span class="task-title-text">{{ t.title | linkify_title }}</span>
                     </a>
                     {% if t.notes %}
                       <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('calendar', view='next7', date=selected_date.isoformat(), show_completed=1 if show_completed else None)) }}"
@@ -509,7 +509,7 @@
                 </td>
                 <td>
                   <div class="task-title-row" style="font-weight:600;">
-                    <span class="task-title-text">{{ t.title }}</span>
+                    <span class="task-title-text">{{ t.title | linkify_title }}</span>
 
                     {% if t.notes %}
                       <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('calendar', view='day', date=selected_date.isoformat(), show_completed=1 if show_completed else None)) }}"

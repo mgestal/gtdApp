@@ -7346,7 +7346,7 @@ def admin_api_tokens():
     )
     # Prefijo token para mostrar solo los primeros caracteres
     for t in tokens:
-        t["token_prefix"] = t["token"][:10]
+        t["token_prefix"] = t["token"][:6]
     return render_template("admin_api_tokens.html", tokens=tokens)
 
 @app.route("/admin", methods=["GET", "POST"])
@@ -7430,7 +7430,7 @@ def admin():
             (user_id,)
         )
         for t in api_tokens:
-            t["token_prefix"] = t["token"][:10]
+            t["token_prefix"] = t["token"][:6]
 
     # Cargar datos adicionales requeridos por la plantilla
     trash_counts = _load_trash_view_data(task_page=1, project_page=1)["trash_counts"]
@@ -7505,7 +7505,7 @@ def admin():
             (user_id,)
         )
         for t in api_tokens:
-            t["token_prefix"] = t["token"][:10]
+            t["token_prefix"] = t["token"][:6]
 
     if request.method == "POST":
         action = request.form.get("action", "")
@@ -7537,7 +7537,7 @@ def admin():
             (user_id,)
         )
         for t in api_tokens:
-            t["token_prefix"] = t["token"][:10]
+            t["token_prefix"] = t["token"][:6]
 
     if request.method == "POST":
         action = request.form.get("action", "")
@@ -7568,7 +7568,7 @@ def admin():
             (user_id,)
         )
         for t in api_tokens:
-            t["token_prefix"] = t["token"][:10]
+            t["token_prefix"] = t["token"][:6]
     # ...existing code...
     return render_template(
         "admin.html",

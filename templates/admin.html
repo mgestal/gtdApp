@@ -448,6 +448,52 @@
           </div>
         </div>
 
+        <!-- Card de gestión de tokens API para extensiones -->
+        <div class="card" style="margin-top:20px;">
+          <div class="card-header">
+            <div class="card-title">Extensión de navegador (Chrome)</div>
+            <div class="card-sub">Crea un token para conectar la extensión de Chrome con tu backend. El token solo se muestra una vez.</div>
+          </div>
+          <form method="post" class="form" style="display:flex; gap:10px; align-items:center; margin-bottom:16px;">
+            <input type="hidden" name="action" value="create_api_token">
+            <input class="input" name="device_name" placeholder="Ej: Chrome Portátil" style="flex:1;">
+            <button class="btn btn-primary" type="submit">Crear token</button>
+          </form>
+          <table class="table" style="margin-top:10px;">
+            <thead>
+              <tr>
+                <th>Dispositivo</th>
+                <th>Prefijo token</th>
+                <th>Creado</th>
+                <th>Último uso</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for t in api_tokens %}
+              <tr>
+                <td>{{ t.device_name }}</td>
+                <td>{{ t.token_prefix }}</td>
+                <td>{{ t.created_at.strftime('%Y-%m-%d %H:%M') if t.created_at else '—' }}</td>
+                <td>{{ t.last_used_at.strftime('%Y-%m-%d %H:%M') if t.last_used_at else '—' }}</td>
+                <td>{% if t.active %}Activo{% else %}Revocado{% endif %}</td>
+                <td>
+                  {% if t.active %}
+                  <form method="post" style="display:inline;">
+                    <input type="hidden" name="action" value="revoke_api_token">
+                    <input type="hidden" name="token" value="{{ t.token }}">
+                    <button class="btn btn-soft" type="submit">Revocar</button>
+                  </form>
+                  {% else %}
+                  —
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   {% endif %}

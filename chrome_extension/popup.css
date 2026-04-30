@@ -54,6 +54,20 @@ body {
   background: var(--card);
   border-radius: 12px;
   padding: 10px;
+  font-size: 0.92rem;
+}
+
+/* Ajuste específico para tablas dentro de cards */
+.card table {
+  font-size: 0.78rem;
+  word-break: break-word;
+  table-layout: fixed;
+  width: 100%;
+}
+.card th, .card td {
+  padding: 2px 4px;
+  white-space: normal;
+  word-break: break-word;
 }
 
 /* ── Collapsible settings ── */

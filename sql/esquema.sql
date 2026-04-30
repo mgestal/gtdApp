@@ -1,4 +1,21 @@
 /*M!999999\- enable the sandbox mode */ 
+--
+-- Table structure for table `api_tokens`
+--
+
+DROP TABLE IF EXISTS `api_tokens`;
+CREATE TABLE `api_tokens` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `user_id` INT NOT NULL,
+  `device_name` VARCHAR(100) NOT NULL,
+  `token` CHAR(36) NOT NULL, -- UUID
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `last_used_at` DATETIME DEFAULT NULL,
+  `active` BOOLEAN NOT NULL DEFAULT TRUE,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_token` (`token`),
+  KEY `idx_user_id` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 -- MariaDB dump 10.19-11.8.6-MariaDB, for debian-linux-gnu (aarch64)
 --
 -- Host: 127.0.0.1    Database: gtd

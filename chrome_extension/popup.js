@@ -1,13 +1,17 @@
 const DEFAULT_BASE_URL = "http://localhost:5000";
 
+
 const state = {
   baseUrl: DEFAULT_BASE_URL,
+  token: "",
   scope: "today",
   activeTab: null,
 };
 
 const el = {
   baseUrlInput: document.getElementById("baseUrlInput"),
+  tokenInput: document.getElementById("tokenInput"),
+  toggleTokenBtn: document.getElementById("toggleTokenBtn"),
   saveConfigBtn: document.getElementById("saveConfigBtn"),
   settingsDetails: document.getElementById("settingsDetails"),
   settingsUrlPreview: document.getElementById("settingsUrlPreview"),
@@ -22,9 +26,11 @@ const el = {
 };
 
 async function loadConfig() {
-  const saved = await chrome.storage.sync.get(["gtdBaseUrl"]);
+  const saved = await chrome.storage.sync.get(["gtdBaseUrl", "gtdApiToken"]);
   state.baseUrl = normalizeBaseUrl(saved.gtdBaseUrl || DEFAULT_BASE_URL);
+  state.token = saved.gtdApiToken || "";
   el.baseUrlInput.value = state.baseUrl;
+  el.tokenInput.value = state.token;
   updateSettingsPreview();
   if (!saved.gtdBaseUrl) {
     el.settingsDetails.setAttribute("open", "");
@@ -121,10 +127,18 @@ function renderTasks(items) {
 }
 
 async function fetchTasks() {
+  if (!state.token) {
+    renderTasks([]);
+    setStatus("Introduce tu token de API para ver tareas", true);
+    return;
+  }
   setStatus("Cargando tareas...");
   try {
+    const headers = {};
+    headers["Authorization"] = `Bearer ${state.token}`;
     const response = await fetch(`${state.baseUrl}/api/extension/tasks?scope=${encodeURIComponent(state.scope)}`, {
       credentials: "include",
+      headers,
     });
 
     if (!response.ok) {
@@ -147,9 +161,14 @@ async function fetchTasks() {
 async function onToggleTask(taskId, checkboxEl) {
   checkboxEl.disabled = true;
   try {
+    const headers = {};
+    if (state.token) {
+      headers["Authorization"] = `Bearer ${state.token}`;
+    }
     const response = await fetch(`${state.baseUrl}/api/extension/tasks/${taskId}/toggle`, {
       method: "POST",
       credentials: "include",
+      headers,
     });
 
     const data = await response.json();
@@ -191,12 +210,14 @@ async function onAddPageTask() {
   setStatus("Guardando página en Inbox...");
 
   try {
+    const headers = { "Content-Type": "application/json" };
+    if (state.token) {
+      headers["Authorization"] = `Bearer ${state.token}`;
+    }
     const response = await fetch(`${state.baseUrl}/api/extension/tasks/add_page`, {
       method: "POST",
       credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers,
       body: JSON.stringify({
         url: state.activeTab.url,
         page_title: state.activeTab.title || "",
@@ -221,9 +242,12 @@ async function onAddPageTask() {
   }
 }
 
-async function onSaveConfig() {
+async function onSaveConfig(event) {
+  if (event) event.preventDefault();
+  console.log("onSaveConfig ejecutado");
   state.baseUrl = normalizeBaseUrl(el.baseUrlInput.value);
-  await chrome.storage.sync.set({ gtdBaseUrl: state.baseUrl });
+  state.token = el.tokenInput.value.trim();
+  await chrome.storage.sync.set({ gtdBaseUrl: state.baseUrl, gtdApiToken: state.token });
   updateSettingsPreview();
   el.settingsDetails.removeAttribute("open");
   setStatus("Configuración guardada");
@@ -232,8 +256,18 @@ async function onSaveConfig() {
 
 function bindEvents() {
   el.saveConfigBtn.addEventListener("click", onSaveConfig);
+  // Por robustez, también prevenir submit si el botón está en un form
+  if (el.saveConfigBtn.form) {
+    el.saveConfigBtn.form.addEventListener("submit", onSaveConfig);
+  }
   el.reloadBtn.addEventListener("click", fetchTasks);
   el.addPageBtn.addEventListener("click", onAddPageTask);
+
+  el.toggleTokenBtn.addEventListener("click", () => {
+    const type = el.tokenInput.type === "password" ? "text" : "password";
+    el.tokenInput.type = type;
+    el.toggleTokenBtn.textContent = type === "password" ? "👁️" : "🙈";
+  });
 
   for (const btn of el.scopeButtons) {
     btn.addEventListener("click", async () => {
@@ -257,4 +291,8 @@ async function init() {
   await fetchTasks();
 }
 
-init();
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", init);
+} else {
+  init();
+}

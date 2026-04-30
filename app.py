@@ -7369,7 +7369,7 @@ def admin():
                 flash("Faltan datos para crear el token.", "error")
                 return redirect(url_for("admin"))
             token = create_api_token(user_id, device_name)
-            flash(f"Token generado para {device_name}: <code>{token}</code> (guárdalo, solo se muestra una vez)", "ok")
+            flash(f"Token generado para {device_name}: {token} (guárdalo, solo se muestra una vez)", "ok")
             return redirect(url_for("admin"))
         elif action == "revoke_api_token":
             user_id = 1  # Fijo para apps sin multiusuario

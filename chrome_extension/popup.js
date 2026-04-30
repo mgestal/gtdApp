@@ -263,11 +263,6 @@ function bindEvents() {
   el.reloadBtn.addEventListener("click", fetchTasks);
   el.addPageBtn.addEventListener("click", onAddPageTask);
 
-  el.toggleTokenBtn.addEventListener("click", () => {
-    const type = el.tokenInput.type === "password" ? "text" : "password";
-    el.tokenInput.type = type;
-    el.toggleTokenBtn.textContent = type === "password" ? "👁️" : "🙈";
-  });
 
   for (const btn of el.scopeButtons) {
     btn.addEventListener("click", async () => {

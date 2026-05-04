@@ -3109,6 +3109,22 @@ def week():
     # domingo de la semana actual
     sunday_d = monday_d + timedelta(days=6)
 
+    overdue_rows = q(
+        "SELECT t.id, t.title, t.notes, t.due_date, t.due_time, t.completed_at, t.recurrence_rule, t.priority, "
+        "p.name AS project_name, p.id AS project_id, "
+        "fd.name AS folder_name, fd.id AS folder_id "
+        "FROM tasks t "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+        "LEFT JOIN folders fd ON fd.id = COALESCE(t.folder_id, p.folder_id) "
+        "WHERE t.due_date IS NOT NULL "
+        "AND t.due_date < %s "
+        "AND t.completed_at IS NULL "
+        "AND t.deleted_at IS NULL "
+        "AND (t.project_id IS NULL OR p.archived = 0) "
+        "ORDER BY t.due_date ASC, t.id DESC",
+        (monday_d,)
+    )
+
     rows = q(
         "SELECT * FROM ("
         "SELECT t.id, t.title, t.notes, t.due_date, t.due_time, t.completed_at, t.recurrence_rule, t.priority, "
@@ -3140,13 +3156,14 @@ def week():
         (monday_d, sunday_d, monday_d, sunday_d)
     )
 
-    task_ids = [r["id"] for r in rows]
+    task_ids = [r["id"] for r in overdue_rows] + [r["id"] for r in rows]
     tags_map = load_tags_map(task_ids) if task_ids else {}
     sub_counts = load_subtask_counts(subdb, task_ids)
     sub_map = load_subtasks_map(subdb, task_ids)
 
     return render_template(
         "week.html",
+        overdue_rows=overdue_rows,
         rows=rows,
         tags_map=tags_map,
         today=today_d,
@@ -7351,231 +7368,6 @@ def admin_api_tokens():
 
 @app.route("/admin", methods=["GET", "POST"])
 def admin():
-    env_pwd_set = bool(os.environ.get("GTD_ADMIN_PASSWORD"))
-    if request.method == "POST":
-        action = request.form.get("action", "")
-        if action == "login":
-            supplied = request.form.get("password", "")
-            if env_pwd_set and supplied == os.environ.get("GTD_ADMIN_PASSWORD"):
-                session["is_admin"] = True
-                flash("Acceso admin concedido.", "ok")
-            else:
-                flash("Contraseña incorrecta o GTD_ADMIN_PASSWORD no definida.", "error")
-            return redirect(url_for("admin"))
-        elif action == "create_api_token":
-            user_id = 1  # Fijo para apps sin multiusuario
-            device_name = (request.form.get("device_name") or "").strip()[:100]
-            if not device_name:
-                flash("Faltan datos para crear el token.", "error")
-                return redirect(url_for("admin"))
-            token = create_api_token(user_id, device_name)
-            flash(f"Token generado para {device_name}: {token} (guárdalo, solo se muestra una vez)", "ok")
-            return redirect(url_for("admin"))
-        elif action == "revoke_api_token":
-            user_id = 1  # Fijo para apps sin multiusuario
-            token = (request.form.get("token") or "").strip()
-            if not token:
-                flash("Faltan datos para revocar el token.", "error")
-                return redirect(url_for("admin"))
-            row = q1("SELECT user_id FROM api_tokens WHERE token=%s", (token,))
-            if not row or row["user_id"] != user_id:
-                flash("No autorizado para revocar este token.", "error")
-                return redirect(url_for("admin"))
-            revoke_api_token(token)
-            flash("Token revocado correctamente.", "ok")
-            return redirect(url_for("admin"))
-        # ...otros actions existentes...
-    env_pwd_set = bool(os.environ.get("GTD_ADMIN_PASSWORD"))
-    if request.method == "POST":
-        action = request.form.get("action", "")
-        if action == "login":
-            supplied = request.form.get("password", "")
-            if env_pwd_set and supplied == os.environ.get("GTD_ADMIN_PASSWORD"):
-                session["is_admin"] = True
-                flash("Acceso admin concedido.", "ok")
-            else:
-                flash("Contraseña incorrecta o GTD_ADMIN_PASSWORD no definida.", "error")
-            return redirect(url_for("admin"))
-        elif action == "create_api_token":
-            user_id = session.get("user_id")
-            device_name = (request.form.get("device_name") or "").strip()[:100]
-            if not user_id or not device_name:
-                flash("Faltan datos para crear el token.", "error")
-                return redirect(url_for("admin"))
-            token = create_api_token(user_id, device_name)
-            flash(f"Token generado para {device_name}: <code>{token}</code> (guárdalo, solo se muestra una vez)", "ok")
-            return redirect(url_for("admin"))
-        elif action == "revoke_api_token":
-            user_id = session.get("user_id")
-            token = (request.form.get("token") or "").strip()
-            if not user_id or not token:
-                flash("Faltan datos para revocar el token.", "error")
-                return redirect(url_for("admin"))
-            row = q1("SELECT user_id FROM api_tokens WHERE token=%s", (token,))
-            if not row or row["user_id"] != user_id:
-                flash("No autorizado para revocar este token.", "error")
-                return redirect(url_for("admin"))
-            revoke_api_token(token)
-            flash("Token revocado correctamente.", "ok")
-            return redirect(url_for("admin"))
-        # ...otros actions existentes...
-    cfg = load_config()
-    env_pwd_set = bool(os.environ.get("GTD_ADMIN_PASSWORD", ""))
-    is_admin = session.get("is_admin", False)
-    user_id = 1  # Fijo para apps sin multiusuario
-    api_tokens = []
-    if user_id:
-        api_tokens = q(
-            "SELECT id, device_name, token, created_at, last_used_at, active FROM api_tokens WHERE user_id=%s ORDER BY created_at DESC",
-            (user_id,)
-        )
-        for t in api_tokens:
-            t["token_prefix"] = t["token"][:6]
-
-    # Cargar datos adicionales requeridos por la plantilla
-    trash_counts = _load_trash_view_data(task_page=1, project_page=1)["trash_counts"]
-    archive_counts_row = q1(
-        "SELECT "
-        "(SELECT COUNT(*) FROM tasks WHERE archived=1 AND deleted_at IS NULL) AS tasks, "
-        "(SELECT COUNT(*) FROM projects WHERE archived=1 AND deleted_at IS NULL) AS projects"
-    )
-    archive_counts = {"tasks": 0, "projects": 0}
-    if archive_counts_row:
-        archive_counts = {
-            "tasks": int(archive_counts_row.get("tasks") or 0),
-            "projects": int(archive_counts_row.get("projects") or 0),
-        }
-    calendar_sync_stats = {"pending_push": 0, "pending_delete": 0, "conflict": 0, "error": 0}
-    stats_rows = q(
-        "SELECT calendar_sync_state, COUNT(*) AS c "
-        "FROM tasks "
-        "WHERE calendar_sync_state IN ('pending_push','pending_delete','conflict','error') "
-        "GROUP BY calendar_sync_state"
-    )
-    for r in stats_rows:
-        st = r.get("calendar_sync_state")
-        if st in calendar_sync_stats:
-            calendar_sync_stats[st] = int(r.get("c") or 0)
-    backups = list_backups()
-    archive_task_backups = list_archive_task_backups()
-    archive_orphans_preview = []  # Si tienes lógica para esto, recupérala aquí
-    google_token_status = "unknown"
-    google_token_expiry = None
-    # Si tienes lógica para Google token, recupérala aquí
-    calendar_sync_last_info = session.pop("calendar_sync_last_info", None)
-    calendar_sync_last_level = session.pop("calendar_sync_last_level", "ok")
-
-    if request.method == "POST":
-        action = request.form.get("action", "")
-        if action == "login":
-            supplied = request.form.get("password", "")
-            if env_pwd_set and supplied == os.environ.get("GTD_ADMIN_PASSWORD"):
-                session["is_admin"] = True
-                flash("Acceso admin concedido.", "ok")
-            else:
-                flash("Contraseña incorrecta o GTD_ADMIN_PASSWORD no definida.", "error")
-            return redirect(url_for("admin"))
-        # ...existing POST actions...
-
-    return render_template(
-        "admin.html",
-        cfg=cfg,
-        env_pwd_set=env_pwd_set,
-        is_admin=is_admin,
-        api_tokens=api_tokens,
-        trash_counts=trash_counts,
-        archive_counts=archive_counts,
-        calendar_sync_stats=calendar_sync_stats,
-        backups=backups,
-        archive_task_backups=archive_task_backups,
-        archive_orphans_preview=archive_orphans_preview,
-        google_token_status=google_token_status,
-        google_token_expiry=google_token_expiry,
-        calendar_sync_last_info=calendar_sync_last_info,
-        calendar_sync_last_level=calendar_sync_last_level,
-    )
-    cfg = load_config()
-    env_pwd_set = bool(os.environ.get("GTD_ADMIN_PASSWORD", ""))
-    is_admin = session.get("is_admin", False)
-    user_id = session.get("user_id")
-    api_tokens = []
-    if user_id:
-        api_tokens = q(
-            "SELECT id, device_name, token, created_at, last_used_at, active FROM api_tokens WHERE user_id=%s ORDER BY created_at DESC",
-            (user_id,)
-        )
-        for t in api_tokens:
-            t["token_prefix"] = t["token"][:6]
-
-    if request.method == "POST":
-        action = request.form.get("action", "")
-        if action == "login":
-            supplied = request.form.get("password", "")
-            if env_pwd_set and supplied == os.environ.get("GTD_ADMIN_PASSWORD"):
-                session["is_admin"] = True
-                flash("Acceso admin concedido.", "ok")
-            else:
-                flash("Contraseña incorrecta o GTD_ADMIN_PASSWORD no definida.", "error")
-            return redirect(url_for("admin"))
-        # ...existing POST actions...
-
-    return render_template(
-        "admin.html",
-        cfg=cfg,
-        env_pwd_set=env_pwd_set,
-        is_admin=is_admin,
-        api_tokens=api_tokens,
-        # ...otros contextos necesarios...
-    )
-    env_pwd_set = bool(os.environ.get("GTD_ADMIN_PASSWORD", ""))
-    is_admin = session.get("is_admin", False)
-    user_id = session.get("user_id")
-    api_tokens = []
-    if user_id:
-        api_tokens = q(
-            "SELECT id, device_name, token, created_at, last_used_at, active FROM api_tokens WHERE user_id=%s ORDER BY created_at DESC",
-            (user_id,)
-        )
-        for t in api_tokens:
-            t["token_prefix"] = t["token"][:6]
-
-    if request.method == "POST":
-        action = request.form.get("action", "")
-        if action == "login":
-            supplied = request.form.get("password", "")
-            if env_pwd_set and supplied == os.environ.get("GTD_ADMIN_PASSWORD"):
-                session["is_admin"] = True
-                flash("Acceso admin concedido.", "ok")
-            else:
-                flash("Contraseña incorrecta o GTD_ADMIN_PASSWORD no definida.", "error")
-            return redirect(url_for("admin"))
-        # ...existing POST actions...
-
-    return render_template(
-        "admin.html",
-        env_pwd_set=env_pwd_set,
-        is_admin=is_admin,
-        api_tokens=api_tokens,
-        # ...otros contextos necesarios...
-    )
-    # ...existing code...
-    # Al final del bloque de autenticación y carga de datos:
-    user_id = session.get("user_id")
-    api_tokens = []
-    if user_id:
-        api_tokens = q(
-            "SELECT id, device_name, token, created_at, last_used_at, active FROM api_tokens WHERE user_id=%s ORDER BY created_at DESC",
-            (user_id,)
-        )
-        for t in api_tokens:
-            t["token_prefix"] = t["token"][:6]
-    # ...existing code...
-    return render_template(
-        "admin.html",
-        # ...existing context...
-        api_tokens=api_tokens,
-        # ...existing context...
-    )
     env_pwd_set = bool(os.environ.get("GTD_ADMIN_PASSWORD", ""))
 
     if request.method == "POST":

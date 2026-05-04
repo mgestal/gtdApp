@@ -110,12 +110,161 @@
 </style>
 
 {% set dias = ['lunes','martes','miércoles','jueves','viernes','sábado','domingo'] %}
+{% set overdue_rows = overdue_rows if overdue_rows is defined else [] %}
 
 <div class="page-title">
   <h1>Esta semana</h1>
   <p class="subtitle">
     Tareas desde {{ monday.strftime('%d-%m-%Y') }} hasta {{ sunday.strftime('%d-%m-%Y') }}.
   </p>
+</div>
+
+<div class="card" style="margin-bottom:12px;">
+  <div class="card-header">
+    <div class="card-title">Vencidas</div>
+    <div class="muted">{{ overdue_rows|length }}</div>
+  </div>
+
+  {% if overdue_rows and overdue_rows|length > 0 %}
+    <div class="table-wrap-responsive week-table-wrap">
+      <table class="table week-table">
+        <thead>
+          <tr>
+            <th style="width:58px;"></th>
+            <th>Tarea</th>
+            <th style="width:110px;">Fecha</th>
+            <th style="width:180px;">Ubicación</th>
+            <th style="width:95px;"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in overdue_rows %}
+            <tr>
+              <td>
+                <div class="week-check-wrap">
+                  {% if t.priority in [1, 2, 3] %}
+                    <span class="week-priority-bar week-priority-{{ t.priority }}" aria-hidden="true"></span>
+                  {% endif %}
+                  <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}">
+                    <input type="hidden" name="next" value="{{ url_for('week') }}">
+                    <button class="radio" aria-label="toggle" title="Marcar / desmarcar"></button>
+                  </form>
+                </div>
+              </td>
+
+              <td>
+                <div class="task-title-row" style="font-weight:600;">
+                  <span class="task-title-text">{{ t.title | linkify_title }}</span>
+                  {% if t.notes %}
+                    <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('week')) }}"
+                       title="{{ t.notes }}"
+                       style="text-decoration:none; font-size:0.9rem; opacity:.75;">
+                       📝
+                    </a>
+                  {% endif %}
+                </div>
+
+                <div class="task-tags" style="font-size:0.8rem; opacity:0.8;">
+                  {% if t.recurrence_rule %}
+                    <a class="pill taglink" style="font-size:0.75rem;" href="{{ url_for('task_periodic_history', task_id=t.id, next=request.full_path) }}">⟲ periódica</a>
+                  {% endif %}
+                  {% for tag in tags_map.get(t.id, []) %}
+                    <a class="tagchip taglink" href="{{ url_for('tag_detail', tag_id=tag.id) }}" style="margin-right:5px;">@{{ tag.name }}</a>
+                  {% endfor %}
+                </div>
+
+                <div class="week-mobile-meta">
+                  {% if t.due_date %}
+                    {% if t.due_date.strftime is defined %}
+                      {{ t.due_date.strftime('%d-%m-%Y') }}
+                    {% else %}
+                      {% set ds_overdue_m = t.due_date|string %}
+                      {{ ds_overdue_m[8:10] }}-{{ ds_overdue_m[5:7] }}-{{ ds_overdue_m[0:4] if ds_overdue_m|length >= 10 else ds_overdue_m }}
+                    {% endif %}
+                  {% else %}
+                    —
+                  {% endif %}
+                  {% if t.due_time %}
+                    ·
+                    {% if t.due_time.strftime is defined %}
+                      {{ t.due_time.strftime('%H:%M') }}
+                    {% else %}
+                      {% set ts_overdue_m = t.due_time|string %}
+                      {{ ts_overdue_m[:5] if ts_overdue_m|length >= 5 else '—' }}
+                    {% endif %}
+                  {% endif %}
+                  ·
+                  {% if t.folder_name %}
+                    <a href="{{ url_for('folder_detail', folder_id=t.folder_id) }}">📂 {{ t.folder_name }}</a>
+                  {% endif %}
+                  {% if t.folder_name and t.project_name %}
+                    ·
+                  {% endif %}
+                  {% if t.project_name %}
+                    <a href="{{ url_for('project_detail', project_id=t.project_id) }}">💼 {{ t.project_name }}</a>
+                  {% endif %}
+                  {% if not t.folder_name and not t.project_name %}
+                    Inbox
+                  {% endif %}
+                </div>
+              </td>
+
+              <td style="white-space:nowrap; font-size:13px; text-align:{{ 'right' if t.due_date else 'center' }};">
+                {% if t.due_date %}
+                  {% if t.due_date.strftime is defined %}
+                    {{ t.due_date.strftime('%d-%m-%Y') }}
+                  {% else %}
+                    {% set ds_overdue = t.due_date|string %}
+                    {{ ds_overdue[8:10] }}-{{ ds_overdue[5:7] }}-{{ ds_overdue[0:4] if ds_overdue|length >= 10 else ds_overdue }}
+                  {% endif %}
+                {% else %}
+                  <span class="muted">—</span>
+                {% endif %}
+                {% if t.due_time %}
+                  <div class="muted" style="font-size:12px; margin-top:2px;">
+                    {% if t.due_time.strftime is defined %}
+                      {{ t.due_time.strftime('%H:%M') }}
+                    {% else %}
+                      {% set ts_overdue = t.due_time|string %}
+                      {{ ts_overdue[:5] if ts_overdue|length >= 5 else '—' }}
+                    {% endif %}
+                  </div>
+                {% endif %}
+              </td>
+
+              <td style="font-size:0.8rem;">
+                {% if t.folder_name %}
+                  <a href="{{ url_for('folder_detail', folder_id=t.folder_id) }}">📂 {{ t.folder_name }}</a>
+                {% endif %}
+
+                {% if t.folder_name and t.project_name %}
+                  <span class="muted"> · </span>
+                {% endif %}
+
+                {% if t.project_name %}
+                  <a href="{{ url_for('project_detail', project_id=t.project_id) }}">💼 {{ t.project_name }}</a>
+                {% endif %}
+
+                {% if not t.folder_name and not t.project_name %}
+                  <span class="muted">Inbox</span>
+                {% endif %}
+              </td>
+
+              <td class="actions" style="text-align:right;">
+                <a class="btn btn-soft" href="{{ url_for('task_edit', task_id=t.id, next=url_for('week')) }}">✎</a>
+                <form method="post" action="{{ url_for('task_delete', task_id=t.id) }}" style="display:inline;">
+                  <input type="hidden" name="next" value="{{ url_for('week') }}">
+                  <button class="btn btn-soft" onclick="return confirm('¿Borrar esta tarea?');">🗑</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="empty">No hay tareas vencidas anteriores a esta semana.</div>
+  {% endif %}
 </div>
 
 {% if rows and rows|length > 0 %}

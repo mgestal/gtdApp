@@ -29,6 +29,32 @@
       overflow-x: hidden;
     }
 
+    /* Tooltip del icono de promoción automática */
+    .next-promote-icon {
+      cursor: default;
+      position: relative;
+      display: inline-block;
+    }
+    .next-promote-icon::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      top: 125%;
+      left: 0;
+      transform: none;
+      background: rgba(40,40,40,.88);
+      color: #fff;
+      padding: 4px 9px;
+      border-radius: 5px;
+      white-space: nowrap;
+      font-size: 12px;
+      font-weight: normal;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity .15s;
+      z-index: 100;
+    }
+    .next-promote-icon:hover::after { opacity: 1; }
+
     .project-check-wrap {
       display: flex;
       align-items: center;
@@ -80,6 +106,10 @@
     @media (max-width: 768px) {
       .project-detail-page .card {
         overflow: hidden;
+      }
+
+      .project-detail-page .card-header {
+        overflow: visible;
       }
 
       .project-quick-add {
@@ -204,9 +234,12 @@
 
   <div class="card">
     <div class="card-header">
-      <div class="card-title">Tareas del proyecto</div>
-      <div title="{% if promote_effective %}Promoción automática de NextAction activada{% else %}Promoción automática de NextAction desactivada{% endif %}"
-           style="font-size:18px; {% if not promote_effective %}opacity:0.25; filter:grayscale(1);{% endif %}">⚡</div>
+      <div class="card-title">
+        <span class="next-promote-icon"
+              data-tooltip="{% if promote_effective %}Promoción automática de NextAction activada{% else %}Promoción automática de NextAction desactivada{% endif %}"
+              style="{% if not promote_effective %}opacity:0.25; filter:grayscale(1);{% endif %}">⚡</span>
+        Tareas del proyecto
+      </div>
     </div>
     {% if active_tasks and active_tasks|length > 0 %}
       <div class="table-wrap-responsive folder-table-wrap">

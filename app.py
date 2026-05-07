@@ -3457,10 +3457,10 @@ def project_detail(project_id: int):
     folder_breadcrumb = build_folder_breadcrumb(project.get("folder_id"), include_self=True)
 
     active_tasks = q(
-        "SELECT id, title, notes, due_date, due_time, completed_at, recurrence_rule, priority "
+        "SELECT id, title, notes, due_date, due_time, completed_at, recurrence_rule, priority, sort_order "
         "FROM tasks "
         "WHERE project_id=%s AND completed_at IS NULL AND archived=0 AND deleted_at IS NULL "
-        "ORDER BY (due_date IS NULL) ASC, due_date ASC, id",
+        "ORDER BY COALESCE(sort_order, 2147483647) ASC, id ASC",
         (project_id,),
     )
 
@@ -4725,8 +4725,17 @@ def task_create():
                     )
 
         task_id = exec_sql(
-            "INSERT INTO tasks(title, project_id, folder_id, due_date, due_time, recurrence_rule, priority) VALUES(%s,%s,%s,%s,%s,%s,%s)",
-            (title, project_id, folder_id, due_date, due_time, recurrence, priority),
+            "INSERT INTO tasks(title, project_id, folder_id, due_date, due_time, recurrence_rule, priority, sort_order) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)",
+            (
+                title,
+                project_id,
+                folder_id,
+                due_date,
+                due_time,
+                recurrence,
+                priority,
+                next_project_task_sort_order(project_id) if project_id else None,
+            ),
         )
 
         for t in tags:
@@ -4843,8 +4852,16 @@ def task_quick_add():
         #    - si hay project_id => la tarea va al proyecto
         #    - si no hay project_id => va a la carpeta (si existe)
         task_id = exec_sql(
-            "INSERT INTO tasks(title, project_id, folder_id, due_date, due_time, priority) VALUES(%s,%s,%s,%s,%s,%s)",
-            (title, project_id, folder_id, due_date, due_time, priority),
+            "INSERT INTO tasks(title, project_id, folder_id, due_date, due_time, priority, sort_order) VALUES(%s,%s,%s,%s,%s,%s,%s)",
+            (
+                title,
+                project_id,
+                folder_id,
+                due_date,
+                due_time,
+                priority,
+                next_project_task_sort_order(project_id) if project_id else None,
+            ),
         )
 
         # 3) Etiquetas
@@ -5202,7 +5219,7 @@ def task_toggle(task_id: int):
                         "AND archived=0 "
                         "AND completed_at IS NULL "
                         "AND id<>%s "
-                        "ORDER BY (due_date IS NULL) ASC, due_date ASC, id ASC "
+                        "ORDER BY (sort_order IS NULL) ASC, sort_order ASC, (due_date IS NULL) ASC, due_date ASC, id ASC "
                         "LIMIT 1",
                         (task["project_id"], task_id),
                     )
@@ -7313,6 +7330,23 @@ def admin_required() -> bool:
     return session.get("is_admin") is True
 
 
+def get_api_token_owner_user_id() -> int:
+    user_id = session.get("user_id")
+    try:
+        return int(user_id) if user_id is not None else 1
+    except (TypeError, ValueError):
+        return 1
+
+
+def next_project_task_sort_order(project_id: int) -> int:
+    row = q1(
+        "SELECT COALESCE(MAX(sort_order), 0) + 1 AS next_order "
+        "FROM tasks WHERE project_id=%s AND deleted_at IS NULL",
+        (project_id,),
+    )
+    return int((row or {}).get("next_order") or 1)
+
+
 @app.route("/trash", methods=["GET", "POST"])
 def trash_view():
     if not admin_required():
@@ -7381,9 +7415,9 @@ def calendar_sync_view():
 # --- Card de gestión de tokens API para extensiones ---
 @app.route("/admin/api_tokens", methods=["GET"])
 def admin_api_tokens():
-    user_id = session.get("user_id")
-    if not user_id:
+    if not admin_required():
         return redirect(url_for("admin"))
+    user_id = get_api_token_owner_user_id()
     tokens = q(
         "SELECT id, device_name, token, created_at, last_used_at, active FROM api_tokens WHERE user_id=%s ORDER BY created_at DESC",
         (user_id,)
@@ -7396,6 +7430,7 @@ def admin_api_tokens():
 @app.route("/admin", methods=["GET", "POST"])
 def admin():
     env_pwd_set = bool(os.environ.get("GTD_ADMIN_PASSWORD", ""))
+    api_tokens = []
 
     if request.method == "POST":
         action = request.form.get("action", "")
@@ -7454,6 +7489,39 @@ def admin():
 
         if not admin_required():
             flash("No autorizado.", "error")
+            return redirect(url_for("admin"))
+
+        if action == "create_api_token":
+            user_id = get_api_token_owner_user_id()
+            device_name = (request.form.get("device_name") or "").strip() or "Navegador"
+            try:
+                token = create_api_token(user_id, device_name)
+                flash(f"Token creado para {device_name}: {token}", "ok")
+            except Exception as e:
+                rollback()
+                flash(f"No se pudo crear el token: {e}", "error")
+            return redirect(url_for("admin"))
+
+        if action == "revoke_api_token":
+            token = (request.form.get("token") or "").strip()
+            if not token:
+                flash("Token inválido.", "error")
+                return redirect(url_for("admin"))
+
+            owned_token = q1(
+                "SELECT id FROM api_tokens WHERE token=%s AND user_id=%s",
+                (token, get_api_token_owner_user_id()),
+            )
+            if not owned_token:
+                flash("El token no existe o no pertenece al usuario actual.", "error")
+                return redirect(url_for("admin"))
+
+            try:
+                revoke_api_token(token)
+                flash("Token revocado.", "ok")
+            except Exception as e:
+                rollback()
+                flash(f"No se pudo revocar el token: {e}", "error")
             return redirect(url_for("admin"))
 
         if action == "save_config":
@@ -7837,6 +7905,13 @@ def admin():
 
     if admin_required():
         periodic_names = ("periodica", "periódica", "periodicas", "periódicas")
+        api_tokens = q(
+            "SELECT id, device_name, token, created_at, last_used_at, active FROM api_tokens WHERE user_id=%s ORDER BY created_at DESC",
+            (get_api_token_owner_user_id(),),
+        )
+        for token_row in api_tokens:
+            token_row["token_prefix"] = (token_row.get("token") or "")[:6]
+
         archive_orphans_preview = q(
             "SELECT t.id, t.title, t.completed_at, f.name AS folder_name "
             "FROM tasks t "
@@ -7889,6 +7964,7 @@ def admin():
         "admin.html",
         cfg=cfg,
         is_admin=admin_required(),
+        api_tokens=api_tokens,
         env_pwd_set=env_pwd_set,
         backups=list_backups(),
         archive_task_backups=list_archive_task_backups(),
@@ -9454,7 +9530,7 @@ def api_extension_task_toggle(task_id: int):
                         "AND archived=0 "
                         "AND completed_at IS NULL "
                         "AND id<>%s "
-                        "ORDER BY (due_date IS NULL) ASC, due_date ASC, id ASC "
+                        "ORDER BY (sort_order IS NULL) ASC, sort_order ASC, (due_date IS NULL) ASC, due_date ASC, id ASC "
                         "LIMIT 1",
                         (task["project_id"], task_id),
                     )
@@ -9621,7 +9697,10 @@ def api_task_move(task_id: int):
             )
             if not project:
                 return jsonify({"ok": False, "error": "Proyecto destino no válido"}), 400
-            exec_sql("UPDATE tasks SET project_id=%s, folder_id=NULL WHERE id=%s", (target_id, task_id))
+            exec_sql(
+                "UPDATE tasks SET project_id=%s, folder_id=NULL, sort_order=%s WHERE id=%s",
+                (target_id, next_project_task_sort_order(target_id), task_id),
+            )
             commit()
             return jsonify({"ok": True, "message": "Tarea movida a proyecto"})
 
@@ -9634,6 +9713,44 @@ def api_task_move(task_id: int):
             return jsonify({"ok": True, "message": "Tarea movida a carpeta"})
 
         return jsonify({"ok": False, "error": "Tipo de destino no soportado"}), 400
+    except Exception as e:
+        rollback()
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/projects/<int:project_id>/reorder_tasks", methods=["POST"])
+def api_project_reorder_tasks(project_id: int):
+    payload = request.get_json(silent=True) or {}
+    task_ids_raw = payload.get("task_ids")
+
+    if not isinstance(task_ids_raw, list) or not task_ids_raw:
+        return jsonify({"ok": False, "error": "Lista de tareas inválida"}), 400
+
+    try:
+        task_ids = [int(x) for x in task_ids_raw]
+    except Exception:
+        return jsonify({"ok": False, "error": "IDs de tarea inválidos"}), 400
+
+    project = q1("SELECT id FROM projects WHERE id=%s AND deleted_at IS NULL", (project_id,))
+    if not project:
+        return jsonify({"ok": False, "error": "Proyecto no encontrado"}), 404
+
+    rows = q(
+        "SELECT id FROM tasks "
+        "WHERE project_id=%s AND completed_at IS NULL AND archived=0 AND deleted_at IS NULL",
+        (project_id,),
+    )
+    expected_ids = {int(r["id"]) for r in rows}
+    received_ids = set(task_ids)
+
+    if expected_ids != received_ids:
+        return jsonify({"ok": False, "error": "La lista no coincide con las tareas activas del proyecto"}), 400
+
+    try:
+        for pos, tid in enumerate(task_ids, start=1):
+            exec_sql("UPDATE tasks SET sort_order=%s WHERE id=%s", (pos, tid))
+        commit()
+        return jsonify({"ok": True, "message": "Orden actualizado"})
     except Exception as e:
         rollback()
         return jsonify({"ok": False, "error": str(e)}), 500

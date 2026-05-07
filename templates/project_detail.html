@@ -103,6 +103,14 @@
       padding: 5px 8px;
     }
 
+    .project-sort-dragging {
+      opacity: 0.45;
+    }
+
+    .project-sort-row {
+      cursor: grab;
+    }
+
     @media (max-width: 768px) {
       .project-detail-page .card {
         overflow: hidden;
@@ -241,6 +249,7 @@
         Tareas del proyecto
       </div>
     </div>
+    <div class="hint" style="margin-bottom:8px;">Arrastra las tareas activas para definir el orden de ejecución y promoción automática de NextAction.</div>
     {% if active_tasks and active_tasks|length > 0 %}
       <div class="table-wrap-responsive folder-table-wrap">
       <table class="table">
@@ -252,9 +261,9 @@
             <th style="width:100px; text-align:right;">Acciones</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody id="projectActiveTasksBody">
         {% for t in active_tasks %}
-          <tr class="js-draggable-task folder-task-draggable" data-task-id="{{ t.id }}" draggable="true" title="Arrastra para mover tarea">
+          <tr class="js-draggable-task folder-task-draggable project-sort-row" data-task-id="{{ t.id }}" draggable="true" title="Arrastra para reordenar tarea">
             <td style="vertical-align:top; padding-top:6px;">
               <div class="folder-check-wrap">
                 {% if t.priority in [1, 2, 3] %}
@@ -504,5 +513,70 @@
       else { el.style.display='none'; icon.textContent='▸'; }
     }
     function startProjectImport(){ document.getElementById('importFile').click(); }
+
+    (function setupProjectTaskReorder(){
+      const tbody = document.getElementById('projectActiveTasksBody');
+      if (!tbody) return;
+
+      let dragRow = null;
+      let startOrder = "";
+
+      const getOrder = () =>
+        Array.from(tbody.querySelectorAll('tr[data-task-id]')).map((row) => Number(row.getAttribute('data-task-id'))).filter(Number.isFinite);
+
+      const saveOrder = async () => {
+        const taskIds = getOrder();
+        if (!taskIds.length) return;
+
+        try {
+          const resp = await fetch('{{ url_for("api_project_reorder_tasks", project_id=project.id) }}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ task_ids: taskIds })
+          });
+          const data = await resp.json();
+          if (!resp.ok || !data.ok) {
+            alert(data && data.error ? data.error : 'No se pudo guardar el orden de tareas.');
+          }
+        } catch (err) {
+          alert('No se pudo guardar el orden de tareas.');
+        }
+      };
+
+      Array.from(tbody.querySelectorAll('tr[data-task-id]')).forEach((row) => {
+        row.addEventListener('dragstart', (ev) => {
+          dragRow = row;
+          startOrder = getOrder().join(',');
+          row.classList.add('project-sort-dragging');
+          ev.dataTransfer.effectAllowed = 'move';
+          try { ev.dataTransfer.setData('text/plain', row.getAttribute('data-task-id') || ''); } catch (_) {}
+        });
+
+        row.addEventListener('dragend', async () => {
+          row.classList.remove('project-sort-dragging');
+          const endOrder = getOrder().join(',');
+          if (startOrder && endOrder && startOrder !== endOrder) {
+            await saveOrder();
+          }
+          dragRow = null;
+        });
+
+        row.addEventListener('dragover', (ev) => {
+          if (!dragRow || dragRow === row) return;
+          ev.preventDefault();
+          const rect = row.getBoundingClientRect();
+          const isAfter = (ev.clientY - rect.top) > rect.height / 2;
+          if (isAfter) {
+            row.after(dragRow);
+          } else {
+            row.before(dragRow);
+          }
+        });
+
+        row.addEventListener('drop', (ev) => {
+          ev.preventDefault();
+        });
+      });
+    })();
   </script>
 {% endblock %}

@@ -24,6 +24,8 @@ Aplicación personal de **Getting Things Done (GTD)** desarrollada en **Python +
 - Papelera para tareas y proyectos eliminados, con restauración y vaciado desde Admin
 - Archivar tareas realizadas desde el Inbox con un solo clic
 - Revisión semanal con bloque EnEspera separado en tareas etiquetadas y proyectos de la carpeta EnEspera
+- En el detalle de proyecto, el icono `⚡` del título "Tareas del proyecto" muestra por hover el estado de promoción automática de NextAction
+- En el detalle de proyecto, las tareas activas se pueden reordenar por arrastre; ese orden se usa para la promoción automática de NextAction
 - Creación rápida desde cualquier vista con sintaxis natural
 - Vistas: Inbox, Hoy, Esta semana, NextActions, Próximo, Calendario
 
@@ -230,6 +232,23 @@ SQL
 mysql -u gtd -p gtd < sql/esquema.sql
 ```
 
+Si estás actualizando una instalación existente (sin recrear la base de datos), aplica esta migración para habilitar el orden manual en proyectos:
+
+```sql
+ALTER TABLE tasks ADD COLUMN sort_order INT NULL DEFAULT NULL;
+ALTER TABLE tasks ADD KEY idx_tasks_project_sort (project_id, sort_order);
+
+UPDATE tasks t
+JOIN (
+  SELECT id,
+         ROW_NUMBER() OVER (PARTITION BY project_id ORDER BY (due_date IS NULL) ASC, due_date ASC, id ASC) AS rn
+  FROM tasks
+  WHERE project_id IS NOT NULL
+) x ON x.id=t.id
+SET t.sort_order=x.rn
+WHERE t.sort_order IS NULL;
+```
+
 ### 4. Configuración
 
 Crea `instance/config.json`:
@@ -421,6 +440,27 @@ python app.py
 ```
 
 Abre `http://localhost:5000`.
+
+---
+
+## SQLTools en VS Code (Remote/SSH)
+
+Si usas la extensión SQLTools conectándote por SSH al servidor, necesita runtime de Node.js en el host remoto.
+
+Síntoma habitual:
+
+- En SQLTools aparece "No connections found" y el botón "Add New Connection" no responde.
+- En la terminal de VS Code se ve `node: command not found` en la sesión `detect node runtime`.
+
+Solución:
+
+```bash
+sudo apt-get install -y --fix-missing nodejs
+sudo ln -sf "$(which nodejs)" /usr/local/bin/node
+node --version
+```
+
+Después, recarga la ventana de VS Code con `Developer: Reload Window`.
 
 ---
 

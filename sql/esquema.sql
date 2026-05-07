@@ -147,6 +147,7 @@ CREATE TABLE `projects` (
   `archived_at` datetime DEFAULT NULL,
   `deleted_at` datetime DEFAULT NULL,
   `deleted_prev_archived` tinyint(1) NOT NULL DEFAULT 0,
+  `auto_promote_nextaction` tinyint(1) DEFAULT NULL,
   `active_name` varchar(255) GENERATED ALWAYS AS (if(`archived` = 0,`name`,NULL)) STORED,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NULL DEFAULT NULL,

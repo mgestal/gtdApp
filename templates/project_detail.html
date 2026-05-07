@@ -203,7 +203,11 @@
 
 
   <div class="card">
-    <div class="card-header"><div class="card-title">Tareas del proyecto</div></div>
+    <div class="card-header">
+      <div class="card-title">Tareas del proyecto</div>
+      <div title="{% if promote_effective %}Promoción automática de NextAction activada{% else %}Promoción automática de NextAction desactivada{% endif %}"
+           style="font-size:18px; {% if not promote_effective %}opacity:0.25; filter:grayscale(1);{% endif %}">⚡</div>
+    </div>
     {% if active_tasks and active_tasks|length > 0 %}
       <div class="table-wrap-responsive folder-table-wrap">
       <table class="table">

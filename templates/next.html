@@ -51,6 +51,25 @@
       white-space: nowrap;
     }
 
+    .next-actions-cell.actions {
+      flex-wrap: nowrap;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px;
+    }
+
+    .next-actions-cell.actions form {
+      display: inline-flex;
+      margin: 0;
+    }
+
+    .next-actions-cell .btn {
+      min-width: 36px;
+      height: 36px;
+      padding: 6px 8px;
+      line-height: 1;
+    }
+
     .pager-label-short {
       display: none;
     }
@@ -169,7 +188,7 @@
 
           <td>
             <div style="font-weight:600; display:flex; align-items:center; gap:6px;">
-              {{ t.title }}
+              {{ t.title | linkify_title }}
 
               {% if t.notes %}
                 <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('next_actions', page=page)) }}"

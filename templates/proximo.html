@@ -29,6 +29,25 @@
       white-space: nowrap;
     }
 
+    .proximo-actions-cell.actions {
+      flex-wrap: nowrap;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px;
+    }
+
+    .proximo-actions-cell.actions form {
+      display: inline-flex;
+      margin: 0;
+    }
+
+    .proximo-actions-cell .btn {
+      min-width: 36px;
+      height: 36px;
+      padding: 6px 8px;
+      line-height: 1;
+    }
+
     .proximo-overdue-date {
       color: #b91c1c;
       font-weight: 700;
@@ -44,8 +63,14 @@
       padding-left: 18px;
     }
 
+
     .pager-label-short {
       display: none;
+    }
+
+    .proximo-table {
+      table-layout: fixed;
+      width: 100%;
     }
 
     @media (max-width: 980px) {
@@ -154,14 +179,14 @@
   <div class="card proximo-card">
     {% if rows and rows|length > 0 %}
       <div class="proximo-table-wrap">
-      <table class="table">
+      <table class="table proximo-table">
         <thead>
           <tr>
             <th style="width:58px;"></th>
             <th>Tarea</th>
-            <th style="width:100px;">Fecha</th>
+            <th style="width:90px;">Fecha</th>
             <th style="width:160px;">Ubicación</th>
-            <th style="width:95px;"></th> {# Espacio de acciones reducido #}
+            <th style="width:95px;"></th>
           </tr>
         </thead>
         <tbody>
@@ -184,7 +209,7 @@
 
             <td>
 				<div style="font-weight:600; display:flex; align-items:center; gap:6px;">
-				  {{ t.title }}
+				  {{ t.title | linkify_title }}
 
 				  {% if t.notes %}
           <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('proximo', page=page)) }}"
@@ -309,9 +334,9 @@
             </td>
 
             <td class="actions proximo-actions-cell" style="text-align: right;">
-              <a class="btn btn-soft" href="{{ url_for('task_edit', task_id=t.id, next=url_for('proximo', page=page)) }}"> ✎ </a>
+              <a class="btn btn-soft" href="{{ url_for('task_edit', task_id=t.id, next=url_for('proximo', page=page)) }}">✎</a>
               <form method="post" action="{{ url_for('task_delete', task_id=t.id) }}" style="display:inline;">
-                <button class="btn btn-soft" onclick="return confirm('¿Borrar esta tarea?');"> 🗑 </button>
+                <button class="btn btn-soft" onclick="return confirm('¿Borrar esta tarea?');">🗑</button>
               </form>
             </td>
           </tr>

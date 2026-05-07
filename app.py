@@ -3450,7 +3450,7 @@ def projects():
 
 @app.route("/projects/<int:project_id>")
 def project_detail(project_id: int):
-    project = q1("SELECT id, name, description, archived, archived_at, folder_id FROM projects WHERE id=%s", (project_id,))
+    project = q1("SELECT id, name, description, archived, archived_at, folder_id, auto_promote_nextaction FROM projects WHERE id=%s", (project_id,))
     if not project:
         abort(404)
 
@@ -3478,6 +3478,16 @@ def project_detail(project_id: int):
     sub_counts = load_subtask_counts(subdb, all_ids)
     sub_map = load_subtasks_map(subdb, all_ids)
 
+    # Valor efectivo del auto-promote: override de proyecto si está definido, si no el global
+    proj_override = project.get("auto_promote_nextaction")
+    if proj_override is not None:
+        promote_effective = bool(proj_override)
+    else:
+        promote_effective = cfg_bool(
+            ["app", "behavior", "promote_nextaction_on_complete"],
+            default=True,
+        )
+
     return render_template(
         "project_detail.html",
         project=project,
@@ -3485,13 +3495,14 @@ def project_detail(project_id: int):
         active_tasks=active_tasks,
         done_tasks=done_tasks,
         tags_map=tags_map,
-        sub_counts=sub_counts, sub_map=sub_map
+        sub_counts=sub_counts, sub_map=sub_map,
+        promote_effective=promote_effective,
     )
 
 
 @app.route("/projects/<int:project_id>/edit", methods=["GET", "POST"])
 def project_edit(project_id: int):
-    proj = q1("SELECT id, name, description, folder_id, archived FROM projects WHERE id=%s", (project_id,))
+    proj = q1("SELECT id, name, description, folder_id, archived, auto_promote_nextaction FROM projects WHERE id=%s", (project_id,))
     if not proj:
         abort(404)
 
@@ -3502,6 +3513,9 @@ def project_edit(project_id: int):
         desc = (request.form.get("description") or "").strip() or None
         folder_raw = request.form.get("folder_id") or ""
         folder_id = int(folder_raw) if folder_raw else None
+        # El checkbox envía "1" si está marcado, nada si no → guardar explícitamente 1 o 0
+        auto_promote_raw = request.form.get("auto_promote_nextaction")
+        auto_promote = 1 if auto_promote_raw == "1" else 0
 
         if not name:
             flash("El nombre del proyecto es obligatorio.", "error")
@@ -3509,8 +3523,8 @@ def project_edit(project_id: int):
 
         try:
             exec_sql(
-                "UPDATE projects SET name=%s, description=%s, folder_id=%s, updated_at=NOW() WHERE id=%s",
-                (name, desc, folder_id, project_id),
+                "UPDATE projects SET name=%s, description=%s, folder_id=%s, auto_promote_nextaction=%s, updated_at=NOW() WHERE id=%s",
+                (name, desc, folder_id, auto_promote, project_id),
             )
             commit()
             flash("Proyecto actualizado.", "ok")
@@ -3521,7 +3535,12 @@ def project_edit(project_id: int):
             flash(f"No se pudo actualizar el proyecto: {e}", "error")
             return redirect(url_for("project_edit", project_id=project_id))
 
-    return render_template("project_edit.html", project=proj, folders=folders)
+    # Calcular el valor por defecto global para mostrar en el formulario
+    global_promote_default = cfg_bool(
+        ["app", "behavior", "promote_nextaction_on_complete"],
+        default=True,
+    )
+    return render_template("project_edit.html", project=proj, folders=folders, global_promote_default=global_promote_default)
 
 
 import uuid
@@ -5166,6 +5185,14 @@ def task_toggle(task_id: int):
                     ["app", "behavior", "promote_nextaction_on_complete"],
                     default=True,
                 )
+                # Override a nivel de proyecto (si está definido) tiene prioridad sobre el global
+                if has_nextaction and task.get("project_id"):
+                    _proj_promo = q1(
+                        "SELECT auto_promote_nextaction FROM projects WHERE id=%s",
+                        (task["project_id"],),
+                    )
+                    if _proj_promo and _proj_promo.get("auto_promote_nextaction") is not None:
+                        promote_nextaction = bool(_proj_promo["auto_promote_nextaction"])
 
                 if promote_nextaction and has_nextaction and task.get("project_id"):
                     next_task = q1(
@@ -8894,8 +8921,11 @@ def review():
     seguimiento_params = ()
     if seguimiento_ids:
         placeholders = ",".join(["%s"] * len(seguimiento_ids))
-        seguimiento_clause = f"AND (p.folder_id IS NULL OR p.folder_id NOT IN ({placeholders})) "
-        seguimiento_params = tuple(seguimiento_ids)
+        seguimiento_clause = (
+            f"AND (t.folder_id IS NULL OR t.folder_id NOT IN ({placeholders})) "
+            f"AND (p.folder_id IS NULL OR p.folder_id NOT IN ({placeholders})) "
+        )
+        seguimiento_params = tuple(seguimiento_ids) + tuple(seguimiento_ids)
     en_espera_tasks = q(
         "SELECT t.id, t.title, t.due_date, t.notes, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
@@ -9407,6 +9437,14 @@ def api_extension_task_toggle(task_id: int):
                     ["app", "behavior", "promote_nextaction_on_complete"],
                     default=True,
                 )
+                # Override a nivel de proyecto (si está definido) tiene prioridad sobre el global
+                if has_nextaction and task.get("project_id"):
+                    _proj_promo = q1(
+                        "SELECT auto_promote_nextaction FROM projects WHERE id=%s",
+                        (task["project_id"],),
+                    )
+                    if _proj_promo and _proj_promo.get("auto_promote_nextaction") is not None:
+                        promote_nextaction = bool(_proj_promo["auto_promote_nextaction"])
 
                 if promote_nextaction and has_nextaction and task.get("project_id"):
                     next_task = q1(

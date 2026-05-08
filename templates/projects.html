@@ -3,6 +3,9 @@
   <div class="page-title">
     <h1>Proyectos 💼</h1>
     <p class="subtitle">Crear, mover de carpeta, archivar y desarchivar.</p>
+    {% if status == 'active' and scope == 'dashboard_active' %}
+      <p class="muted" style="margin-top:6px;">Vista del KPI Dashboard: excluye Rutinas, Agenda, Sometime, ADTV y Seguimiento (incluye subcarpetas).</p>
+    {% endif %}
   </div>
 
   <div class="grid2" style="margin-bottom:12px;">
@@ -36,6 +39,7 @@
       <div class="card" style="padding:10px 14px;">
         <form method="get" action="{{ url_for('projects') }}" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:0;">
           <input type="hidden" name="status" value="{{ status }}">
+          <input type="hidden" name="scope" value="{{ scope or '' }}">
           <label class="label" style="margin:0; white-space:nowrap; font-size:13px;">🔍 Buscar</label>
           <input
             class="input"
@@ -47,7 +51,7 @@
           >
           <button class="btn btn-primary" type="submit" style="white-space:nowrap;">Buscar</button>
           {% if qtxt %}
-            <a class="btn btn-soft" href="{{ url_for('projects', status=status) }}" style="white-space:nowrap;">Limpiar</a>
+            <a class="btn btn-soft" href="{{ url_for('projects', status=status, scope=scope or None) }}" style="white-space:nowrap;">Limpiar</a>
           {% endif %}
         </form>
       </div>
@@ -55,12 +59,12 @@
       <!-- Tabs Activos / Archivados -->
       <div style="display:flex; gap:8px;">
         <a class="btn {{ 'btn-primary' if status == 'active' else 'btn-soft' }}"
-           href="{{ url_for('projects', status='active', q=qtxt or None) }}"
+            href="{{ url_for('projects', status='active', q=qtxt or None, scope=scope or None) }}"
            style="flex:1; justify-content:center;">
           Activos
         </a>
         <a class="btn {{ 'btn-primary' if status == 'archived' else 'btn-soft' }}"
-           href="{{ url_for('projects', status='archived', q=qtxt or None) }}"
+            href="{{ url_for('projects', status='archived', q=qtxt or None, scope=scope or None) }}"
            style="flex:1; justify-content:center;">
           Archivados
         </a>
@@ -77,15 +81,15 @@
     </div>
     <div style="display:flex; gap:8px; flex-wrap:wrap;">
       {% if page > 1 %}
-        <a class="btn btn-soft" href="{{ url_for('projects', q=qtxt, status=status, page=1) }}">« Primera</a>
-        <a class="btn btn-soft" href="{{ url_for('projects', q=qtxt, status=status, page=page-1) }}">‹ Anterior</a>
+        <a class="btn btn-soft" href="{{ url_for('projects', q=qtxt, status=status, scope=scope or None, page=1) }}">« Primera</a>
+        <a class="btn btn-soft" href="{{ url_for('projects', q=qtxt, status=status, scope=scope or None, page=page-1) }}">‹ Anterior</a>
       {% else %}
         <span class="btn btn-soft disabled">« Primera</span>
         <span class="btn btn-soft disabled">‹ Anterior</span>
       {% endif %}
       {% if page < pages %}
-        <a class="btn btn-soft" href="{{ url_for('projects', q=qtxt, status=status, page=page+1) }}">Siguiente ›</a>
-        <a class="btn btn-soft" href="{{ url_for('projects', q=qtxt, status=status, page=pages) }}">Última »</a>
+        <a class="btn btn-soft" href="{{ url_for('projects', q=qtxt, status=status, scope=scope or None, page=page+1) }}">Siguiente ›</a>
+        <a class="btn btn-soft" href="{{ url_for('projects', q=qtxt, status=status, scope=scope or None, page=pages) }}">Última »</a>
       {% else %}
         <span class="btn btn-soft disabled">Siguiente ›</span>
         <span class="btn btn-soft disabled">Última »</span>
@@ -165,10 +169,10 @@
     <div class="muted">Página {{ page }} de {{ pages }}</div>
     <div style="display:flex; gap:8px;">
       {% if page > 1 %}
-        <a class="btn btn-soft" href="{{ url_for('projects', q=qtxt, status=status, page=page-1) }}">‹ Anterior</a>
+        <a class="btn btn-soft" href="{{ url_for('projects', q=qtxt, status=status, scope=scope or None, page=page-1) }}">‹ Anterior</a>
       {% endif %}
       {% if page < pages %}
-        <a class="btn btn-soft" href="{{ url_for('projects', q=qtxt, status=status, page=page+1) }}">Siguiente ›</a>
+        <a class="btn btn-soft" href="{{ url_for('projects', q=qtxt, status=status, scope=scope or None, page=page+1) }}">Siguiente ›</a>
       {% endif %}
     </div>
   </div>

@@ -3380,6 +3380,7 @@ def calendar_view():
 def projects():
     qtxt = (request.args.get("q") or "").strip()
     status = (request.args.get("status") or "active").strip().lower()
+    scope = (request.args.get("scope") or "").strip().lower()
 
     if status not in ("active", "archived"):
         status = "active"
@@ -3405,6 +3406,32 @@ def projects():
         where_parts.append("p.archived=1")
     else:
         where_parts.append("p.archived=0")
+
+    # Scope opcional usado por el KPI del dashboard: excluye ciertos árboles de carpetas.
+    if status == "active" and scope == "dashboard_active":
+        excluded_root_names = {"rutinas", "agenda", "sometime", "adtv", "seguimiento"}
+        folder_rows = q("SELECT id, parent_id, name FROM folders")
+        children_by_parent: Dict[Optional[int], List[int]] = {}
+        excluded_folder_ids: set[int] = set()
+
+        for fr in folder_rows:
+            parent_id = fr.get("parent_id")
+            children_by_parent.setdefault(parent_id, []).append(int(fr["id"]))
+            if normalize_tag_key(fr.get("name") or "") in excluded_root_names:
+                excluded_folder_ids.add(int(fr["id"]))
+
+        stack = list(excluded_folder_ids)
+        while stack:
+            fid = stack.pop()
+            for ch_id in children_by_parent.get(fid, []):
+                if ch_id not in excluded_folder_ids:
+                    excluded_folder_ids.add(ch_id)
+                    stack.append(ch_id)
+
+        if excluded_folder_ids:
+            placeholders = ",".join(["%s"] * len(excluded_folder_ids))
+            where_parts.append(f"(p.folder_id IS NULL OR p.folder_id NOT IN ({placeholders}))")
+            params.extend(sorted(excluded_folder_ids))
 
     where_sql = ""
     if where_parts:
@@ -3442,6 +3469,7 @@ def projects():
         folders=folders,
         qtxt=qtxt,
         status=status,
+        scope=scope,
         page=page,
         pages=pages,
         total=total,
@@ -4069,8 +4097,8 @@ def dashboard():
     trash_tasks = q1("SELECT COUNT(*) AS c FROM tasks WHERE deleted_at IS NOT NULL")["c"]
     archived_tasks_cnt = q1("SELECT COUNT(*) AS c FROM tasks WHERE archived=1 AND deleted_at IS NULL")["c"]
 
-    # Proyectos activos excluyendo las carpetas Rutinas/Agenda/Sometime y sus subdirectorios.
-    excluded_root_names = {"rutinas", "agenda", "sometime"}
+    # Proyectos activos excluyendo las carpetas Rutinas/Agenda/Sometime/ADTV/Seguimiento y sus subdirectorios.
+    excluded_root_names = {"rutinas", "agenda", "sometime", "adtv", "seguimiento"}
     folder_rows = q("SELECT id, parent_id, name FROM folders")
     children_by_parent: Dict[Optional[int], List[int]] = {}
     excluded_folder_ids: set[int] = set()
@@ -4104,15 +4132,30 @@ def dashboard():
         )["c"]
 
     archived_cnt = q1("SELECT COUNT(*) AS c FROM projects WHERE archived=1 AND deleted_at IS NULL")["c"]
-    pending_active = q1(
-        "SELECT COUNT(*) AS c "
-        "FROM tasks t "
-        "LEFT JOIN projects p ON p.id=t.project_id "
-        "WHERE t.completed_at IS NULL "
-        "AND t.archived=0 "
-        "AND t.deleted_at IS NULL "
-        "AND (t.project_id IS NULL OR p.archived=0)"
-    )["c"]
+    if excluded_folder_ids:
+        placeholders = ",".join(["%s"] * len(excluded_folder_ids))
+        pending_active = q1(
+            "SELECT COUNT(*) AS c "
+            "FROM tasks t "
+            "LEFT JOIN projects p ON p.id=t.project_id "
+            "WHERE t.completed_at IS NULL "
+            "AND t.archived=0 "
+            "AND t.deleted_at IS NULL "
+            "AND (t.project_id IS NULL OR p.archived=0) "
+            f"AND (t.folder_id IS NULL OR t.folder_id NOT IN ({placeholders})) "
+            f"AND (t.project_id IS NULL OR p.folder_id IS NULL OR p.folder_id NOT IN ({placeholders}))",
+            tuple(sorted(excluded_folder_ids)) + tuple(sorted(excluded_folder_ids)),
+        )["c"]
+    else:
+        pending_active = q1(
+            "SELECT COUNT(*) AS c "
+            "FROM tasks t "
+            "LEFT JOIN projects p ON p.id=t.project_id "
+            "WHERE t.completed_at IS NULL "
+            "AND t.archived=0 "
+            "AND t.deleted_at IS NULL "
+            "AND (t.project_id IS NULL OR p.archived=0)"
+        )["c"]
 
     # --- ESTADÍSTICAS HISTORICAS DE COMPLETADOS ---
     comp_today = q1(
@@ -4547,6 +4590,94 @@ def dashboard_completed():
         period=period,
         title=title,
         subtitle=subtitle,
+        rows=rows,
+        tags_map=tags_map,
+        total=total,
+        page=page,
+        pages=pages,
+        per_page=per_page,
+    )
+
+
+@app.route("/dashboard/pending-active")
+def dashboard_pending_active():
+    per_page = cfg_int(["app", "pagination", "search_per_page"], default=25, min_v=5, max_v=500)
+    try:
+        page = int(request.args.get("page", "1"))
+    except ValueError:
+        page = 1
+    page = max(page, 1)
+
+    excluded_root_names = {"rutinas", "agenda", "sometime", "adtv", "seguimiento"}
+    folder_rows = q("SELECT id, parent_id, name FROM folders")
+    children_by_parent: Dict[Optional[int], List[int]] = {}
+    excluded_folder_ids: set[int] = set()
+
+    for fr in folder_rows:
+        parent_id = fr.get("parent_id")
+        children_by_parent.setdefault(parent_id, []).append(int(fr["id"]))
+        if normalize_tag_key(fr.get("name") or "") in excluded_root_names:
+            excluded_folder_ids.add(int(fr["id"]))
+
+    stack = list(excluded_folder_ids)
+    while stack:
+        fid = stack.pop()
+        for ch_id in children_by_parent.get(fid, []):
+            if ch_id not in excluded_folder_ids:
+                excluded_folder_ids.add(ch_id)
+                stack.append(ch_id)
+
+    base_from_sql = (
+        "FROM tasks t "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+    )
+    base_where_sql = (
+        "WHERE t.completed_at IS NULL "
+        "AND t.archived=0 "
+        "AND t.deleted_at IS NULL "
+        "AND (t.project_id IS NULL OR p.archived=0)"
+    )
+    filter_sql = ""
+    filter_params: Tuple[Any, ...] = ()
+    if excluded_folder_ids:
+        placeholders = ",".join(["%s"] * len(excluded_folder_ids))
+        filter_sql = (
+            f" AND (t.folder_id IS NULL OR t.folder_id NOT IN ({placeholders}))"
+            f" AND (t.project_id IS NULL OR p.folder_id IS NULL OR p.folder_id NOT IN ({placeholders}))"
+        )
+        ids_sorted = tuple(sorted(excluded_folder_ids))
+        filter_params = ids_sorted + ids_sorted
+
+    total_row = q1(
+        "SELECT COUNT(*) AS c " + base_from_sql + base_where_sql + filter_sql,
+        filter_params,
+    )
+    total = int(total_row["c"]) if total_row else 0
+    pages = max(1, (total + per_page - 1) // per_page)
+    if page > pages:
+        page = pages
+    offset = (page - 1) * per_page
+
+    rows = q(
+        "SELECT t.id, t.title, t.notes, t.due_date, t.due_time, t.priority, t.created_at, "
+        "p.name AS project_name, p.id AS project_id, "
+        "fd.name AS folder_name, fd.id AS folder_id "
+        + base_from_sql
+        + "LEFT JOIN folders fd ON fd.id=COALESCE(t.folder_id, p.folder_id) "
+        + base_where_sql
+        + filter_sql
+        + " ORDER BY (t.due_date IS NULL) ASC, t.due_date ASC, (t.due_time IS NULL) ASC, t.due_time ASC, t.id DESC "
+        + "LIMIT %s OFFSET %s",
+        filter_params + (per_page, offset),
+    )
+
+    task_ids = [r["id"] for r in rows]
+    tags_map = load_tags_map(task_ids) if task_ids else {}
+
+    return render_template(
+        "dashboard_pending_active.html",
+        title="Tareas pendientes activas",
+        subtitle="Excluye Rutinas, Agenda, Sometime, ADTV y Seguimiento (incluye subcarpetas)",
         rows=rows,
         tags_map=tags_map,
         total=total,

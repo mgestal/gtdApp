@@ -248,24 +248,21 @@
       <div class="db-kpi-bar" style="background:#0ea5e9"></div>
       <div>
         <div class="db-kpi-label">Completadas hoy</div>
-        <div class="db-kpi-value">{{ stats.comp_today }}</div>
-        <div class="db-kpi-meta"><a class="db-kpi-link" href="{{ url_for('dashboard_completed', period='today') }}">Ver lista</a></div>
+        <div class="db-kpi-value"><a class="db-kpi-link" href="{{ url_for('dashboard_completed', period='today') }}">{{ stats.comp_today }}</a></div>
       </div>
     </article>
     <article class="db-kpi">
       <div class="db-kpi-bar" style="background:#06b6d4"></div>
       <div>
         <div class="db-kpi-label">Completadas semana</div>
-        <div class="db-kpi-value">{{ stats.comp_week }}</div>
-        <div class="db-kpi-meta"><a class="db-kpi-link" href="{{ url_for('dashboard_completed', period='week') }}">Ver lista</a></div>
+        <div class="db-kpi-value"><a class="db-kpi-link" href="{{ url_for('dashboard_completed', period='week') }}">{{ stats.comp_week }}</a></div>
       </div>
     </article>
     <article class="db-kpi">
       <div class="db-kpi-bar" style="background:#8b5cf6"></div>
       <div>
         <div class="db-kpi-label">Completadas mes</div>
-        <div class="db-kpi-value">{{ stats.comp_month }}</div>
-        <div class="db-kpi-meta"><a class="db-kpi-link" href="{{ url_for('dashboard_completed', period='month') }}">Ver lista</a></div>
+        <div class="db-kpi-value"><a class="db-kpi-link" href="{{ url_for('dashboard_completed', period='month') }}">{{ stats.comp_month }}</a></div>
       </div>
     </article>
     <article class="db-kpi">
@@ -280,13 +277,14 @@
       <div>
         <div class="db-kpi-label">Tasa de cierre</div>
         <div class="db-kpi-value">{{ stats.close_rate }}%</div>
+        <div class="db-kpi-meta">Cerradas/Creadas en el período</div>
       </div>
     </article>
     <article class="db-kpi">
       <div class="db-kpi-bar" style="background:#ef4444"></div>
       <div>
         <div class="db-kpi-label">Pendientes activas</div>
-        <div class="db-kpi-value">{{ stats.pending_active }}</div>
+        <div class="db-kpi-value"><a class="db-kpi-link" href="{{ url_for('dashboard_pending_active') }}">{{ stats.pending_active }}</a></div>
       </div>
     </article>
     <article class="db-kpi">
@@ -307,8 +305,8 @@
       <div class="db-kpi-bar" style="background:#334155"></div>
       <div>
         <div class="db-kpi-label">Proyectos activos</div>
-        <div class="db-kpi-value">{{ stats.projects }}</div>
-        <div class="db-kpi-meta">Excluye Rutinas, Agenda y Sometime.</div>
+        <div class="db-kpi-value"><a class="db-kpi-link" href="{{ url_for('projects', status='active', scope='dashboard_active') }}">{{ stats.projects }}</a></div>
+        <div class="db-kpi-meta">Excluye Rutinas, Agenda, Sometime, ADTV y Seguimiento.</div>
       </div>
     </article>
     <article class="db-kpi">

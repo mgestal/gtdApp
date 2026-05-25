@@ -178,6 +178,17 @@
     <div style="font-weight:600; margin-bottom:4px;">Acciones de vista y análisis</div>
     <div class="hint" style="margin-bottom:10px;">Ajusta el análisis, refresca estado o recalcula la comparación completa.</div>
 
+    <form method="get" action="{{ url_for('calendar_sync_view') }}" id="sync-visibility-form" style="margin:0 0 10px 0; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+      <input type="hidden" name="page" value="1">
+      {% if only_conflicts %}
+        <input type="hidden" name="only_conflicts" value="1">
+      {% endif %}
+      <label for="hide-overdue" style="display:inline-flex; align-items:center; gap:6px; cursor:pointer;">
+        <input type="checkbox" id="hide-overdue" name="hide_overdue" value="1" {% if hide_overdue %}checked{% endif %} onchange="this.form.submit()">
+        <span>Ocultar tareas vencidas en elementos detectados</span>
+      </label>
+    </form>
+
     <form method="post" action="{{ url_for('calendar_sync_view') }}" id="sync-view-form" style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-start; margin:0;">
       <input type="hidden" name="next" value="{{ request.full_path }}">
       <input type="hidden" name="action" value="sync_calendar_now">
@@ -206,21 +217,21 @@
       <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:stretch; margin-top:2px;">
 
         <div style="display:flex; flex-direction:column; gap:2px;">
-          <a class="btn btn-soft sync-nav-btn sync-view-btn" href="{{ url_for('calendar_sync_view', page=1, only_conflicts=1 if only_conflicts else None) }}"
+           <a class="btn btn-soft sync-nav-btn sync-view-btn" href="{{ url_for('calendar_sync_view', page=1, only_conflicts=1 if only_conflicts else None, hide_overdue=1 if hide_overdue else None) }}"
              title="Recarga la lista con el estado actual de la BD, sin contactar Google Calendar">Refrescar estado</a>
           <span class="hint" style="margin:0; font-size:0.78rem;">Solo recarga desde BD local</span>
         </div>
 
         <div style="display:flex; flex-direction:column; gap:2px;">
           <a class="btn {% if only_conflicts %}btn-primary{% else %}btn-soft{% endif %} sync-nav-btn sync-view-btn"
-             href="{{ url_for('calendar_sync_view', page=1, only_conflicts=1) }}"
+             href="{{ url_for('calendar_sync_view', page=1, only_conflicts=1, hide_overdue=1 if hide_overdue else None) }}"
              title="Muestra solo conflictos, push/delete pendientes y errores">Ver solo diferencias</a>
           <span class="hint" style="margin:0; font-size:0.78rem;">Oculta los sin cambios</span>
         </div>
 
         <div style="display:flex; flex-direction:column; gap:2px;">
           <a class="btn {% if not only_conflicts %}btn-primary{% else %}btn-soft{% endif %} sync-nav-btn sync-view-btn"
-             href="{{ url_for('calendar_sync_view', page=1) }}"
+             href="{{ url_for('calendar_sync_view', page=1, hide_overdue=1 if hide_overdue else None) }}"
              title="Muestra todos los elementos, incluyendo los sincronizados">Ver todo</a>
           <span class="hint" style="margin:0; font-size:0.78rem;">Incluye todos los estados</span>
         </div>
@@ -272,15 +283,15 @@
           </div>
           <div style="display:flex; gap:8px; flex-wrap:wrap;">
             {% if page > 1 %}
-              <a class="btn btn-soft" href="{{ url_for('calendar_sync_view', page=1, only_conflicts=1 if only_conflicts else None) }}">« Primera</a>
-              <a class="btn btn-soft" href="{{ url_for('calendar_sync_view', page=page-1, only_conflicts=1 if only_conflicts else None) }}">‹ Anterior</a>
+              <a class="btn btn-soft" href="{{ url_for('calendar_sync_view', page=1, only_conflicts=1 if only_conflicts else None, hide_overdue=1 if hide_overdue else None) }}">« Primera</a>
+              <a class="btn btn-soft" href="{{ url_for('calendar_sync_view', page=page-1, only_conflicts=1 if only_conflicts else None, hide_overdue=1 if hide_overdue else None) }}">‹ Anterior</a>
             {% else %}
               <span class="btn btn-soft disabled">« Primera</span>
               <span class="btn btn-soft disabled">‹ Anterior</span>
             {% endif %}
             {% if page < pages %}
-              <a class="btn btn-soft" href="{{ url_for('calendar_sync_view', page=page+1, only_conflicts=1 if only_conflicts else None) }}">Siguiente ›</a>
-              <a class="btn btn-soft" href="{{ url_for('calendar_sync_view', page=pages, only_conflicts=1 if only_conflicts else None) }}">Última »</a>
+              <a class="btn btn-soft" href="{{ url_for('calendar_sync_view', page=page+1, only_conflicts=1 if only_conflicts else None, hide_overdue=1 if hide_overdue else None) }}">Siguiente ›</a>
+              <a class="btn btn-soft" href="{{ url_for('calendar_sync_view', page=pages, only_conflicts=1 if only_conflicts else None, hide_overdue=1 if hide_overdue else None) }}">Última »</a>
             {% else %}
               <span class="btn btn-soft disabled">Siguiente ›</span>
               <span class="btn btn-soft disabled">Última »</span>

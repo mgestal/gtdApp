@@ -6516,14 +6516,27 @@ def _load_calendar_conflicts_view_data(page: int) -> Dict[str, Any]:
     }
 
 
-def _load_calendar_sync_view_data(page: int, only_conflicts: bool = False) -> Dict[str, Any]:
+def _load_calendar_sync_view_data(
+    page: int,
+    only_conflicts: bool = False,
+    hide_overdue: bool = False,
+) -> Dict[str, Any]:
     per_page = cfg_int(["app", "pagination", "calendar_conflicts_per_page"], default=25, min_v=5, max_v=500)
+    today_d = _today_madrid()
 
-    base_where = "calendar_sync_state IN ('pending_push','pending_delete','conflict','error')"
+    where_clauses = [
+        "calendar_sync_state IN ('pending_push','pending_delete','conflict','error')",
+        "(due_date IS NOT NULL OR google_event_id IS NOT NULL)",
+    ]
     if only_conflicts:
-        base_where = "calendar_sync_state='conflict'"
+        where_clauses[0] = "calendar_sync_state='conflict'"
+    where_params: List[Any] = []
+    if hide_overdue:
+        where_clauses.append("(due_date IS NULL OR due_date >= %s)")
+        where_params.append(today_d)
+    base_where = " AND ".join(where_clauses)
 
-    total_row = q1(f"SELECT COUNT(*) AS c FROM tasks WHERE {base_where}")
+    total_row = q1(f"SELECT COUNT(*) AS c FROM tasks WHERE {base_where}", tuple(where_params))
     total = int(total_row["c"]) if total_row else 0
 
     pages = max(1, (total + per_page - 1) // per_page)
@@ -6579,6 +6592,7 @@ def _load_calendar_sync_view_data(page: int, only_conflicts: bool = False) -> Di
 
     rows = q(
         f"SELECT id, title, notes, due_date, due_time, TIME_FORMAT(due_time, '%%H:%%i') AS due_time_text, "
+        "google_event_id, "
         "calendar_sync_state, calendar_sync_error, calendar_conflict_at, calendar_conflict_payload "
         "FROM tasks "
         f"WHERE {base_where} "
@@ -6591,7 +6605,7 @@ def _load_calendar_sync_view_data(page: int, only_conflicts: bool = False) -> Di
         "  ELSE 5 END, "
         "COALESCE(calendar_conflict_at, NOW()) DESC, id DESC "
         "LIMIT %s OFFSET %s",
-        (per_page, offset),
+        tuple(where_params + [per_page, offset]),
     )
 
     calendar_sync_items: List[Dict[str, Any]] = []
@@ -6670,15 +6684,25 @@ def _load_calendar_sync_view_data(page: int, only_conflicts: bool = False) -> Di
     pending_gcal_total = 0
     try:
         ensure_calendar_pending_events_table()
-        pending_count_row = q1("SELECT COUNT(*) AS c FROM calendar_pending_events WHERE state='pending'")
+        pending_where = "state='pending' AND due_date IS NOT NULL"
+        pending_params: List[Any] = []
+        if hide_overdue:
+            pending_where += " AND due_date >= %s"
+            pending_params.append(today_d)
+
+        pending_count_row = q1(
+            f"SELECT COUNT(*) AS c FROM calendar_pending_events WHERE {pending_where}",
+            tuple(pending_params),
+        )
         pending_gcal_total = int((pending_count_row or {}).get("c") or 0)
         pending_rows = q(
             "SELECT id, google_event_id, title, due_date, due_time, "
             "TIME_FORMAT(due_time, '%%H:%%i') AS due_time_text, notes, discovered_at "
             "FROM calendar_pending_events "
-            "WHERE state='pending' "
+            f"WHERE {pending_where} "
             "ORDER BY discovered_at DESC "
-            "LIMIT 200"
+            "LIMIT 200",
+            tuple(pending_params),
         )
         for pr in pending_rows:
             pitem: Dict[str, Any] = {
@@ -6716,6 +6740,7 @@ def _load_calendar_sync_view_data(page: int, only_conflicts: bool = False) -> Di
         "total": total,
         "per_page": per_page,
         "only_conflicts": only_conflicts,
+        "hide_overdue": hide_overdue,
     }
 
 
@@ -7571,8 +7596,13 @@ def calendar_sync_view():
         page = 1
 
     only_conflicts = str(request.args.get("only_conflicts", "0")).strip().lower() in ("1", "true", "on", "yes")
+    hide_overdue = str(request.args.get("hide_overdue", "0")).strip().lower() in ("1", "true", "on", "yes")
 
-    context = _load_calendar_sync_view_data(page=page, only_conflicts=only_conflicts)
+    context = _load_calendar_sync_view_data(
+        page=page,
+        only_conflicts=only_conflicts,
+        hide_overdue=hide_overdue,
+    )
     calendar_sync_last_info = session.pop("calendar_sync_last_info", None)
     calendar_sync_last_level = session.pop("calendar_sync_last_level", "ok")
     return render_template(

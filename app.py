@@ -2447,10 +2447,10 @@ def next_due_date(current_due: date, rule: RRule) -> date:
 
 
 def next_due_date_after_today(current_due: date, rule: RRule, today_d: date) -> date:
-    """Return the first recurrence date strictly after today."""
+    """Return the first recurrence date on or after today."""
     due = next_due_date(current_due, rule)
     guard = 0
-    while due <= today_d and guard < 512:
+    while due < today_d and guard < 512:
         nxt = next_due_date(due, rule)
         if nxt <= due:
             break
@@ -3026,14 +3026,32 @@ def proximo():
 def today():
     today_d = _today_madrid()
 
+    recurring_due_join = (
+        "LEFT JOIN ("
+        "SELECT task_id, MAX(next_due_date) AS last_next_due_date "
+        "FROM recurring_task_runs "
+        "GROUP BY task_id"
+        ") rr ON rr.task_id=t.id "
+    )
+    effective_due_expr = (
+        "CASE "
+        "WHEN t.recurrence_rule IS NOT NULL AND TRIM(t.recurrence_rule) <> '' "
+        "AND rr.last_next_due_date IS NOT NULL "
+        "AND (t.due_date IS NULL OR rr.last_next_due_date > t.due_date) "
+        "THEN rr.last_next_due_date "
+        "ELSE t.due_date "
+        "END"
+    )
+
     pending_rows = q(
-        "SELECT t.id, t.title, t.notes, t.due_date, t.due_time, t.completed_at, t.recurrence_rule, t.priority, "
+        f"SELECT t.id, t.title, t.notes, {effective_due_expr} AS due_date, t.due_time, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.id AS folder_id, fd.name AS folder_name "
         "FROM tasks t "
         "LEFT JOIN projects p ON p.id=t.project_id "
+        f"{recurring_due_join}"
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
-        "WHERE t.due_date=%s AND t.completed_at IS NULL "
+        f"WHERE {effective_due_expr}=%s AND t.completed_at IS NULL "
         "AND t.deleted_at IS NULL "
         "AND (t.project_id IS NULL OR p.archived = 0) "
         "ORDER BY t.id DESC",
@@ -3041,16 +3059,17 @@ def today():
     )
 
     overdue_rows = q(
-        "SELECT t.id, t.title, t.notes, t.due_date, t.due_time, t.completed_at, t.recurrence_rule, t.priority, "
+        f"SELECT t.id, t.title, t.notes, {effective_due_expr} AS due_date, t.due_time, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.id AS folder_id, fd.name AS folder_name "
         "FROM tasks t "
         "LEFT JOIN projects p ON p.id=t.project_id "
+        f"{recurring_due_join}"
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
-        "WHERE t.due_date < %s AND t.completed_at IS NULL "
+        f"WHERE {effective_due_expr} < %s AND t.completed_at IS NULL "
         "AND t.deleted_at IS NULL "
         "AND (t.project_id IS NULL OR p.archived = 0) "
-        "ORDER BY t.due_date ASC, t.id DESC",
+        f"ORDER BY {effective_due_expr} ASC, t.id DESC",
         (today_d,)
     )
 
@@ -3109,46 +3128,66 @@ def week():
     # domingo de la semana actual
     sunday_d = monday_d + timedelta(days=6)
 
+    recurring_due_join = (
+        "LEFT JOIN ("
+        "SELECT task_id, MAX(next_due_date) AS last_next_due_date "
+        "FROM recurring_task_runs "
+        "GROUP BY task_id"
+        ") rr ON rr.task_id=t.id "
+    )
+    effective_due_expr = (
+        "CASE "
+        "WHEN t.recurrence_rule IS NOT NULL AND TRIM(t.recurrence_rule) <> '' "
+        "AND rr.last_next_due_date IS NOT NULL "
+        "AND (t.due_date IS NULL OR rr.last_next_due_date > t.due_date) "
+        "THEN rr.last_next_due_date "
+        "ELSE t.due_date "
+        "END"
+    )
+
     overdue_rows = q(
-        "SELECT t.id, t.title, t.notes, t.due_date, t.due_time, t.completed_at, t.recurrence_rule, t.priority, "
+        f"SELECT t.id, t.title, t.notes, {effective_due_expr} AS due_date, t.due_time, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.name AS folder_name, fd.id AS folder_id "
         "FROM tasks t "
         "LEFT JOIN projects p ON p.id=t.project_id "
+        f"{recurring_due_join}"
         "LEFT JOIN folders fd ON fd.id = COALESCE(t.folder_id, p.folder_id) "
-        "WHERE t.due_date IS NOT NULL "
-        "AND t.due_date < %s "
+        f"WHERE {effective_due_expr} IS NOT NULL "
+        f"AND {effective_due_expr} < %s "
         "AND t.completed_at IS NULL "
         "AND t.deleted_at IS NULL "
         "AND (t.project_id IS NULL OR p.archived = 0) "
-        "ORDER BY t.due_date ASC, t.id DESC",
+        f"ORDER BY {effective_due_expr} ASC, t.id DESC",
         (monday_d,)
     )
 
     rows = q(
         "SELECT * FROM ("
-        "SELECT t.id, t.title, t.notes, t.due_date, t.due_time, t.completed_at, t.recurrence_rule, t.priority, "
+        f"SELECT t.id, t.title, t.notes, {effective_due_expr} AS due_date, t.due_time, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.name AS folder_name, fd.id AS folder_id "
         "FROM tasks t "
         "LEFT JOIN projects p ON p.id=t.project_id "
+        f"{recurring_due_join}"
         "LEFT JOIN folders fd ON fd.id = COALESCE(t.folder_id, p.folder_id) "
-        "WHERE t.due_date IS NOT NULL "
-        "AND t.due_date >= %s "
-        "AND t.due_date <= %s "
+        f"WHERE {effective_due_expr} IS NOT NULL "
+        f"AND {effective_due_expr} >= %s "
+        f"AND {effective_due_expr} <= %s "
         "AND t.completed_at IS NULL "
         "AND t.deleted_at IS NULL "
         "AND (t.project_id IS NULL OR p.archived = 0) "
         "UNION ALL "
-        "SELECT t.id, t.title, t.notes, t.due_date, t.due_time, t.completed_at, t.recurrence_rule, t.priority, "
+        f"SELECT t.id, t.title, t.notes, {effective_due_expr} AS due_date, t.due_time, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.name AS folder_name, fd.id AS folder_id "
         "FROM tasks t "
         "LEFT JOIN projects p ON p.id=t.project_id "
+        f"{recurring_due_join}"
         "LEFT JOIN folders fd ON fd.id = COALESCE(t.folder_id, p.folder_id) "
-        "WHERE t.due_date IS NOT NULL "
-        "AND t.due_date >= %s "
-        "AND t.due_date <= %s "
+        f"WHERE {effective_due_expr} IS NOT NULL "
+        f"AND {effective_due_expr} >= %s "
+        f"AND {effective_due_expr} <= %s "
         "AND t.completed_at IS NOT NULL "
         "AND t.deleted_at IS NULL "
         ") AS week_rows "
@@ -5288,7 +5327,7 @@ def task_toggle(task_id: int):
                 recurrence_due_choice = (request.form.get("recurrence_due_choice") or "").strip().lower()
                 today_d = now.date()
 
-                if next_due <= today_d and recurrence_due_choice != "keep":
+                if next_due < today_d and recurrence_due_choice != "keep":
                     next_due = next_due_date_after_today(task["due_date"], rule, today_d)
                 exec_sql(
                     "UPDATE tasks SET last_completed_at=%s, due_date=%s, completed_at=NULL WHERE id=%s",
@@ -9602,7 +9641,7 @@ def api_extension_task_toggle(task_id: int):
                 next_due = next_due_date(task["due_date"], rule)
                 today_d = now.date()
 
-                if next_due <= today_d:
+                if next_due < today_d:
                     next_due = next_due_date_after_today(task["due_date"], rule, today_d)
 
                 exec_sql(
@@ -9989,8 +10028,8 @@ def api_task_toggle_preview(task_id: int):
     if base_date == today_d:
         return jsonify({"requires_choice": False})
 
-    # Si la próxima fecha calculada es mayor que hoy, no hay conflicto
-    if keep_due > today_d:
+    # Si la próxima fecha calculada es hoy o mayor, no hay conflicto
+    if keep_due >= today_d:
         return jsonify({"requires_choice": False})
 
     # Si la fecha es menor que hoy, buscar la siguiente futura

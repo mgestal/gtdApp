@@ -2458,6 +2458,26 @@ def next_due_date_after_today(current_due: date, rule: RRule, today_d: date) -> 
         guard += 1
     return due
 
+
+def recurring_effective_due_sql(task_alias: str = "t") -> Tuple[str, str]:
+    recurring_due_join = (
+        "LEFT JOIN ("
+        "SELECT task_id, MAX(next_due_date) AS last_next_due_date "
+        "FROM recurring_task_runs "
+        "GROUP BY task_id"
+        ") rr ON rr.task_id=" + task_alias + ".id "
+    )
+    effective_due_expr = (
+        "CASE "
+        f"WHEN {task_alias}.recurrence_rule IS NOT NULL AND TRIM({task_alias}.recurrence_rule) <> '' "
+        "AND rr.last_next_due_date IS NOT NULL "
+        f"AND ({task_alias}.due_date IS NULL OR rr.last_next_due_date > {task_alias}.due_date) "
+        "THEN rr.last_next_due_date "
+        f"ELSE {task_alias}.due_date "
+        "END"
+    )
+    return recurring_due_join, effective_due_expr
+
 # -----------------------------------------------
 # ---------------- Sidebar folder tree ----------------
 # -----------------------------------------------
@@ -2560,6 +2580,7 @@ def search():
     pages = 1
     rows = []
     tags_map = {}
+    recurring_due_join, effective_due_expr = recurring_effective_due_sql("t")
 
     if qtxt:
         like = f"%{qtxt.lower()}%"
@@ -2587,17 +2608,18 @@ def search():
             page = min(page, pages)
             offset = (page - 1) * per_page
             _task_select = (
-                "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.archived, t.archived_at, "
+                f"SELECT t.id, t.title, t.notes, {effective_due_expr} AS due_date, t.completed_at, t.recurrence_rule, t.archived, t.archived_at, "
                 "p.name AS project_name, p.id AS project_id, "
                 "fd.id AS folder_id, fd.name AS folder_name "
                 "FROM tasks t "
                 "LEFT JOIN projects p ON p.id=t.project_id "
+                f"{recurring_due_join}"
                 "LEFT JOIN folders fd ON fd.id = COALESCE(t.folder_id, p.folder_id) "
                 "WHERE t.deleted_at IS NULL "
             )
             _task_order = (
                 "ORDER BY t.archived ASC, (t.completed_at IS NOT NULL) ASC, "
-                "(t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC "
+                f"({effective_due_expr} IS NULL) ASC, {effective_due_expr} ASC, t.id DESC "
                 "LIMIT %s OFFSET %s"
             )
             if use_fulltext:
@@ -2831,6 +2853,7 @@ def inject_sidebar_counts():
     try:
         today_d = _today_madrid()
         sunday_d = today_d + timedelta(days=(6 - today_d.weekday()))
+        recurring_due_join, effective_due_expr = recurring_effective_due_sql("t")
         
         
         next_tag = q1("SELECT id FROM tags WHERE name=%s", ("NextAction",))
@@ -2859,22 +2882,24 @@ def inject_sidebar_counts():
             ) or {}).get("c", 0)),
 
             "today": int((q1(
-                "SELECT COUNT(*) AS c "
+                f"SELECT COUNT(*) AS c "
                 "FROM tasks t "
                 "LEFT JOIN projects p ON p.id=t.project_id "
-                "WHERE t.completed_at IS NULL AND t.due_date=%s "
+                f"{recurring_due_join}"
+                f"WHERE t.completed_at IS NULL AND {effective_due_expr}=%s "
                 "AND (t.project_id IS NULL OR p.archived = 0)",
                 (today_d,)
             ) or {}).get("c", 0)),
 
             "week": int((q1(
-                "SELECT COUNT(*) AS c "
+                f"SELECT COUNT(*) AS c "
                 "FROM tasks t "
                 "LEFT JOIN projects p ON p.id=t.project_id "
+                f"{recurring_due_join}"
                 "WHERE t.completed_at IS NULL "
-                "AND t.due_date IS NOT NULL "
-                "AND t.due_date >= %s "
-                "AND t.due_date <= %s "
+                f"AND {effective_due_expr} IS NOT NULL "
+                f"AND {effective_due_expr} >= %s "
+                f"AND {effective_due_expr} <= %s "
                 "AND (t.project_id IS NULL OR p.archived = 0)",
                 (today_d, sunday_d)
             ) or {}).get("c", 0)),
@@ -2882,10 +2907,11 @@ def inject_sidebar_counts():
             "next": next_count,
 
             "agenda": int((q1(
-                "SELECT COUNT(*) AS c "
+                f"SELECT COUNT(*) AS c "
                 "FROM tasks t "
                 "LEFT JOIN projects p ON p.id=t.project_id "
-                "WHERE t.completed_at IS NULL AND t.due_date IS NOT NULL "
+                f"{recurring_due_join}"
+                f"WHERE t.completed_at IS NULL AND {effective_due_expr} IS NOT NULL "
                 "AND (t.project_id IS NULL OR p.archived = 0)"
             ) or {}).get("c", 0)),
 
@@ -2926,12 +2952,14 @@ def inject_sidebar_counts():
 
 @app.route("/")
 def home():       
-    
+    recurring_due_join, effective_due_expr = recurring_effective_due_sql("t")
+
     inbox = q(
-        "SELECT t.id, t.title, t.notes, t.due_date, t.due_time, t.completed_at, t.recurrence_rule "
+        f"SELECT t.id, t.title, t.notes, {effective_due_expr} AS due_date, t.due_time, t.completed_at, t.recurrence_rule "
         "FROM tasks t "
+        f"{recurring_due_join}"
         "WHERE t.project_id IS NULL AND t.folder_id IS NULL AND t.archived=0 AND t.deleted_at IS NULL "
-        "ORDER BY (t.due_date IS NULL), t.due_date ASC, t.id DESC "
+        f"ORDER BY ({effective_due_expr} IS NULL), {effective_due_expr} ASC, t.id DESC "
         "LIMIT 200"
     )
 
@@ -3287,24 +3315,26 @@ def calendar_view():
         week_days = None
 
     show_completed = str(request.args.get("show_completed", "0")).lower() in ("1", "true", "on", "yes")
+    recurring_due_join, effective_due_expr = recurring_effective_due_sql("t")
 
     week_list_rows = []
 
     # Pendientes por due_date dentro de rango
     pending_rows = q(
-        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
+        f"SELECT t.id, t.title, t.notes, {effective_due_expr} AS due_date, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.id AS folder_id, fd.name AS folder_name "
         "FROM tasks t "
         "LEFT JOIN projects p ON p.id=t.project_id "
+        f"{recurring_due_join}"
         "LEFT JOIN folders fd ON fd.id=COALESCE(t.folder_id, p.folder_id) "
-        "WHERE t.due_date IS NOT NULL "
-        "AND t.due_date >= %s "
-        "AND t.due_date <= %s "
+        f"WHERE {effective_due_expr} IS NOT NULL "
+        f"AND {effective_due_expr} >= %s "
+        f"AND {effective_due_expr} <= %s "
         "AND t.completed_at IS NULL "
         "AND t.deleted_at IS NULL "
         "AND (t.project_id IS NULL OR p.archived = 0) "
-        "ORDER BY t.due_date ASC, t.id DESC",
+        f"ORDER BY {effective_due_expr} ASC, t.id DESC",
         (start_date, end_date),
     )
 
@@ -3360,15 +3390,16 @@ def calendar_view():
         if show_completed:
             week_list_rows = q(
                 "SELECT * FROM ("
-                "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
+                f"SELECT t.id, t.title, t.notes, {effective_due_expr} AS due_date, t.completed_at, t.recurrence_rule, t.priority, "
                 "p.name AS project_name, p.id AS project_id, "
                 "fd.name AS folder_name, fd.id AS folder_id "
                 "FROM tasks t "
                 "LEFT JOIN projects p ON p.id=t.project_id "
+                f"{recurring_due_join}"
                 "LEFT JOIN folders fd ON fd.id = COALESCE(t.folder_id, p.folder_id) "
-                "WHERE t.due_date IS NOT NULL "
-                "AND t.due_date >= %s "
-                "AND t.due_date <= %s "
+                f"WHERE {effective_due_expr} IS NOT NULL "
+                f"AND {effective_due_expr} >= %s "
+                f"AND {effective_due_expr} <= %s "
                 "AND t.completed_at IS NULL "
                 "AND t.deleted_at IS NULL "
                 "AND (t.project_id IS NULL OR p.archived = 0) "
@@ -3390,19 +3421,20 @@ def calendar_view():
             )
         else:
             week_list_rows = q(
-                "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
+                f"SELECT t.id, t.title, t.notes, {effective_due_expr} AS due_date, t.completed_at, t.recurrence_rule, t.priority, "
                 "p.name AS project_name, p.id AS project_id, "
                 "fd.name AS folder_name, fd.id AS folder_id "
                 "FROM tasks t "
                 "LEFT JOIN projects p ON p.id=t.project_id "
+                f"{recurring_due_join}"
                 "LEFT JOIN folders fd ON fd.id = COALESCE(t.folder_id, p.folder_id) "
-                "WHERE t.due_date IS NOT NULL "
-                "AND t.due_date >= %s "
-                "AND t.due_date <= %s "
+                f"WHERE {effective_due_expr} IS NOT NULL "
+                f"AND {effective_due_expr} >= %s "
+                f"AND {effective_due_expr} <= %s "
                 "AND t.completed_at IS NULL "
                 "AND t.deleted_at IS NULL "
                 "AND (t.project_id IS NULL OR p.archived = 0) "
-                "ORDER BY t.due_date ASC, t.id DESC",
+                f"ORDER BY {effective_due_expr} ASC, t.id DESC",
                 (start_date, end_date),
             )
         week_task_ids = [t["id"] for t in week_list_rows]
@@ -3539,12 +3571,14 @@ def project_detail(project_id: int):
     project = q1("SELECT id, name, description, archived, archived_at, folder_id, auto_promote_nextaction FROM projects WHERE id=%s", (project_id,))
     if not project:
         abort(404)
+    recurring_due_join, effective_due_expr = recurring_effective_due_sql("t")
 
     folder_breadcrumb = build_folder_breadcrumb(project.get("folder_id"), include_self=True)
 
     active_tasks = q(
-        "SELECT id, title, notes, due_date, due_time, completed_at, recurrence_rule, priority, sort_order "
-        "FROM tasks "
+        f"SELECT t.id, t.title, t.notes, {effective_due_expr} AS due_date, t.due_time, t.completed_at, t.recurrence_rule, t.priority, t.sort_order "
+        "FROM tasks t "
+        f"{recurring_due_join}"
         "WHERE project_id=%s AND completed_at IS NULL AND archived=0 AND deleted_at IS NULL "
         "ORDER BY COALESCE(sort_order, 2147483647) ASC, id ASC",
         (project_id,),
@@ -3903,6 +3937,7 @@ def tag_detail(tag_id: int):
         page = 1
     page = max(page, 1)
     offset = (page - 1) * per_page
+    recurring_due_join, effective_due_expr = recurring_effective_due_sql("t")
 
     # total de tareas con esa etiqueta
     total_row = q1(
@@ -3921,18 +3956,19 @@ def tag_detail(tag_id: int):
 
     # tareas (con proyecto para mostrarlo/enlazarlo)
     rows = q(
-        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
+        f"SELECT t.id, t.title, t.notes, {effective_due_expr} AS due_date, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.id AS folder_id, fd.name AS folder_name "
         "FROM task_tags tt "
         "JOIN tasks t ON t.id=tt.task_id "
         "LEFT JOIN projects p ON p.id=t.project_id "
+        f"{recurring_due_join}"
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "WHERE tt.tag_id=%s "
         "AND t.archived=0 "
         "AND t.deleted_at IS NULL "
         "AND (t.project_id IS NULL OR p.archived=0) "
-        "ORDER BY (t.completed_at IS NOT NULL) ASC, (t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC "
+        f"ORDER BY (t.completed_at IS NOT NULL) ASC, ({effective_due_expr} IS NULL) ASC, {effective_due_expr} ASC, t.id DESC "
         "LIMIT %s OFFSET %s",
         (tag_id, per_page, offset),
     )
@@ -3989,6 +4025,7 @@ def periodic_history():
         page = 1
     page = max(page, 1)
     offset = (page - 1) * per_page
+    recurring_due_join, effective_due_expr = recurring_effective_due_sql("t")
 
     total_row = q1(
         "SELECT COUNT(*) AS c "
@@ -4007,17 +4044,18 @@ def periodic_history():
         offset = (page - 1) * per_page
 
     rows = q(
-        "SELECT t.id, t.title, t.due_date, t.due_time, t.recurrence_rule, "
+        f"SELECT t.id, t.title, {effective_due_expr} AS due_date, t.due_time, t.recurrence_rule, "
         "p.id AS project_id, p.name AS project_name, "
         "fd.id AS folder_id, fd.name AS folder_name "
         "FROM task_tags tt "
         "JOIN tasks t ON t.id=tt.task_id "
         "LEFT JOIN projects p ON p.id=t.project_id "
+        f"{recurring_due_join}"
         "LEFT JOIN folders fd ON fd.id=COALESCE(t.folder_id, p.folder_id) "
         "WHERE tt.tag_id=%s "
         "AND t.recurrence_rule IS NOT NULL "
         "AND TRIM(t.recurrence_rule) <> '' "
-        "ORDER BY (t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC "
+        f"ORDER BY ({effective_due_expr} IS NULL) ASC, {effective_due_expr} ASC, t.id DESC "
         "LIMIT %s OFFSET %s",
         (tag_id, per_page, offset),
     )
@@ -4052,12 +4090,14 @@ def periodic_history():
 
 @app.route("/tasks/<int:task_id>/periodic-history")
 def task_periodic_history(task_id: int):
+    recurring_due_join, effective_due_expr = recurring_effective_due_sql("t")
     task = q1(
-        "SELECT t.id, t.title, t.due_date, t.due_time, t.recurrence_rule, "
+        f"SELECT t.id, t.title, {effective_due_expr} AS due_date, t.due_time, t.recurrence_rule, "
         "p.id AS project_id, p.name AS project_name, "
         "fd.id AS folder_id, fd.name AS folder_name "
         "FROM tasks t "
         "LEFT JOIN projects p ON p.id=t.project_id "
+        f"{recurring_due_join}"
         "LEFT JOIN folders fd ON fd.id=COALESCE(t.folder_id, p.folder_id) "
         "WHERE t.id=%s",
         (task_id,),
@@ -4122,6 +4162,7 @@ def dashboard():
     monday = today - timedelta(days=today.weekday())
     # Primer día del mes actual
     first_of_month = today.replace(day=1)
+    recurring_due_join, effective_due_expr = recurring_effective_due_sql("t")
 
     # Criterio de métricas:
     # - ACTIVAS (backlog actual): excluyen archivadas y papelera.
@@ -4317,16 +4358,17 @@ def dashboard():
     pending_age_oldest = int(pending_age_row["max_days"]) if pending_age_row and pending_age_row["max_days"] is not None else 0
 
     habits_today_row = q1(
-        "SELECT "
+        f"SELECT "
         "(SELECT COUNT(*) "
         " FROM tasks t "
         " LEFT JOIN projects p ON p.id=t.project_id "
+        f" {recurring_due_join}"
         " WHERE t.recurrence_rule IS NOT NULL "
         " AND TRIM(t.recurrence_rule)<>'' "
         " AND t.archived=0 "
         " AND t.deleted_at IS NULL "
         " AND (t.project_id IS NULL OR p.archived=0) "
-        " AND t.due_date=%s) AS due_today, "
+        f" AND {effective_due_expr}=%s) AS due_today, "
         "(SELECT COUNT(*) "
         " FROM recurring_task_runs rr "
         " JOIN tasks t ON t.id=rr.task_id "
@@ -4485,19 +4527,20 @@ def dashboard():
 
     # --- CONSULTA MEJORADA DE VENCIMIENTOS (CON UBICACIÓN) ---
     due_soon = q(
-        """
-        SELECT t.id, t.title, t.notes, t.due_date, t.project_id, t.folder_id, t.priority,
+                f"""
+                SELECT t.id, t.title, t.notes, {effective_due_expr} AS due_date, t.project_id, t.folder_id, t.priority,
                p.name AS project_name, f.name AS folder_name
         FROM tasks t
         LEFT JOIN projects p ON t.project_id = p.id
+                {recurring_due_join}
         LEFT JOIN folders f ON t.folder_id = f.id
         WHERE t.completed_at IS NULL 
                     AND t.archived = 0
                     AND t.deleted_at IS NULL
-          AND t.due_date IS NOT NULL 
-          AND t.due_date <= %s 
+                    AND {effective_due_expr} IS NOT NULL 
+                    AND {effective_due_expr} <= %s 
                     AND (t.project_id IS NULL OR p.archived = 0)
-        ORDER BY t.due_date ASC 
+                ORDER BY {effective_due_expr} ASC 
         """,
         (today + timedelta(days=7),)
     )
@@ -4660,6 +4703,7 @@ def dashboard_completed():
 @app.route("/dashboard/pending-active")
 def dashboard_pending_active():
     per_page = cfg_int(["app", "pagination", "search_per_page"], default=25, min_v=5, max_v=500)
+    recurring_due_join, effective_due_expr = recurring_effective_due_sql("t")
     try:
         page = int(request.args.get("page", "1"))
     except ValueError:
@@ -4717,14 +4761,15 @@ def dashboard_pending_active():
     offset = (page - 1) * per_page
 
     rows = q(
-        "SELECT t.id, t.title, t.notes, t.due_date, t.due_time, t.priority, t.created_at, "
+        f"SELECT t.id, t.title, t.notes, {effective_due_expr} AS due_date, t.due_time, t.priority, t.created_at, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.name AS folder_name, fd.id AS folder_id "
         + base_from_sql
+        + recurring_due_join
         + "LEFT JOIN folders fd ON fd.id=COALESCE(t.folder_id, p.folder_id) "
         + base_where_sql
         + filter_sql
-        + " ORDER BY (t.due_date IS NULL) ASC, t.due_date ASC, (t.due_time IS NULL) ASC, t.due_time ASC, t.id DESC "
+        + f" ORDER BY ({effective_due_expr} IS NULL) ASC, {effective_due_expr} ASC, (t.due_time IS NULL) ASC, t.due_time ASC, t.id DESC "
         + "LIMIT %s OFFSET %s",
         filter_params + (per_page, offset),
     )
@@ -5588,6 +5633,7 @@ def folder_detail(folder_id: int):
     folder = q1("SELECT id, name, parent_id FROM folders WHERE id=%s", (folder_id,))
     if not folder:
         abort(404)
+    recurring_due_join, effective_due_expr = recurring_effective_due_sql("t")
 
     folder_breadcrumb = build_folder_breadcrumb(folder_id, include_self=False)
 
@@ -5599,10 +5645,11 @@ def folder_detail(folder_id: int):
 
     # Tareas asignadas directamente a la carpeta (no a proyectos)
     tasks = q(
-        "SELECT t.id, t.title, t.notes, t.due_date, t.due_time, t.completed_at, t.recurrence_rule, t.priority "
+        f"SELECT t.id, t.title, t.notes, {effective_due_expr} AS due_date, t.due_time, t.completed_at, t.recurrence_rule, t.priority "
         "FROM tasks t "
+        f"{recurring_due_join}"
         "WHERE t.folder_id=%s AND t.project_id IS NULL AND t.archived=0 AND t.deleted_at IS NULL AND t.completed_at IS NULL "
-        "ORDER BY (t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC",
+        f"ORDER BY ({effective_due_expr} IS NULL) ASC, {effective_due_expr} ASC, t.id DESC",
         (folder_id,)
     )
     tags_map = load_tags_map([t["id"] for t in tasks])
@@ -6110,6 +6157,7 @@ def filter_run(filter_id: int):
         page = 1
     page = max(page, 1)
     offset = (page - 1) * per_page
+    recurring_due_join, effective_due_expr = recurring_effective_due_sql("t")
 
     try:
         ast = parse_filter_expression(flt["expression"])
@@ -6119,6 +6167,7 @@ def filter_run(filter_id: int):
             ast = And(ast, Not(Term("IDENT", "done")))
 
         where_sql, params = compile_filter_to_sql(ast)
+        where_sql_effective = where_sql.replace("t.due_date", effective_due_expr)
     except Exception as e:
         flash(f"Error en el filtro '{flt['name']}': {e}", "error")
         return redirect(url_for("filters_view"))
@@ -6130,7 +6179,7 @@ def filter_run(filter_id: int):
         "LEFT JOIN projects p ON p.id=t.project_id "
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "LEFT JOIN folders pf ON pf.id=p.folder_id "
-        f"WHERE {where_sql} AND t.archived=0 AND t.deleted_at IS NULL AND (t.project_id IS NULL OR p.archived = 0)",
+        f"WHERE {where_sql_effective} AND t.archived=0 AND t.deleted_at IS NULL AND (t.project_id IS NULL OR p.archived = 0)",
         tuple(params),
     )
     total = int(total_row["c"]) if total_row else 0
@@ -6138,15 +6187,16 @@ def filter_run(filter_id: int):
 
     # Página de resultados
     sql = (
-        "SELECT t.id, t.title, t.notes, t.due_date, t.due_time, t.completed_at, t.recurrence_rule, t.priority, "
+        f"SELECT t.id, t.title, t.notes, {effective_due_expr} AS due_date, t.due_time, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.name AS folder_name, fd.id AS folder_id "
         "FROM tasks t "
         "LEFT JOIN projects p ON p.id=t.project_id "
+        f"{recurring_due_join}"
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "LEFT JOIN folders pf ON pf.id=p.folder_id "
-        f"WHERE {where_sql} AND t.archived=0 AND t.deleted_at IS NULL AND (t.project_id IS NULL OR p.archived = 0) "
-        "ORDER BY (t.completed_at IS NOT NULL) ASC, (t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC "
+        f"WHERE {where_sql_effective} AND t.archived=0 AND t.deleted_at IS NULL AND (t.project_id IS NULL OR p.archived = 0) "
+        f"ORDER BY (t.completed_at IS NOT NULL) ASC, ({effective_due_expr} IS NULL) ASC, {effective_due_expr} ASC, t.id DESC "
         "LIMIT %s OFFSET %s"
     )
 
@@ -8961,6 +9011,7 @@ def filter_run_expression():
 
     page = max(page, 1)
     offset = (page - 1) * per_page
+    recurring_due_join, effective_due_expr = recurring_effective_due_sql("t")
 
     try:
         ast = parse_filter_expression(expr)
@@ -8970,6 +9021,7 @@ def filter_run_expression():
             ast = And(ast, Not(Term("IDENT", "done")))
 
         where_sql, params = compile_filter_to_sql(ast)
+        where_sql_effective = where_sql.replace("t.due_date", effective_due_expr)
     except Exception as e:
         flash(f"Expresión inválida: {e}", "error")
         return redirect(url_for("filters_view"))
@@ -8980,7 +9032,7 @@ def filter_run_expression():
         "LEFT JOIN projects p ON p.id=t.project_id "
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "LEFT JOIN folders pf ON pf.id=p.folder_id "
-        f"WHERE {where_sql} AND t.archived=0 AND t.deleted_at IS NULL AND (t.project_id IS NULL OR p.archived = 0)",
+        f"WHERE {where_sql_effective} AND t.archived=0 AND t.deleted_at IS NULL AND (t.project_id IS NULL OR p.archived = 0)",
         tuple(params),
     )
 
@@ -8988,15 +9040,16 @@ def filter_run_expression():
     pages = max(1, (total + per_page - 1) // per_page)
 
     sql = (
-        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, "
+        f"SELECT t.id, t.title, t.notes, {effective_due_expr} AS due_date, t.completed_at, t.recurrence_rule, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.name AS folder_name, fd.id AS folder_id "
         "FROM tasks t "
         "LEFT JOIN projects p ON p.id=t.project_id "
+        f"{recurring_due_join}"
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "LEFT JOIN folders pf ON pf.id=p.folder_id "
-        f"WHERE {where_sql} AND t.archived=0 AND t.deleted_at IS NULL AND (t.project_id IS NULL OR p.archived = 0) "
-        "ORDER BY (t.completed_at IS NOT NULL) ASC, (t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC "
+        f"WHERE {where_sql_effective} AND t.archived=0 AND t.deleted_at IS NULL AND (t.project_id IS NULL OR p.archived = 0) "
+        f"ORDER BY (t.completed_at IS NOT NULL) ASC, ({effective_due_expr} IS NULL) ASC, {effective_due_expr} ASC, t.id DESC "
         "LIMIT %s OFFSET %s"
     )
 
@@ -9020,6 +9073,7 @@ def filter_run_expression():
     
 @app.route("/review")
 def review():
+    recurring_due_join, effective_due_expr = recurring_effective_due_sql("t")
 
 
     # Proyectos en Seguimiento y subcarpetas
@@ -9040,11 +9094,12 @@ def review():
 
     # 1) Inbox
     inbox = q(
-        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
+        f"SELECT t.id, t.title, t.notes, {effective_due_expr} AS due_date, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.name AS folder_name, fd.id AS folder_id "
         "FROM tasks t "
         "LEFT JOIN projects p ON p.id=t.project_id "
+        f"{recurring_due_join}"
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "WHERE t.completed_at IS NULL "
         "AND t.archived = 0 "
@@ -9080,41 +9135,43 @@ def review():
         nextaction_folder_params = tuple(sorted(sometime_review_folder_ids))
 
     nextactions_open = q(
-        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
+        f"SELECT t.id, t.title, t.notes, {effective_due_expr} AS due_date, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.name AS folder_name, fd.id AS folder_id "
         "FROM tasks t "
         "JOIN task_tags tt ON tt.task_id=t.id "
         "JOIN tags tg ON tg.id=tt.tag_id "
         "LEFT JOIN projects p ON p.id=t.project_id "
+        f"{recurring_due_join}"
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "WHERE t.completed_at IS NULL "
         "AND t.deleted_at IS NULL "
         "AND tg.name=%s "
-        "AND (t.due_date IS NULL OR t.due_date >= CURDATE()) "
+        f"AND ({effective_due_expr} IS NULL OR {effective_due_expr} >= CURDATE()) "
         + nextaction_folder_clause +
         "AND (t.project_id IS NULL OR p.archived = 0) "
-        "ORDER BY (t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC",
+        f"ORDER BY ({effective_due_expr} IS NULL) ASC, {effective_due_expr} ASC, t.id DESC",
         ("NextAction",) + nextaction_folder_params
     ) if nextaction_exists else []
 
     nextactions_overdue = q(
-        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
+        f"SELECT t.id, t.title, t.notes, {effective_due_expr} AS due_date, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.name AS folder_name, fd.id AS folder_id "
         "FROM tasks t "
         "JOIN task_tags tt ON tt.task_id=t.id "
         "JOIN tags tg ON tg.id=tt.tag_id "
         "LEFT JOIN projects p ON p.id=t.project_id "
+        f"{recurring_due_join}"
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "WHERE t.completed_at IS NULL "
         "AND t.deleted_at IS NULL "
         "AND tg.name=%s "
-        "AND t.due_date IS NOT NULL "
-        "AND t.due_date < CURDATE() "
+        f"AND {effective_due_expr} IS NOT NULL "
+        f"AND {effective_due_expr} < CURDATE() "
         + nextaction_folder_clause +
         "AND (t.project_id IS NULL OR p.archived = 0) "
-        "ORDER BY t.due_date ASC, t.id DESC",
+        f"ORDER BY {effective_due_expr} ASC, t.id DESC",
         ("NextAction",) + nextaction_folder_params
     ) if nextaction_exists else []
 
@@ -9123,61 +9180,64 @@ def review():
     agenda_exists = tag_exists("agenda")
 
     upcoming_7 = q(
-        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
+        f"SELECT t.id, t.title, t.notes, {effective_due_expr} AS due_date, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.name AS folder_name, fd.id AS folder_id "
         "FROM tasks t "
         "JOIN task_tags tt ON tt.task_id=t.id "
         "JOIN tags tg ON tg.id=tt.tag_id "
         "LEFT JOIN projects p ON p.id=t.project_id "
+        f"{recurring_due_join}"
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "WHERE t.completed_at IS NULL "
         "AND t.deleted_at IS NULL "
         "AND tg.name=%s "
-        "AND t.due_date IS NOT NULL "
-        "AND t.due_date >= CURDATE() "
-        "AND t.due_date <= DATE_ADD(CURDATE(), INTERVAL 7 DAY) "
+        f"AND {effective_due_expr} IS NOT NULL "
+        f"AND {effective_due_expr} >= CURDATE() "
+        f"AND {effective_due_expr} <= DATE_ADD(CURDATE(), INTERVAL 7 DAY) "
         "AND (t.project_id IS NULL OR p.archived = 0) "
-        "ORDER BY t.due_date ASC, t.id DESC",
+        f"ORDER BY {effective_due_expr} ASC, t.id DESC",
         ("agenda",)
     ) if agenda_exists else []
 
     en_seguimiento_now = q(
-        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
+        f"SELECT t.id, t.title, t.notes, {effective_due_expr} AS due_date, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.name AS folder_name, fd.id AS folder_id "
         "FROM tasks t "
         "JOIN task_tags tt ON tt.task_id=t.id "
         "JOIN tags tg ON tg.id=tt.tag_id "
         "LEFT JOIN projects p ON p.id=t.project_id "
+        f"{recurring_due_join}"
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "WHERE t.completed_at IS NULL "
         "AND t.deleted_at IS NULL "
         "AND tg.name=%s "
-        "AND t.due_date IS NOT NULL "
-        "AND t.due_date <= CURDATE() "
+        f"AND {effective_due_expr} IS NOT NULL "
+        f"AND {effective_due_expr} <= CURDATE() "
         "AND (t.project_id IS NULL OR p.archived = 0) "
-        "ORDER BY (t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC",
+        f"ORDER BY ({effective_due_expr} IS NULL) ASC, {effective_due_expr} ASC, t.id DESC",
         ("EnSeguimiento",)
     ) if en_seguimiento_exists else []
 
     en_seguimiento_next_15 = q(
-        "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
+        f"SELECT t.id, t.title, t.notes, {effective_due_expr} AS due_date, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.name AS folder_name, fd.id AS folder_id "
         "FROM tasks t "
         "JOIN task_tags tt ON tt.task_id=t.id "
         "JOIN tags tg ON tg.id=tt.tag_id "
         "LEFT JOIN projects p ON p.id=t.project_id "
+        f"{recurring_due_join}"
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "WHERE t.completed_at IS NULL "
         "AND t.deleted_at IS NULL "
         "AND tg.name=%s "
-        "AND t.due_date IS NOT NULL "
-        "AND t.due_date > CURDATE() "
-        "AND t.due_date <= DATE_ADD(CURDATE(), INTERVAL 15 DAY) "
+        f"AND {effective_due_expr} IS NOT NULL "
+        f"AND {effective_due_expr} > CURDATE() "
+        f"AND {effective_due_expr} <= DATE_ADD(CURDATE(), INTERVAL 15 DAY) "
         "AND (t.project_id IS NULL OR p.archived = 0) "
-        "ORDER BY t.due_date ASC, t.id DESC",
+        f"ORDER BY {effective_due_expr} ASC, t.id DESC",
         ("EnSeguimiento",)
     ) if en_seguimiento_exists else []
 
@@ -9185,21 +9245,22 @@ def review():
 
 
     agenda_overdue = q(
-        "SELECT t.id, t.title, t.due_date, t.notes, t.completed_at, t.recurrence_rule, t.priority, "
+        f"SELECT t.id, t.title, {effective_due_expr} AS due_date, t.notes, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.name AS folder_name, fd.id AS folder_id "
         "FROM tasks t "
         "JOIN task_tags tt ON tt.task_id=t.id "
         "JOIN tags tg ON tg.id=tt.tag_id "
         "LEFT JOIN projects p ON p.id=t.project_id "
+        f"{recurring_due_join}"
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "WHERE t.completed_at IS NULL "
         "AND t.deleted_at IS NULL "
         "AND tg.name=%s "
-        "AND t.due_date IS NOT NULL "
-        "AND t.due_date < CURDATE() "
+        f"AND {effective_due_expr} IS NOT NULL "
+        f"AND {effective_due_expr} < CURDATE() "
         "AND (t.project_id IS NULL OR p.archived = 0) "
-        "ORDER BY t.due_date ASC, t.id DESC",
+        f"ORDER BY {effective_due_expr} ASC, t.id DESC",
         ("agenda",)
     ) if agenda_exists else []
 
@@ -9222,20 +9283,21 @@ def review():
         )
         seguimiento_params = tuple(seguimiento_ids) + tuple(seguimiento_ids)
     en_espera_tasks = q(
-        "SELECT t.id, t.title, t.due_date, t.notes, t.completed_at, t.recurrence_rule, t.priority, "
+        f"SELECT t.id, t.title, {effective_due_expr} AS due_date, t.notes, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.name AS folder_name, fd.id AS folder_id "
         "FROM tasks t "
         "JOIN task_tags tt ON tt.task_id=t.id "
         "JOIN tags tg ON tg.id=tt.tag_id "
         "LEFT JOIN projects p ON p.id=t.project_id "
+        f"{recurring_due_join}"
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "WHERE t.completed_at IS NULL "
         "AND t.deleted_at IS NULL "
         "AND tg.name=%s "
         + seguimiento_clause +
         "AND (t.project_id IS NULL OR p.archived = 0) "
-        "ORDER BY (t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC",
+        f"ORDER BY ({effective_due_expr} IS NULL) ASC, {effective_due_expr} ASC, t.id DESC",
         ("EnEspera",) + seguimiento_params
     ) if en_espera_exists else []
 
@@ -9359,12 +9421,13 @@ def review():
         if sometime_ids:
             placeholders = ",".join(["%s"] * len(sometime_ids))
             sometime_tasks_no_project = q(
-                "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
+                f"SELECT t.id, t.title, t.notes, {effective_due_expr} AS due_date, t.completed_at, t.recurrence_rule, t.priority, "
                 "f.name AS folder_name, f.id AS folder_id "
                 "FROM tasks t "
+                f"{recurring_due_join}"
                 "LEFT JOIN folders f ON f.id=t.folder_id "
                 f"WHERE t.completed_at IS NULL AND t.deleted_at IS NULL AND t.project_id IS NULL AND t.folder_id IN ({placeholders}) "
-                "ORDER BY (t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC",
+                f"ORDER BY ({effective_due_expr} IS NULL) ASC, {effective_due_expr} ASC, t.id DESC",
                 tuple(sometime_ids),
             ) or []
 
@@ -9397,11 +9460,12 @@ def review():
             checklists_folder_id = checklists_folder['id']
             # Tareas directas en la carpeta (sin proyecto)
             checklist_tasks = q(
-                "SELECT t.id, t.title, t.notes, t.due_date, t.completed_at, t.recurrence_rule, t.priority, "
+                f"SELECT t.id, t.title, t.notes, {effective_due_expr} AS due_date, t.completed_at, t.recurrence_rule, t.priority, "
                 "p.name AS project_name, p.id AS project_id, "
                 "f.name AS folder_name, f.id AS folder_id "
                 "FROM tasks t "
                 "LEFT JOIN projects p ON p.id=t.project_id "
+                f"{recurring_due_join}"
                 "LEFT JOIN folders f ON f.id=t.folder_id "
                 "WHERE t.completed_at IS NULL "
                 "AND t.deleted_at IS NULL "
@@ -9478,6 +9542,7 @@ def review():
 @app.route("/next")
 def next_actions():
     per_page = cfg_int(["app", "pagination", "nextactions_per_page"], default=25, min_v=5, max_v=500)
+    recurring_due_join, effective_due_expr = recurring_effective_due_sql("t")
 
     try:
         page = int(request.args.get("page", "1"))
@@ -9512,18 +9577,19 @@ def next_actions():
         offset = (page - 1) * per_page
 
         rows = q(
-            "SELECT t.id, t.title, t.notes, t.due_date, t.due_time, t.recurrence_rule, t.completed_at, t.priority, "
+            f"SELECT t.id, t.title, t.notes, {effective_due_expr} AS due_date, t.due_time, t.recurrence_rule, t.completed_at, t.priority, "
             "p.name AS project_name, p.id AS project_id, "
             "fd.name AS folder_name, fd.id AS folder_id "
             "FROM tasks t "
             "JOIN task_tags tt ON tt.task_id=t.id "
             "LEFT JOIN projects p ON p.id=t.project_id "
+            f"{recurring_due_join}"
             "LEFT JOIN folders fd ON fd.id = COALESCE(t.folder_id, p.folder_id) "
             "WHERE tt.tag_id=%s "
             "AND t.completed_at IS NULL "
             "AND t.deleted_at IS NULL "
             "AND (t.project_id IS NULL OR p.archived = 0) "
-            "ORDER BY (t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC "
+            f"ORDER BY ({effective_due_expr} IS NULL) ASC, {effective_due_expr} ASC, t.id DESC "
             "LIMIT %s OFFSET %s",
             (tag["id"], per_page, offset)
         )

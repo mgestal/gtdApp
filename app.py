@@ -2974,11 +2974,29 @@ def proximo():
     page = max(page, 1)
     offset = (page - 1) * per_page
 
+    recurring_due_join = (
+        "LEFT JOIN ("
+        "SELECT task_id, MAX(next_due_date) AS last_next_due_date "
+        "FROM recurring_task_runs "
+        "GROUP BY task_id"
+        ") rr ON rr.task_id=t.id "
+    )
+    effective_due_expr = (
+        "CASE "
+        "WHEN t.recurrence_rule IS NOT NULL AND TRIM(t.recurrence_rule) <> '' "
+        "AND rr.last_next_due_date IS NOT NULL "
+        "AND (t.due_date IS NULL OR rr.last_next_due_date > t.due_date) "
+        "THEN rr.last_next_due_date "
+        "ELSE t.due_date "
+        "END"
+    )
+
     # Total de tareas con fecha (si tu agenda incluye solo tareas con due_date)
     total_row = q1(
-        "SELECT COUNT(*) AS c FROM tasks t "
+        f"SELECT COUNT(*) AS c FROM tasks t "
         "LEFT JOIN projects p ON p.id=t.project_id "
-        "WHERE t.due_date IS NOT NULL AND t.completed_at IS NULL "
+        f"{recurring_due_join}"
+        f"WHERE {effective_due_expr} IS NOT NULL AND t.completed_at IS NULL "
         "AND t.deleted_at IS NULL "
         "AND (t.project_id IS NULL OR p.archived = 0)"
     )
@@ -2986,17 +3004,18 @@ def proximo():
     pages = max(1, (total + per_page - 1) // per_page)
 
     rows = q(
-        "SELECT t.id, t.title, t.notes, t.due_date, t.due_time, t.completed_at, t.recurrence_rule, t.priority, "
+        f"SELECT t.id, t.title, t.notes, {effective_due_expr} AS due_date, t.due_time, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.id AS folder_id, fd.name AS folder_name "
         "FROM tasks t "
         "LEFT JOIN projects p ON p.id=t.project_id "
+        f"{recurring_due_join}"
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
-        "WHERE t.due_date IS NOT NULL "
+        f"WHERE {effective_due_expr} IS NOT NULL "
         "AND t.completed_at IS NULL "
         "AND t.deleted_at IS NULL "
         "AND (t.project_id IS NULL OR p.archived = 0) "
-        "ORDER BY (t.completed_at IS NOT NULL) ASC, t.due_date ASC, (t.due_time IS NULL) ASC, t.due_time ASC, t.id DESC "
+        f"ORDER BY (t.completed_at IS NOT NULL) ASC, {effective_due_expr} ASC, (t.due_time IS NULL) ASC, t.due_time ASC, t.id DESC "
         "LIMIT %s OFFSET %s",
         (per_page, offset),
     )

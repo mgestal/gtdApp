@@ -47,8 +47,8 @@
 
   function askPeriodicChoice(data) {
     return new Promise((resolve) => {
-      const keepDate = formatIsoDate(data.keep_due);
-      const futureDate = formatIsoDate(data.future_due);
+      const optionADate = formatIsoDate(data.option_a_due);
+      const optionBDate = formatIsoDate(data.option_b_due);
       const title = escapeHtml(data.title || "Tarea periódica");
 
       const dlg = document.createElement("dialog");
@@ -62,15 +62,15 @@
             </div>
           </div>
           <div class="modal-body">
-            <p class="hint" style="margin:0 0 8px 0;">La próxima repetición calculada queda en el pasado.</p>
-            <p class="hint" style="margin:0 0 6px 0;">Mantener próxima fecha: <strong>${keepDate}</strong></p>
-            <p class="hint" style="margin:0;">Mover a fecha válida: <strong>${futureDate}</strong></p>
+            <p class="hint" style="margin:0 0 8px 0;">La tarea está vencida y la siguiente repetición también queda en el pasado.</p>
+            <p class="hint" style="margin:0 0 6px 0;">Opción A: <strong>${optionADate}</strong> (vencimiento anterior + 1 periodicidad)</p>
+            <p class="hint" style="margin:0;">Opción B: <strong>${optionBDate}</strong> (primera repetición posterior a hoy)</p>
           </div>
           <div class="modal-footer" style="justify-content:space-between; flex-wrap:wrap;">
             <button type="button" class="btn btn-soft" data-choice="cancel">Cancelar</button>
             <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end;">
-              <button type="button" class="btn btn-soft" data-choice="keep">Mantener ${keepDate}</button>
-              <button type="button" class="btn btn-primary" data-choice="future">Usar ${futureDate}</button>
+              <button type="button" class="btn btn-soft" data-choice="option_a">Usar ${optionADate}</button>
+              <button type="button" class="btn btn-primary" data-choice="option_b">Usar ${optionBDate}</button>
             </div>
           </div>
         </div>
@@ -103,11 +103,11 @@
       } else {
         // Fallback para navegadores antiguos
         const keep = window.confirm(
-          "Esta tarea periódica sigue quedando en el pasado.\n\n" +
-            `Aceptar: mantener próxima fecha ${keepDate}.\n` +
-            `Cancelar: mover a la próxima fecha válida ${futureDate}.`
+          "Esta tarea periódica está vencida y la siguiente repetición queda en el pasado.\n\n" +
+            `Aceptar: usar opción A (${optionADate}).\n` +
+            `Cancelar: usar opción B (${optionBDate}).`
         );
-        closeWith(keep ? "keep" : "future");
+        closeWith(keep ? "option_a" : "option_b");
       }
     });
   }
@@ -134,7 +134,7 @@
       const choice = await askPeriodicChoice(data);
       if (choice === "cancel") return false;
 
-      addChoiceInput(form, choice === "future" ? "future" : "keep");
+      addChoiceInput(form, choice === "option_b" ? "option_b" : "option_a");
       return true;
     } catch (_err) {
       return true;

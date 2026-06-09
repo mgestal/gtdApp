@@ -2459,6 +2459,72 @@ def next_due_date_after_today(current_due: date, rule: RRule, today_d: date) -> 
     return due
 
 
+def recurrence_due_options(base_due: date, rule: RRule, today_d: date) -> Dict[str, Any]:
+    """Compute recurring due options based on previous due date and current day.
+
+    Rules:
+    - Always compute +1 period from previous due date.
+    - If +1 period is today/future, use it directly.
+    - If +1 period is still in the past, allow choosing between:
+      A) +1 period
+      B) first recurrence strictly after today.
+    """
+    next_due_once = next_due_date(base_due, rule)
+
+    if next_due_once >= today_d:
+        return {
+            "requires_choice": False,
+            "option_a_due": next_due_once,
+            "option_b_due": next_due_once,
+            "default_due": next_due_once,
+        }
+
+    option_b_due = next_due_once
+    guard = 0
+    while option_b_due <= today_d and guard < 512:
+        nxt = next_due_date(option_b_due, rule)
+        if nxt <= option_b_due:
+            break
+        option_b_due = nxt
+        guard += 1
+
+    return {
+        "requires_choice": True,
+        "option_a_due": next_due_once,
+        "option_b_due": option_b_due,
+        "default_due": next_due_once,
+    }
+
+
+def resolve_recurrence_due_choice(
+    base_due: date,
+    rule: RRule,
+    today_d: date,
+    choice_raw: Optional[str] = None,
+) -> Dict[str, Any]:
+    options = recurrence_due_options(base_due, rule, today_d)
+    choice = (choice_raw or "").strip().lower()
+
+    selected_due = options["default_due"]
+    if options["requires_choice"] and choice in {"future", "option_b"}:
+        selected_due = options["option_b_due"]
+
+    options["selected_due"] = selected_due
+    return options
+
+
+def effective_recurrence_base_due(task_row: Dict[str, Any]) -> Optional[date]:
+    """Return the most recent due date baseline for recurring tasks."""
+    base_due = task_row.get("due_date")
+    last_next_due = task_row.get("last_next_due_date")
+
+    if base_due is None:
+        return last_next_due
+    if last_next_due is None:
+        return base_due
+    return last_next_due if last_next_due > base_due else base_due
+
+
 def recurring_effective_due_sql(task_alias: str = "t") -> Tuple[str, str]:
     recurring_due_join = (
         "LEFT JOIN ("
@@ -5368,8 +5434,15 @@ def task_delete(task_id: int):
 @app.route("/tasks/<int:task_id>/toggle", methods=["POST"])
 def task_toggle(task_id: int):
     task = q1(
-        "SELECT id, completed_at, due_date, recurrence_rule, project_id, archived "
-        "FROM tasks WHERE id=%s",
+        "SELECT t.id, t.completed_at, t.due_date, t.recurrence_rule, t.project_id, t.archived, "
+        "rr.last_next_due_date "
+        "FROM tasks t "
+        "LEFT JOIN ("
+        "SELECT task_id, MAX(next_due_date) AS last_next_due_date "
+        "FROM recurring_task_runs "
+        "GROUP BY task_id"
+        ") rr ON rr.task_id=t.id "
+        "WHERE t.id=%s",
         (task_id,),
     )
     if not task:
@@ -5386,13 +5459,17 @@ def task_toggle(task_id: int):
             # CASO 1: tarea recurrente -> comportamiento actual, sin tocar NextAction
             if task.get("recurrence_rule") and task.get("due_date"):
                 rule = parse_rrule(task["recurrence_rule"])
-                previous_due = task["due_date"]
-                next_due = next_due_date(task["due_date"], rule)
+                base_due = effective_recurrence_base_due(task)
+                previous_due = base_due
                 recurrence_due_choice = (request.form.get("recurrence_due_choice") or "").strip().lower()
                 today_d = now.date()
-
-                if next_due < today_d and recurrence_due_choice != "keep":
-                    next_due = next_due_date_after_today(task["due_date"], rule, today_d)
+                due_resolution = resolve_recurrence_due_choice(
+                    base_due,
+                    rule,
+                    today_d,
+                    recurrence_due_choice,
+                )
+                next_due = due_resolution["selected_due"]
                 exec_sql(
                     "UPDATE tasks SET last_completed_at=%s, due_date=%s, completed_at=NULL WHERE id=%s",
                     (now, next_due, task_id),
@@ -6179,6 +6256,7 @@ def filter_run(filter_id: int):
         "LEFT JOIN projects p ON p.id=t.project_id "
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "LEFT JOIN folders pf ON pf.id=p.folder_id "
+        f"{recurring_due_join}"
         f"WHERE {where_sql_effective} AND t.archived=0 AND t.deleted_at IS NULL AND (t.project_id IS NULL OR p.archived = 0)",
         tuple(params),
     )
@@ -9032,6 +9110,7 @@ def filter_run_expression():
         "LEFT JOIN projects p ON p.id=t.project_id "
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "LEFT JOIN folders pf ON pf.id=p.folder_id "
+        f"{recurring_due_join}"
         f"WHERE {where_sql_effective} AND t.archived=0 AND t.deleted_at IS NULL AND (t.project_id IS NULL OR p.archived = 0)",
         tuple(params),
     )
@@ -9736,8 +9815,15 @@ def api_extension_tasks():
 @require_api_token
 def api_extension_task_toggle(task_id: int):
     task = q1(
-        "SELECT id, completed_at, due_date, recurrence_rule, project_id, archived "
-        "FROM tasks WHERE id=%s",
+        "SELECT t.id, t.completed_at, t.due_date, t.recurrence_rule, t.project_id, t.archived, "
+        "rr.last_next_due_date "
+        "FROM tasks t "
+        "LEFT JOIN ("
+        "SELECT task_id, MAX(next_due_date) AS last_next_due_date "
+        "FROM recurring_task_runs "
+        "GROUP BY task_id"
+        ") rr ON rr.task_id=t.id "
+        "WHERE t.id=%s",
         (task_id,),
     )
     if not task:
@@ -9752,12 +9838,17 @@ def api_extension_task_toggle(task_id: int):
         else:
             if task.get("recurrence_rule") and task.get("due_date"):
                 rule = parse_rrule(task["recurrence_rule"])
-                previous_due = task["due_date"]
-                next_due = next_due_date(task["due_date"], rule)
+                base_due = effective_recurrence_base_due(task)
+                previous_due = base_due
                 today_d = now.date()
-
-                if next_due < today_d:
-                    next_due = next_due_date_after_today(task["due_date"], rule, today_d)
+                recurrence_due_choice = (request.json or {}).get("recurrence_due_choice") if request.is_json else None
+                due_resolution = resolve_recurrence_due_choice(
+                    base_due,
+                    rule,
+                    today_d,
+                    str(recurrence_due_choice) if recurrence_due_choice is not None else None,
+                )
+                next_due = due_resolution["selected_due"]
 
                 exec_sql(
                     "UPDATE tasks SET last_completed_at=%s, due_date=%s, completed_at=NULL WHERE id=%s",
@@ -10118,8 +10209,14 @@ def api_folder_move(folder_id: int):
 @app.route("/api/tasks/<int:task_id>/toggle_preview")
 def api_task_toggle_preview(task_id: int):
     task = q1(
-        "SELECT id, title, completed_at, due_date, recurrence_rule "
-        "FROM tasks WHERE id=%s",
+        "SELECT t.id, t.title, t.completed_at, t.due_date, t.recurrence_rule, rr.last_next_due_date "
+        "FROM tasks t "
+        "LEFT JOIN ("
+        "SELECT task_id, MAX(next_due_date) AS last_next_due_date "
+        "FROM recurring_task_runs "
+        "GROUP BY task_id"
+        ") rr ON rr.task_id=t.id "
+        "WHERE t.id=%s",
         (task_id,),
     )
     if not task:
@@ -10135,28 +10232,23 @@ def api_task_toggle_preview(task_id: int):
 
     today_d = datetime.now(ZoneInfo("Europe/Madrid")).date()
 
-    # Usar siempre due_date como base, igual que en task_toggle
-    base_date = task["due_date"]
-    keep_due = next_due_date(base_date, rule)
-
-    # Si la fecha base es hoy, proponemos hoy como válida
-    if base_date == today_d:
+    # Base efectiva: due_date o último next_due_date registrado, la más reciente.
+    base_date = effective_recurrence_base_due(task)
+    if not base_date:
         return jsonify({"requires_choice": False})
 
-    # Si la próxima fecha calculada es hoy o mayor, no hay conflicto
-    if keep_due >= today_d:
+    due_options = recurrence_due_options(base_date, rule, today_d)
+    if not due_options["requires_choice"]:
         return jsonify({"requires_choice": False})
 
-    # Si la fecha es menor que hoy, buscar la siguiente futura
-    future_due = next_due_date_after_today(base_date, rule, today_d)
     return jsonify(
         {
             "requires_choice": True,
             "task_id": int(task["id"]),
             "title": task.get("title") or "",
             "today": today_d.isoformat(),
-            "keep_due": keep_due.isoformat(),
-            "future_due": future_due.isoformat(),
+            "option_a_due": due_options["option_a_due"].isoformat(),
+            "option_b_due": due_options["option_b_due"].isoformat(),
         }
     )
     

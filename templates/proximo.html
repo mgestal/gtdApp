@@ -218,6 +218,11 @@
 					   📝
 					</a>
 				  {% endif %}
+          {% if t.location %}
+          <a href="{{ location_to_href(t.location) }}" target="_blank" rel="noopener noreferrer"
+             title="{{ t.location }}"
+             style="text-decoration:none; font-size:0.9rem; opacity:.75;">📍</a>
+          {% endif %}
 				</div>
               
               <div class="task-tags" style="font-size: 0.8rem; opacity: 0.8;">

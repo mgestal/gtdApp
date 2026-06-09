@@ -227,6 +227,11 @@
 					   📝
 					</a>
 				  {% endif %}
+         {% if t.location %}
+          <a href="{{ location_to_href(t.location) }}" target="_blank" rel="noopener noreferrer"
+             title="{{ t.location }}"
+             style="text-decoration:none; font-size:0.9rem; opacity:.75;">📍</a>
+          {% endif %}
             </div>
             <div class="review-mini-meta">
               {% if t.due_date %}{{ t.due_date.strftime('%d-%m-%Y') }}{% else %}Sin fecha{% endif %}
@@ -303,6 +308,11 @@
 					     📝
 					  </a>
 				   {% endif %}
+           {% if t.location %}
+            <a href="{{ location_to_href(t.location) }}" target="_blank" rel="noopener noreferrer"
+               title="{{ t.location }}"
+               style="text-decoration:none; font-size:0.9rem; opacity:.75;">📍</a>
+           {% endif %}
                 </div>
                 <div class="review-mini-meta">
                   {% if t.due_date %}{{ t.due_date.strftime('%d-%m-%Y') }}{% else %}Sin fecha{% endif %}
@@ -351,6 +361,11 @@
 					     📝
 					  </a>
 				   {% endif %}
+           {% if t.location %}
+            <a href="{{ location_to_href(t.location) }}" target="_blank" rel="noopener noreferrer"
+               title="{{ t.location }}"
+               style="text-decoration:none; font-size:0.9rem; opacity:.75;">📍</a>
+           {% endif %}
                 </div>
                 <div class="review-mini-meta">
                   {% if t.due_date %}{{ t.due_date.strftime('%d-%m-%Y') }}{% else %}Sin fecha{% endif %}
@@ -406,6 +421,11 @@
 					   📝
 					</a>
 				  {% endif %}
+         {% if t.location %}
+          <a href="{{ location_to_href(t.location) }}" target="_blank" rel="noopener noreferrer"
+             title="{{ t.location }}"
+             style="text-decoration:none; font-size:0.9rem; opacity:.75;">📍</a>
+          {% endif %}
             </div>
             <div class="review-mini-meta">
               {% if t.due_date %}{{ t.due_date.strftime('%d-%m-%Y') }}{% else %}Sin fecha{% endif %}
@@ -463,6 +483,11 @@
 					   📝
 					</a>
 				  {% endif %}
+         {% if t.location %}
+          <a href="{{ location_to_href(t.location) }}" target="_blank" rel="noopener noreferrer"
+             title="{{ t.location }}"
+             style="text-decoration:none; font-size:0.9rem; opacity:.75;">📍</a>
+          {% endif %}
             </div>
             <div class="review-mini-meta">
               {% if t.due_date %}{{ t.due_date.strftime('%d-%m-%Y') }}{% else %}Sin fecha{% endif %}
@@ -511,6 +536,11 @@
 					   📝
 					</a>
 				  {% endif %}
+         {% if t.location %}
+          <a href="{{ location_to_href(t.location) }}" target="_blank" rel="noopener noreferrer"
+             title="{{ t.location }}"
+             style="text-decoration:none; font-size:0.9rem; opacity:.75;">📍</a>
+          {% endif %}
             </div>
             <div class="review-mini-meta">
               {% if t.due_date %}{{ t.due_date.strftime('%d-%m-%Y') }}{% else %}Sin fecha{% endif %}
@@ -567,6 +597,11 @@
 					   📝
 					</a>
 				  {% endif %}
+         {% if t.location %}
+          <a href="{{ location_to_href(t.location) }}" target="_blank" rel="noopener noreferrer"
+             title="{{ t.location }}"
+             style="text-decoration:none; font-size:0.9rem; opacity:.75;">📍</a>
+          {% endif %}
             </div>
             <div class="review-mini-meta">
               {% if t.due_date %}{{ t.due_date.strftime('%d-%m-%Y') }}{% else %}Sin fecha{% endif %}
@@ -623,6 +658,11 @@
 					     📝
 					  </a>
 				    {% endif %}
+           {% if t.location %}
+            <a href="{{ location_to_href(t.location) }}" target="_blank" rel="noopener noreferrer"
+               title="{{ t.location }}"
+               style="text-decoration:none; font-size:0.9rem; opacity:.75;">📍</a>
+            {% endif %}
               </div>
               <div class="review-mini-meta">
                 {% if t.due_date %}{{ t.due_date.strftime('%d-%m-%Y') }}{% else %}Sin fecha{% endif %}
@@ -811,6 +851,11 @@
                        📝
                     </a>
                   {% endif %}
+                  {% if t.location %}
+                    <a href="{{ location_to_href(t.location) }}" target="_blank" rel="noopener noreferrer"
+                       title="{{ t.location }}"
+                       style="text-decoration:none; font-size:0.9rem; opacity:.75;">📍</a>
+                  {% endif %}
                 </div>
               </div>
               <div class="review-mini-meta">
@@ -907,6 +952,11 @@
                      style="text-decoration:none; font-size:0.9rem; opacity:.75;">
                      📝
                   </a>
+                {% endif %}
+                {% if t.location %}
+                  <a href="{{ location_to_href(t.location) }}" target="_blank" rel="noopener noreferrer"
+                     title="{{ t.location }}"
+                     style="text-decoration:none; font-size:0.9rem; opacity:.75;">📍</a>
                 {% endif %}
               </div>
               <div class="review-mini-meta">

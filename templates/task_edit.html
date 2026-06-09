@@ -15,6 +15,9 @@
       <label class="label">Notas</label>
       <textarea class="input" name="notes" rows="2">{% if task.notes %}{{ task.notes }}{% endif %}</textarea>
 
+      <label class="label">Ubicación (enlace o dirección)</label>
+      <input class="input" name="location" value="{% if task.location %}{{ task.location }}{% endif %}" placeholder="https://maps.google.com/... o Calle ...">
+
       <div class="grid2">
         <div>
           <label class="label">Carpeta</label>

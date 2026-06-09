@@ -252,6 +252,7 @@ CREATE TABLE `tasks` (
   `folder_id` int(11) DEFAULT NULL,
   `title` varchar(500) NOT NULL,
   `notes` text DEFAULT NULL,
+  `location` varchar(1024) DEFAULT NULL,
   `due_date` date DEFAULT NULL,
   `due_time` time DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),

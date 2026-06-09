@@ -80,6 +80,9 @@
                   {% if t.notes %}
                     <a href="{{ url_for('task_edit', task_id=t.id, next=request.full_path) }}" title="{{ t.notes }}" style="text-decoration:none; font-size:0.9rem; opacity:.75;">📝</a>
                   {% endif %}
+                  {% if t.location %}
+                    <a href="{{ location_to_href(t.location) }}" target="_blank" rel="noopener noreferrer" title="{{ t.location }}" style="text-decoration:none; font-size:0.9rem; opacity:.75;">📍</a>
+                  {% endif %}
                 </div>
                 <div class="task-tags" style="font-size:0.8rem; opacity:0.8; margin-top:2px;">
                   {% for tag in tags_map.get(t.id, []) %}

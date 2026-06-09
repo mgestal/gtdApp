@@ -116,6 +116,11 @@
                      title="{{ t.notes }}"
                      style="text-decoration:none; font-size:0.9rem; opacity:.75;">📝</a>
                 {% endif %}
+                {% if t.location %}
+                  <a href="{{ location_to_href(t.location) }}" target="_blank" rel="noopener noreferrer"
+                     title="{{ t.location }}"
+                     style="text-decoration:none; font-size:0.9rem; opacity:.75;">📍</a>
+                {% endif %}
               </div>
               <div style="display:flex; flex-wrap:wrap; gap:4px; margin-top:3px;">
                 {% if t.recurrence_rule %}<a class="pill taglink" style="font-size:10px;" href="{{ url_for('task_periodic_history', task_id=t.id, next=request.full_path) }}">⟲ periódica</a>{% endif %}

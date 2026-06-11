@@ -69,8 +69,8 @@
           <div class="modal-footer" style="justify-content:space-between; flex-wrap:wrap;">
             <button type="button" class="btn btn-soft" data-choice="cancel">Cancelar</button>
             <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end;">
-              <button type="button" class="btn btn-soft" data-choice="option_a">Usar ${optionADate}</button>
-              <button type="button" class="btn btn-primary" data-choice="option_b">Usar ${optionBDate}</button>
+              <button type="button" class="btn btn-soft" data-choice="option_a" title="Usar opción A">${optionADate}</button>
+              <button type="button" class="btn btn-primary" data-choice="option_b" title="Usar opción B">${optionBDate}</button>
             </div>
           </div>
         </div>

@@ -2403,7 +2403,13 @@ def parse_rrule(rrule: str) -> Optional[RRule]:
     freq = parts.get("FREQ")
     if not freq:
         return None
-    interval = int(parts.get("INTERVAL", "1") or "1")
+    interval_raw = parts.get("INTERVAL", "1") or "1"
+    try:
+        interval = int(interval_raw)
+    except (TypeError, ValueError):
+        interval = 1
+    if interval < 1:
+        interval = 1
     byday = [d.strip() for d in parts.get("BYDAY", "").split(",") if d.strip()] or None
     bymonthday = None
     if parts.get("BYMONTHDAY"):
@@ -2483,6 +2489,16 @@ def recurrence_due_options(base_due: date, rule: RRule, today_d: date) -> Dict[s
       A) +1 period
       B) first recurrence strictly after today.
     """
+    # Si la fecha base es hoy o futura, nunca hay ambigüedad: se avanza 1 período.
+    if base_due >= today_d:
+        next_due_once = next_due_date(base_due, rule)
+        return {
+            "requires_choice": False,
+            "option_a_due": next_due_once,
+            "option_b_due": next_due_once,
+            "default_due": next_due_once,
+        }
+
     next_due_once = next_due_date(base_due, rule)
 
     if next_due_once >= today_d:

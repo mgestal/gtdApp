@@ -274,22 +274,17 @@
   </div>
 
   <div class="card" style="margin-top:14px;">
-    <div class="card-header"><div class="card-title">Tareas de la carpeta</div></div>
+    <div class="card-header" style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
+      <div class="card-title">Tareas de la carpeta</div>
+      <a class="btn btn-soft" style="padding:5px 8px;{% if include_subfolders %} background:var(--panel2); border-color:var(--accent);{% endif %}"
+         title="{% if include_subfolders %}Ver solo esta carpeta{% else %}Ver también tareas de las subcarpetas{% endif %}"
+         href="{% if include_subfolders %}{{ url_for('folder_detail', folder_id=folder.id) }}{% else %}{{ url_for('folder_detail', folder_id=folder.id, subfolders=1) }}{% endif %}">
+        🗃️ Subcarpetas
+      </a>
+    </div>
     <div class="folder-dnd-hint">Arrastra una tarea y suéltala en un proyecto de esta card o en carpeta/proyecto de la barra lateral.</div>
 
-    {% if tasks and tasks|length > 0 %}
-      <div class="table-wrap-responsive folder-table-wrap">
-      <table class="table">
-        <thead>
-          <tr>
-            <th style="width:58px;"></th>
-            <th>Tarea y Etiquetas</th>
-            <th style="width:100px;">Fecha</th>
-            <th style="width:100px; text-align:right;">Acciones</th>
-          </tr>
-        </thead>
-        <tbody>
-        {% for t in tasks %}
+    {% macro task_row(t) %}
           <tr class="{% if t.completed_at %}row-done{% endif %} js-draggable-task folder-task-draggable" data-task-id="{{ t.id }}" draggable="true" title="Arrastra para mover tarea a carpeta/proyecto">
             <td style="vertical-align:top; padding-top:6px;">
               <div class="folder-check-wrap">
@@ -297,7 +292,7 @@
                   <span class="folder-priority-bar folder-priority-{{ t.priority }}" aria-hidden="true"></span>
                 {% endif %}
                 <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}" style="margin:0;">
-                  <input type="hidden" name="next" value="{{ url_for('folder_detail', folder_id=folder.id) }}">
+                  <input type="hidden" name="next" value="{{ request.full_path }}">
                   <button class="radio"></button>
                 </form>
               </div>
@@ -406,14 +401,74 @@
 
             <td style="text-align:right;">
               <div style="display:inline-flex; gap:5px;">
-                <a class="btn btn-soft" style="padding:5px 8px;" href="{{ url_for('task_edit', task_id=t.id, next=url_for('folder_detail', folder_id=folder.id)) }}">✎</a>
+                <a class="btn btn-soft" style="padding:5px 8px;" href="{{ url_for('task_edit', task_id=t.id, next=request.full_path) }}">✎</a>
                 <form method="post" action="{{ url_for('task_delete', task_id=t.id) }}" style="display:inline;">
-                  <input type="hidden" name="next" value="{{ url_for('folder_detail', folder_id=folder.id) }}">
+                  <input type="hidden" name="next" value="{{ request.full_path }}">
                   <button type="submit" class="btn btn-soft" style="padding:5px 8px;" onclick="return confirm('¿Borrar?');">🗑</button>
                 </form>
               </div>
             </td>
           </tr>
+    {% endmacro %}
+
+    {% if include_subfolders %}
+      {% if tasks_grouped and tasks_grouped|length > 0 %}
+        <div class="table-wrap-responsive folder-table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th style="width:58px;"></th>
+              <th>Tarea y Etiquetas</th>
+              <th style="width:100px;">Fecha</th>
+              <th style="width:100px; text-align:right;">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for g in tasks_grouped %}
+            <tr>
+              <td colspan="4" style="background:var(--panel2); font-weight:700; font-size:13px; padding:8px 10px;">
+                📁 {{ g.folder_name or 'Sin carpeta' }}
+              </td>
+            </tr>
+            {% for p in g.projects %}
+              {% if p.project_id %}
+                <tr>
+                  <td colspan="4" style="padding:5px 10px 5px 26px; font-weight:600; font-size:12px; opacity:0.85;">
+                    💼 {{ p.project_name }}
+                  </td>
+                </tr>
+              {% elif g.projects|length > 1 %}
+                <tr>
+                  <td colspan="4" style="padding:5px 10px 5px 26px; font-weight:600; font-size:12px; opacity:0.6;">
+                    Sin proyecto
+                  </td>
+                </tr>
+              {% endif %}
+              {% for t in p.tasks %}
+                {{ task_row(t) }}
+              {% endfor %}
+            {% endfor %}
+          {% endfor %}
+          </tbody>
+        </table>
+        </div>
+      {% else %}
+        <div class="empty">No hay tareas en esta carpeta ni en sus subcarpetas.</div>
+      {% endif %}
+    {% elif tasks and tasks|length > 0 %}
+      <div class="table-wrap-responsive folder-table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th style="width:58px;"></th>
+            <th>Tarea y Etiquetas</th>
+            <th style="width:100px;">Fecha</th>
+            <th style="width:100px; text-align:right;">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for t in tasks %}
+          {{ task_row(t) }}
         {% endfor %}
         </tbody>
       </table>

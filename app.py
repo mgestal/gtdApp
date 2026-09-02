@@ -5884,21 +5884,87 @@ def folder_detail(folder_id: int):
 
     folder_breadcrumb = build_folder_breadcrumb(folder_id, include_self=False)
 
+    include_subfolders = (request.args.get("subfolders") or "").strip() in ("1", "true", "yes")
+
     # Proyectos dentro de la carpeta (activos)
     projects = q(
         "SELECT id, name FROM projects WHERE folder_id=%s AND archived=0 AND deleted_at IS NULL ORDER BY name",
         (folder_id,)
     )
 
-    # Tareas asignadas directamente a la carpeta (no a proyectos)
-    tasks = q(
-        f"SELECT t.id, t.title, t.location, t.notes, {effective_due_expr} AS due_date, t.due_time, t.completed_at, t.recurrence_rule, t.priority "
-        "FROM tasks t "
-        f"{recurring_due_join}"
-        "WHERE t.folder_id=%s AND t.project_id IS NULL AND t.archived=0 AND t.deleted_at IS NULL AND t.completed_at IS NULL "
-        f"ORDER BY ({effective_due_expr} IS NULL) ASC, {effective_due_expr} ASC, t.id DESC",
-        (folder_id,)
-    )
+    tasks_grouped: List[Dict[str, Any]] = []
+
+    if include_subfolders:
+        folder_ids = sorted(get_folder_tree_ids(folder_id, include_self=True))
+        placeholders_f = ",".join(["%s"] * len(folder_ids))
+
+        subtree_projects = q(
+            f"SELECT id FROM projects WHERE folder_id IN ({placeholders_f}) "
+            "AND archived=0 AND deleted_at IS NULL",
+            tuple(folder_ids),
+        )
+        project_ids = [p["id"] for p in subtree_projects]
+
+        where_scope = f"(t.folder_id IN ({placeholders_f}) AND t.project_id IS NULL)"
+        params: List[Any] = list(folder_ids)
+        if project_ids:
+            placeholders_p = ",".join(["%s"] * len(project_ids))
+            where_scope += f" OR t.project_id IN ({placeholders_p})"
+            params += project_ids
+
+        # Tareas asignadas a la carpeta, subcarpetas o proyectos contenidos en ellas
+        tasks = q(
+            f"SELECT t.id, t.title, t.location, t.notes, {effective_due_expr} AS due_date, t.due_time, "
+            "t.completed_at, t.recurrence_rule, t.priority, t.folder_id, t.project_id, "
+            "COALESCE(tf.name, pf.name) AS group_folder_name, "
+            "COALESCE(t.folder_id, p.folder_id) AS group_folder_id, "
+            "p.name AS project_name "
+            "FROM tasks t "
+            "LEFT JOIN folders tf ON tf.id=t.folder_id "
+            "LEFT JOIN projects p ON p.id=t.project_id "
+            "LEFT JOIN folders pf ON pf.id=p.folder_id "
+            f"{recurring_due_join}"
+            f"WHERE ({where_scope}) "
+            "AND t.archived=0 AND t.deleted_at IS NULL AND t.completed_at IS NULL "
+            "ORDER BY group_folder_name ASC, (p.name IS NULL) DESC, p.name ASC, "
+            f"({effective_due_expr} IS NULL) ASC, {effective_due_expr} ASC, t.id DESC",
+            tuple(params),
+        )
+
+        groups: Dict[Any, Dict[str, Any]] = {}
+        group_order: List[Any] = []
+        for t in tasks:
+            fid = t["group_folder_id"]
+            if fid not in groups:
+                groups[fid] = {
+                    "folder_id": fid,
+                    "folder_name": t["group_folder_name"],
+                    "projects": {},
+                    "project_order": [],
+                }
+                group_order.append(fid)
+            g = groups[fid]
+            pid = t["project_id"]
+            if pid not in g["projects"]:
+                g["projects"][pid] = {"project_id": pid, "project_name": t["project_name"], "tasks": []}
+                g["project_order"].append(pid)
+            g["projects"][pid]["tasks"].append(t)
+
+        for fid in group_order:
+            g = groups[fid]
+            g["projects"] = [g["projects"][pid] for pid in g["project_order"]]
+            tasks_grouped.append(g)
+    else:
+        # Tareas asignadas directamente a la carpeta (no a proyectos)
+        tasks = q(
+            f"SELECT t.id, t.title, t.location, t.notes, {effective_due_expr} AS due_date, t.due_time, t.completed_at, t.recurrence_rule, t.priority "
+            "FROM tasks t "
+            f"{recurring_due_join}"
+            "WHERE t.folder_id=%s AND t.project_id IS NULL AND t.archived=0 AND t.deleted_at IS NULL AND t.completed_at IS NULL "
+            f"ORDER BY ({effective_due_expr} IS NULL) ASC, {effective_due_expr} ASC, t.id DESC",
+            (folder_id,)
+        )
+
     tags_map = load_tags_map([t["id"] for t in tasks])
     task_ids = [t["id"] for t in tasks]
 
@@ -5961,6 +6027,8 @@ def folder_detail(folder_id: int):
         sub_counts=sub_counts,
         completed_tasks=completed_tasks,
         completed_tags_map=completed_tags_map,
+        include_subfolders=include_subfolders,
+        tasks_grouped=tasks_grouped,
     )
 
 @app.route("/folders/<int:folder_id>/rename", methods=["POST"])

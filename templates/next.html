@@ -207,6 +207,7 @@
             <div class="task-tags" style="font-size:0.8rem; opacity:0.8;">
               {% if t.recurrence_rule %}
                 <a class="pill taglink" style="font-size:0.75rem;" href="{{ url_for('task_periodic_history', task_id=t.id, next=request.full_path) }}">⟲ periódica</a>
+                {% set _pb = periodic_occurrences_badge(t) %}{% if _pb %}<span class="pill-progress">{{ _pb }}</span>{% endif %}
               {% endif %}
               {% for tag in tags_map.get(t.id, []) %}
                 <a class="tagchip taglink" href="{{ url_for('tag_detail', tag_id=tag.id) }}" style="margin-right:5px;">@{{ tag.name }}</a>

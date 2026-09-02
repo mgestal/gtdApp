@@ -62,17 +62,29 @@
       <label class="label">Etiquetas (separadas por comas o espacios): <i>@NextAction, @casa @tmi</i></label>
       <input class="input" id="tags_csv" name="tags_csv" placeholder="" autocomplete="off" value="{{ tags_csv }}">
 
-      <label class="label">Recurrencia (preset)</label>
-      <select class="input" id="recPresetEdit">
-        <option value="">Sin recurrencia</option>
-        <option value="FREQ=DAILY;INTERVAL=1">Diaria</option>
-        <option value="FREQ=WEEKLY;INTERVAL=1">Semanal</option>
-        <option value="FREQ=MONTHLY;INTERVAL=1">Mensual</option>
-        <option value="FREQ=YEARLY;INTERVAL=1">Anual</option>
-        <option value="FREQ=WORKDAY;INTERVAL=1">Laborable (lunes a viernes)</option>
-        <option value="FREQ=WEEKLY;BYDAY=FR;INTERVAL=1">Cada viernes</option>
-        <option value="FREQ=MONTHLY;BYMONTHDAY=1;INTERVAL=1">Cada 1 de mes</option>
-      </select>
+      <label class="label">Recurrencia</label>
+      <div class="grid2">
+        <div>
+          <label class="label" style="margin-top:0;">Preset</label>
+          <select class="input" id="recPresetEdit">
+            <option value="">Sin recurrencia</option>
+            <option value="FREQ=DAILY;INTERVAL=1">Diaria</option>
+            <option value="FREQ=WEEKLY;INTERVAL=1">Semanal</option>
+            <option value="FREQ=MONTHLY;INTERVAL=1">Mensual</option>
+            <option value="FREQ=YEARLY;INTERVAL=1">Anual</option>
+            <option value="FREQ=WORKDAY;INTERVAL=1">Laborable (lunes a viernes)</option>
+            <option value="FREQ=WEEKLY;BYDAY=FR;INTERVAL=1">Cada viernes</option>
+            <option value="FREQ=MONTHLY;BYMONTHDAY=1;INTERVAL=1">Cada 1 de mes</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="label" style="margin-top:0;">Máx. repeticiones (opcional)</label>
+          <input class="input" type="number" min="1" step="1" name="max_occurrences"
+                 placeholder="Sin límite"
+                 value="{% if task.max_occurrences %}{{ task.max_occurrences }}{% endif %}">
+        </div>
+      </div>
 
       <label class="label">RRULE (<i>Ej: FREQ=DAILY|WEEKLY|MONTHLY|YEARLY|WORKDAY;BYDAY=MO,WE,FR;INTERVAL=1</i>)</label>
       <input class="input"

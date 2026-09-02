@@ -2565,6 +2565,61 @@ def effective_recurrence_base_due(task_row: Dict[str, Any]) -> Optional[date]:
     return last_next_due if last_next_due > base_due else base_due
 
 
+def complete_recurring_task_run(
+    task_id: int,
+    task: Dict[str, Any],
+    now: datetime,
+    recurrence_due_choice: Optional[str] = None,
+) -> bool:
+    """Registra la ejecución de una tarea periódica.
+
+    Si la tarea tiene `max_occurrences` y esta ejecución alcanza el límite,
+    detiene la recurrencia (quita recurrence_rule y marca la tarea como completada)
+    en lugar de calcular la siguiente fecha. Devuelve True si se detuvo la recurrencia.
+    """
+    rule = parse_rrule(task["recurrence_rule"])
+    base_due = effective_recurrence_base_due(task)
+    previous_due = base_due
+    today_d = now.date()
+    due_resolution = resolve_recurrence_due_choice(base_due, rule, today_d, recurrence_due_choice)
+    next_due = due_resolution["selected_due"]
+
+    max_occurrences = task.get("max_occurrences")
+    stop_recurrence = False
+    if max_occurrences:
+        executed_row = q1(
+            "SELECT COUNT(*) AS c FROM recurring_task_runs WHERE task_id=%s",
+            (task_id,),
+        )
+        already_executed = int(executed_row["c"]) if executed_row else 0
+        if already_executed + 1 >= int(max_occurrences):
+            stop_recurrence = True
+
+    if stop_recurrence:
+        exec_sql(
+            "UPDATE tasks SET last_completed_at=%s, completed_at=%s, recurrence_rule=NULL WHERE id=%s",
+            (now, now, task_id),
+        )
+        exec_sql(
+            "INSERT INTO recurring_task_runs(task_id, executed_at, previous_due_date, next_due_date) "
+            "VALUES(%s, %s, %s, %s)",
+            (task_id, now, previous_due, None),
+        )
+    else:
+        exec_sql(
+            "UPDATE tasks SET last_completed_at=%s, due_date=%s, completed_at=NULL WHERE id=%s",
+            (now, next_due, task_id),
+        )
+        exec_sql(
+            "INSERT INTO recurring_task_runs(task_id, executed_at, previous_due_date, next_due_date) "
+            "VALUES(%s, %s, %s, %s)",
+            (task_id, now, previous_due, next_due),
+        )
+
+    exec_sql("UPDATE subtasks SET completed_at=NULL WHERE task_id=%s", (task_id,))
+    return stop_recurrence
+
+
 def recurring_effective_due_sql(task_alias: str = "t") -> Tuple[str, str]:
     recurring_due_join = (
         "LEFT JOIN ("
@@ -2940,6 +2995,24 @@ def load_tags_map(task_ids: List[int]) -> Dict[int, List[Dict[str, Any]]]:
 # ---------------- Common template context ----------------
 # -----------------------------------------------
 
+def periodic_occurrences_badge(task: Dict[str, Any]) -> Optional[str]:
+    """Devuelve el texto 'x/n' (ejecuciones/máximo) para una tarea periódica con
+    max_occurrences definido, o None si no aplica. Solo necesita `task['id']` y
+    `task['recurrence_rule']`; consulta el resto directamente en BBDD."""
+    task_id = task.get("id")
+    if not task_id or not task.get("recurrence_rule"):
+        return None
+    row = q1(
+        "SELECT t.max_occurrences AS max_occurrences, "
+        "(SELECT COUNT(*) FROM recurring_task_runs WHERE task_id=t.id) AS executed "
+        "FROM tasks t WHERE t.id=%s",
+        (int(task_id),),
+    )
+    if not row or not row.get("max_occurrences"):
+        return None
+    return f"{int(row['executed'])}/{int(row['max_occurrences'])} veces"
+
+
 @app.context_processor
 def inject_common():
     cfg = load_config()
@@ -2953,6 +3026,7 @@ def inject_common():
         "FOLDER_SEARCH_URL": url_for("api_folders_search"),
         "SCRIPT_ROOT": request.script_root or "",
         "location_to_href": location_to_href,
+        "periodic_occurrences_badge": periodic_occurrences_badge,
     }
 
 @app.context_processor
@@ -5302,7 +5376,7 @@ def task_edit(task_id: int):
 
     # ---------- load task ----------
     task = q1(
-        "SELECT id, title, notes, location, due_date, due_time, project_id, folder_id, recurrence_rule, priority, completed_at "
+        "SELECT id, title, notes, location, due_date, due_time, project_id, folder_id, recurrence_rule, max_occurrences, priority, completed_at "
         "FROM tasks WHERE id=%s",
         (task_id,),
     )
@@ -5347,6 +5421,16 @@ def task_edit(task_id: int):
         due_raw = (request.form.get("due_date") or "").strip()
         due_time_raw = (request.form.get("due_time") or "").strip()
         recurrence = (request.form.get("recurrence_rule") or "").strip() or None
+        max_occurrences_raw = (request.form.get("max_occurrences") or "").strip()
+        max_occurrences = None
+        if max_occurrences_raw:
+            try:
+                max_occurrences = int(max_occurrences_raw)
+                if max_occurrences < 1:
+                    max_occurrences = None
+            except ValueError:
+                flash("Número máximo de repeticiones inválido.", "error")
+                return redirect(url_for("task_edit", task_id=task_id, next=next_url))
         priority = coerce_priority(request.form.get("priority"), default=task.get("priority"))
 
         project_raw = (request.form.get("project_id") or "").strip()
@@ -5472,9 +5556,9 @@ def task_edit(task_id: int):
         try:
             exec_sql(
                 "UPDATE tasks "
-                "SET title=%s, notes=%s, location=%s, due_date=%s, due_time=%s, project_id=%s, folder_id=%s, recurrence_rule=%s, priority=%s "
+                "SET title=%s, notes=%s, location=%s, due_date=%s, due_time=%s, project_id=%s, folder_id=%s, recurrence_rule=%s, max_occurrences=%s, priority=%s "
                 "WHERE id=%s",
-                (clean_title, notes, location, due_date, due_time, project_id, folder_id, recurrence, priority, task_id),
+                (clean_title, notes, location, due_date, due_time, project_id, folder_id, recurrence, max_occurrences, priority, task_id),
             )
 
             # Tags: borrar y reinsertar
@@ -5544,7 +5628,7 @@ def task_delete(task_id: int):
 @app.route("/tasks/<int:task_id>/toggle", methods=["POST"])
 def task_toggle(task_id: int):
     task = q1(
-        "SELECT t.id, t.completed_at, t.due_date, t.recurrence_rule, t.project_id, t.archived, "
+        "SELECT t.id, t.completed_at, t.due_date, t.recurrence_rule, t.max_occurrences, t.project_id, t.archived, "
         "rr.last_next_due_date "
         "FROM tasks t "
         "LEFT JOIN ("
@@ -5568,32 +5652,8 @@ def task_toggle(task_id: int):
         else:
             # CASO 1: tarea recurrente -> comportamiento actual, sin tocar NextAction
             if task.get("recurrence_rule") and task.get("due_date"):
-                rule = parse_rrule(task["recurrence_rule"])
-                base_due = effective_recurrence_base_due(task)
-                previous_due = base_due
                 recurrence_due_choice = (request.form.get("recurrence_due_choice") or "").strip().lower()
-                today_d = now.date()
-                due_resolution = resolve_recurrence_due_choice(
-                    base_due,
-                    rule,
-                    today_d,
-                    recurrence_due_choice,
-                )
-                next_due = due_resolution["selected_due"]
-                exec_sql(
-                    "UPDATE tasks SET last_completed_at=%s, due_date=%s, completed_at=NULL WHERE id=%s",
-                    (now, next_due, task_id),
-                )
-                exec_sql(
-                    "INSERT INTO recurring_task_runs(task_id, executed_at, previous_due_date, next_due_date) "
-                    "VALUES(%s, %s, %s, %s)",
-                    (task_id, now, previous_due, next_due),
-                )
-                # Resetear todas las subtareas para el nuevo ciclo
-                exec_sql(
-                    "UPDATE subtasks SET completed_at=NULL WHERE task_id=%s",
-                    (task_id,),
-                )
+                complete_recurring_task_run(task_id, task, now, recurrence_due_choice)
 
             else:
                 # CASO 2: tarea no recurrente
@@ -9925,7 +9985,7 @@ def api_extension_tasks():
 @require_api_token
 def api_extension_task_toggle(task_id: int):
     task = q1(
-        "SELECT t.id, t.completed_at, t.due_date, t.recurrence_rule, t.project_id, t.archived, "
+        "SELECT t.id, t.completed_at, t.due_date, t.recurrence_rule, t.max_occurrences, t.project_id, t.archived, "
         "rr.last_next_due_date "
         "FROM tasks t "
         "LEFT JOIN ("
@@ -9947,31 +10007,13 @@ def api_extension_task_toggle(task_id: int):
             completed = False
         else:
             if task.get("recurrence_rule") and task.get("due_date"):
-                rule = parse_rrule(task["recurrence_rule"])
-                base_due = effective_recurrence_base_due(task)
-                previous_due = base_due
                 today_d = now.date()
                 recurrence_due_choice = (request.json or {}).get("recurrence_due_choice") if request.is_json else None
-                due_resolution = resolve_recurrence_due_choice(
-                    base_due,
-                    rule,
-                    today_d,
+                complete_recurring_task_run(
+                    task_id,
+                    task,
+                    now,
                     str(recurrence_due_choice) if recurrence_due_choice is not None else None,
-                )
-                next_due = due_resolution["selected_due"]
-
-                exec_sql(
-                    "UPDATE tasks SET last_completed_at=%s, due_date=%s, completed_at=NULL WHERE id=%s",
-                    (now, next_due, task_id),
-                )
-                exec_sql(
-                    "INSERT INTO recurring_task_runs(task_id, executed_at, previous_due_date, next_due_date) "
-                    "VALUES(%s, %s, %s, %s)",
-                    (task_id, now, previous_due, next_due),
-                )
-                exec_sql(
-                    "UPDATE subtasks SET completed_at=NULL WHERE task_id=%s",
-                    (task_id,),
                 )
                 completed = False
             else:

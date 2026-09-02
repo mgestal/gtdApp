@@ -404,6 +404,18 @@ code{
   margin-left: 6px;
 }
 
+.pill-progress{
+  display:inline-flex;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--accent3);
+  background: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent3);
+  margin-left: 4px;
+}
+
 .tagchip{
   display:inline-flex;
   padding: 3px 10px;

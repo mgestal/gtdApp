@@ -1,4 +1,4 @@
-const CACHE_VERSION = "gtdapp-v6";
+const CACHE_VERSION = "gtdapp-v7";
 const OFFLINE_URL = "./static/offline.html";
 
 self.addEventListener("install", (event) => {

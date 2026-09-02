@@ -259,6 +259,7 @@ CREATE TABLE `tasks` (
   `completed_at` datetime DEFAULT NULL,
   `last_completed_at` datetime DEFAULT NULL,
   `recurrence_rule` varchar(255) DEFAULT NULL,
+  `max_occurrences` int(11) DEFAULT NULL,
   `priority` tinyint(4) DEFAULT NULL,
   `sort_order` int(11) DEFAULT NULL,
   `archived` tinyint(1) NOT NULL DEFAULT 0,

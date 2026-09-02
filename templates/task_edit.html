@@ -69,11 +69,12 @@
         <option value="FREQ=WEEKLY;INTERVAL=1">Semanal</option>
         <option value="FREQ=MONTHLY;INTERVAL=1">Mensual</option>
         <option value="FREQ=YEARLY;INTERVAL=1">Anual</option>
+        <option value="FREQ=WORKDAY;INTERVAL=1">Laborable (lunes a viernes)</option>
         <option value="FREQ=WEEKLY;BYDAY=FR;INTERVAL=1">Cada viernes</option>
         <option value="FREQ=MONTHLY;BYMONTHDAY=1;INTERVAL=1">Cada 1 de mes</option>
       </select>
 
-      <label class="label">RRULE (<i>Ej: FREQ=WEEKLY;BYDAY=MO,WE,FR;INTERVAL=1</i>)</label>
+      <label class="label">RRULE (<i>Ej: FREQ=DAILY|WEEKLY|MONTHLY|YEARLY|WORKDAY;BYDAY=MO,WE,FR;INTERVAL=1</i>)</label>
       <input class="input"
              name="recurrence_rule"
              id="recRuleEdit"

@@ -2,16 +2,15 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 import pymysql
-from telegram import Update
+from telegram import Bot, Update
 from telegram.constants import ChatType
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
-
 
 
 # =========================================================
@@ -26,7 +25,6 @@ CONFIG_PATH = INSTANCE_DIR / "config.json"
 # Configuración
 # =========================================================
 def load_config() -> Dict[str, Any]:
-
     if not CONFIG_PATH.exists():
         raise RuntimeError(f"No existe el fichero de configuración: {CONFIG_PATH}")
 
@@ -42,7 +40,6 @@ def load_config() -> Dict[str, Any]:
 
 
 def app_timezone() -> ZoneInfo:
-
     cfg = load_config()
     tz_name = cfg.get("app", {}).get("timezone", "Europe/Madrid")
 
@@ -57,7 +54,6 @@ def today_local() -> date:
 
 
 def load_bot_token() -> str:
-
     token_path = BASE_DIR / ".token-gtdapp"
 
     if not token_path.exists():
@@ -71,33 +67,27 @@ def load_bot_token() -> str:
     return token
 
 
-# =========================================================
-# Debug
-# =========================================================
+def save_chat_id(chat_id: int) -> None:
+    path = BASE_DIR / "instance" / "telegram_chat.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"chat_id": chat_id}), encoding="utf-8")
 
-async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if await reject_if_unauthorized(update):
-        return
 
-    if not update.message or not update.message.text:
-        print("sin message o sin text")
-        return
-
-    raw = update.message.text.strip()
-    print(f"mensaje recibido: {raw!r}")
+def load_chat_id() -> int:
+    path = BASE_DIR / "instance" / "telegram_chat.json"
+    if not path.exists():
+        raise RuntimeError("No existe telegram_chat.json. Ejecuta /start en Telegram con el bot primero.")
+    return json.loads(path.read_text())["chat_id"]
 
 
 # =========================================================
 # Seguridad
 # =========================================================
-
-
 def security_cfg() -> Dict[str, Any]:
     return load_config().get("security", {})
 
 
 def allowed_user_ids() -> set[int]:
-
     raw = security_cfg().get("allowed_user_ids", [])
     result = set()
 
@@ -111,7 +101,6 @@ def allowed_user_ids() -> set[int]:
 
 
 def allowed_group_ids() -> set[int]:
-
     raw = security_cfg().get("allowed_group_ids", [])
     result = set()
 
@@ -186,19 +175,16 @@ async def reject_if_unauthorized(update: Update) -> bool:
 
     return True
 
+
 # =========================================================
 # Validación de configuración
 # =========================================================
 def validate_config():
-
     cfg = load_config()
-
     db = cfg.get("db", {})
-
     required = ["host", "port", "user", "password", "database"]
 
     missing = [k for k in required if not db.get(k)]
-
     if missing:
         raise RuntimeError(
             f"Faltan campos de DB en config.json: {', '.join(missing)}"
@@ -218,7 +204,6 @@ def validate_config():
 # DB
 # =========================================================
 def get_db_conn():
-
     cfg = load_config()
     db = cfg["db"]
 
@@ -235,48 +220,32 @@ def get_db_conn():
 
 
 def q(sql: str, params: Tuple[Any, ...] = ()) -> List[Dict[str, Any]]:
-
     conn = get_db_conn()
-
     try:
         with conn.cursor() as cur:
             cur.execute(sql, params)
             return list(cur.fetchall())
-
     finally:
         conn.close()
 
 
 def q1(sql: str, params: Tuple[Any, ...] = ()) -> Optional[Dict[str, Any]]:
-
     rows = q(sql, params)
-
     return rows[0] if rows else None
 
 
 def exec_sql(sql: str, params: Tuple[Any, ...] = ()) -> int:
-
     conn = get_db_conn()
-
     try:
-
         with conn.cursor() as cur:
-
             cur.execute(sql, params)
-
             lastrowid = cur.lastrowid or 0
-
         conn.commit()
-
         return lastrowid
-
     except Exception:
-
         conn.rollback()
         raise
-
     finally:
-
         conn.close()
 
 
@@ -293,9 +262,7 @@ def normalize_name(s: str) -> str:
 
 
 def parse_due_token(token: str) -> date:
-
     token = (token or "").strip().lower()
-
     today = today_local()
 
     if token == "hoy":
@@ -305,13 +272,10 @@ def parse_due_token(token: str) -> date:
         return today + timedelta(days=1)
 
     m = re.fullmatch(r"(\d{1,2})/(\d{1,2})/(\d{4})", token)
-
     if m:
-
         day = int(m.group(1))
         month = int(m.group(2))
         year = int(m.group(3))
-
         return datetime.strptime(
             f"{day:02d}/{month:02d}/{year}",
             "%d/%m/%Y"
@@ -321,49 +285,33 @@ def parse_due_token(token: str) -> date:
 
 
 def extract_due_date(text: str) -> tuple[Optional[date], str]:
-
     s = (text or "").strip()
-
     if not s:
         return None, s
 
     m = STAR_DATE_RE.search(s)
-
     if m:
-
         token = m.group(1)
         due = parse_due_token(token)
-
         cleaned = (s[:m.start()] + " " + s[m.end():]).strip()
-
         cleaned = re.sub(r"\s+", " ", cleaned)
-
         return due, cleaned
 
     m = SLASH_DATE_RE.search(s)
-
     if m:
-
         token = m.group(1)
         due = parse_due_token(token)
-
         cleaned = (s[:m.start()] + " " + s[m.end():]).strip()
-
         cleaned = re.sub(r"\s+", " ", cleaned)
-
         return due, cleaned
 
     return None, s
 
 
 def parse_task_text(raw: str) -> tuple[str, List[str], Optional[date]]:
-
     due_date, cleaned = extract_due_date(raw)
-
     tags = [normalize_name(t) for t in TAG_RE.findall(cleaned)]
-
     title = TAG_RE.sub("", cleaned)
-
     title = re.sub(r"\s+", " ", title).strip(" -_,.;:")
 
     return title, tags, due_date
@@ -373,24 +321,19 @@ def parse_task_text(raw: str) -> tuple[str, List[str], Optional[date]]:
 # Crear tarea
 # =========================================================
 def create_inbox_task_from_text(raw_text: str):
-
     title, tags, due_date = parse_task_text(raw_text)
 
     if not title:
         raise ValueError("No se detectó un título válido")
 
     conn = get_db_conn()
-
     try:
-
         with conn.cursor() as cur:
-
             cur.execute(
                 "INSERT INTO tasks(title, project_id, folder_id, due_date, recurrence_rule) "
                 "VALUES(%s,NULL,NULL,%s,NULL)",
                 (title, due_date),
             )
-
             task_id = cur.lastrowid or 0
 
             # Añadir automáticamente la etiqueta telegrambot
@@ -399,7 +342,6 @@ def create_inbox_task_from_text(raw_text: str):
                 all_tags.append("telegrambot")
 
             for tag_name in all_tags:
-
                 cur.execute("SELECT id FROM tags WHERE name=%s", (tag_name,))
                 row = cur.fetchone()
 
@@ -415,29 +357,24 @@ def create_inbox_task_from_text(raw_text: str):
                 )
 
         conn.commit()
-
         return task_id, title, due_date, all_tags
 
     except Exception:
-
         conn.rollback()
         raise
-
     finally:
-
         conn.close()
 
 
 def format_task_line(row: Dict[str, Any]) -> str:
-
     title = row.get("title", "").strip() or "(sin título)"
-
     due_date = row.get("due_date")
 
     if due_date:
         return f"• {title} [{due_date.strftime('%d/%m/%Y')}]"
 
     return f"• {title}"
+
 
 def _fmt_due_time(due_time: Any) -> Optional[str]:
     if due_time is None:
@@ -455,14 +392,7 @@ def _fmt_due_time(due_time: Any) -> Optional[str]:
     return None
 
 
-def format_task_extended(row, show_date: bool = True):
-    """
-    Formato Telegram:
-    • Título
-      📁 Proyecto o carpeta
-      🏷 @tag1 @tag2
-      📅 dd/mm/aaaa
-    """
+def format_task_extended(row: Dict[str, Any], show_date: bool = True) -> str:
     title = (row.get("title") or "").strip() or "(sin título)"
     project_name = (row.get("project_name") or "").strip()
     folder_name = (row.get("folder_name") or "").strip()
@@ -472,7 +402,6 @@ def format_task_extended(row, show_date: bool = True):
 
     lines = [f"• {title}"]
 
-    # Mostrar solo proyecto; si no existe, carpeta
     if project_name:
         lines.append(f"  💼 {project_name}")
     elif folder_name:
@@ -494,16 +423,23 @@ def format_task_extended(row, show_date: bool = True):
     return "\n".join(lines)
 
 
+def get_today_tasks():
+    """Devuelve tareas de hoy usando la conexión centralizada."""
+    return q(
+        "SELECT t.id, t.title "
+        "FROM tasks t "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+        "WHERE t.due_date = CURDATE() "
+        "AND t.completed_at IS NULL "
+        "AND t.deleted_at IS NULL "
+        "AND COALESCE(t.archived,0)=0 "
+        "AND (t.project_id IS NULL OR COALESCE(p.archived,0)=0) "
+        "ORDER BY t.id"
+    )
+
 
 def get_today_tasks_extended():
-    """
-    Devuelve tareas pendientes para hoy con contexto:
-    - project_name
-    - folder_name
-    - tags
-    """
     conn = get_db_conn()
-
     try:
         with conn.cursor() as cur:
             cur.execute(
@@ -512,22 +448,21 @@ def get_today_tasks_extended():
                     t.id,
                     t.title,
                     t.due_date,
-                                        t.due_time,
+                    t.due_time,
                     p.name AS project_name,
                     fd.name AS folder_name
                 FROM tasks t
                 LEFT JOIN projects p ON p.id = t.project_id
                 LEFT JOIN folders fd ON fd.id = COALESCE(t.folder_id, p.folder_id)
                 WHERE t.completed_at IS NULL
-                                    AND t.deleted_at IS NULL
-                                    AND COALESCE(t.archived, 0) = 0
-                                    AND (t.project_id IS NULL OR COALESCE(p.archived, 0) = 0)
+                  AND t.deleted_at IS NULL
+                  AND COALESCE(t.archived, 0) = 0
+                  AND (t.project_id IS NULL OR COALESCE(p.archived, 0) = 0)
                   AND t.due_date = CURDATE()
                 ORDER BY t.id ASC
                 """
             )
             rows = list(cur.fetchall())
-
             task_ids = [int(r["id"]) for r in rows]
 
             tags_map = {}
@@ -535,9 +470,7 @@ def get_today_tasks_extended():
                 placeholders = ",".join(["%s"] * len(task_ids))
                 cur.execute(
                     f"""
-                    SELECT
-                        tt.task_id,
-                        tg.name
+                    SELECT tt.task_id, tg.name
                     FROM task_tags tt
                     JOIN tags tg ON tg.id = tt.tag_id
                     WHERE tt.task_id IN ({placeholders})
@@ -552,17 +485,12 @@ def get_today_tasks_extended():
                 row["tags"] = tags_map.get(int(row["id"]), [])
 
             return rows
-
     finally:
         conn.close()
 
 
 def get_agenda_tasks_extended(limit: int = 15):
-    """
-    Devuelve próximas tareas pendientes con fecha, ordenadas por due_date.
-    """
     conn = get_db_conn()
-
     try:
         with conn.cursor() as cur:
             cur.execute(
@@ -571,16 +499,16 @@ def get_agenda_tasks_extended(limit: int = 15):
                     t.id,
                     t.title,
                     t.due_date,
-                                        t.due_time,
+                    t.due_time,
                     p.name AS project_name,
                     fd.name AS folder_name
                 FROM tasks t
                 LEFT JOIN projects p ON p.id = t.project_id
                 LEFT JOIN folders fd ON fd.id = COALESCE(t.folder_id, p.folder_id)
                 WHERE t.completed_at IS NULL
-                                    AND t.deleted_at IS NULL
-                                    AND COALESCE(t.archived, 0) = 0
-                                    AND (t.project_id IS NULL OR COALESCE(p.archived, 0) = 0)
+                  AND t.deleted_at IS NULL
+                  AND COALESCE(t.archived, 0) = 0
+                  AND (t.project_id IS NULL OR COALESCE(p.archived, 0) = 0)
                   AND t.due_date IS NOT NULL
                 ORDER BY t.due_date ASC, t.id ASC
                 LIMIT %s
@@ -588,7 +516,6 @@ def get_agenda_tasks_extended(limit: int = 15):
                 (limit,),
             )
             rows = list(cur.fetchall())
-
             task_ids = [int(r["id"]) for r in rows]
 
             tags_map = {}
@@ -596,9 +523,7 @@ def get_agenda_tasks_extended(limit: int = 15):
                 placeholders = ",".join(["%s"] * len(task_ids))
                 cur.execute(
                     f"""
-                    SELECT
-                        tt.task_id,
-                        tg.name
+                    SELECT tt.task_id, tg.name
                     FROM task_tags tt
                     JOIN tags tg ON tg.id = tt.tag_id
                     WHERE tt.task_id IN ({placeholders})
@@ -613,186 +538,51 @@ def get_agenda_tasks_extended(limit: int = 15):
                 row["tags"] = tags_map.get(int(row["id"]), [])
 
             return rows
-
     finally:
         conn.close()
 
-async def cmd_agenda(update, context):
-    rows = get_agenda_tasks_extended(limit=15)
 
-    if not rows:
-        await update.message.reply_text("📅 No hay tareas en agenda.")
+# =========================================================
+# Tarea programada (Resumen diario)
+# =========================================================
+async def send_today_summary(bot: Optional[Bot] = None) -> None:
+    """Envía el resumen automático de tareas al chat registrado."""
+    try:
+        chat_id = load_chat_id()
+    except Exception as e:
+        print(f"Error al cargar chat_id para el resumen diario: {e}")
         return
 
-    text = "📅 Agenda\n\n" + "\n\n".join(format_task_extended(r) for r in rows)
+    if bot is None:
+        token = load_bot_token()
+        bot = Bot(token)
 
-    await update.message.reply_text(text)
+    today_tasks = get_today_tasks()
+    today_str = today_local().strftime('%d/%m/%Y')
+
+    text = "=================================\n"
+    text += f"  Tareas para hoy ({today_str}):\n"
+    text += "=================================\n\n"
+
+    if not today_tasks:
+        text += "📅 Hoy no tienes tareas."
+    else:
+        text += "📅 Tareas para hoy:\n\n"
+        for t in today_tasks:
+            text += f"• {t['title']}\n"
+
+    text += "\n\n¡Que tengas un gran día! 🚀\n\n"
+
+    try:
+        await bot.send_message(chat_id=chat_id, text=text)
+        print("Resumen diario enviado con éxito.")
+    except Exception as e:
+        print(f"Error al enviar el resumen diario por Telegram: {e}")
+
 
 # =========================================================
 # Comandos
 # =========================================================
-
-async def cmd_today(update, context):
-    if await reject_if_unauthorized(update):
-        return
-
-    rows = get_today_tasks_extended()
-
-    if not rows:
-        await update.message.reply_text("📅 Hoy no tienes tareas.")
-        return
-
-    text = "📅 Hoy\n\n" + "\n\n".join(format_task_extended(r, show_date=False) for r in rows[:20])
-
-    if len(rows) > 20:
-        text += f"\n\n… y {len(rows) - 20} más."
-
-    await update.message.reply_text(text)
-
-
-
-async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    if await reject_if_unauthorized(update):
-        return
-
-    msg = (
-        "GtdAppBot listo.\n\n"
-        "Envía un mensaje y lo crearé como tarea en Inbox.\n\n"
-        "Formato:\n"
-        "• tarea @etiqueta\n"
-        "• *hoy\n"
-        "• *mañana\n"
-        "• dd/mm/aaaa\n\n"
-        "Comandos:\n"
-        "/nextactions\n"
-        "/hoy"
-    )
-
-    await update.message.reply_text(msg)
-
-async def cmd_whoami(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.message:
-        return
-
-    user = update.effective_user
-    chat = update.effective_chat
-
-    await update.message.reply_text(
-        "\n".join(
-            [
-                f"user_id={user.id if user else 'None'}",
-                f"chat_id={chat.id if chat else 'None'}",
-                f"chat_type={chat.type if chat else 'None'}",
-            ]
-        )
-    )
-
-async def cmd_nextactions(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    print("cmd_nextactions llamado")
-
-    if await reject_if_unauthorized(update):
-        print("cmd_nextactions rechazado")
-        return
-
-    rows = q(
-        "SELECT t.id,t.title,t.due_date "
-        "FROM tasks t "
-        "LEFT JOIN projects p ON p.id=t.project_id "
-        "JOIN task_tags tt ON tt.task_id=t.id "
-        "JOIN tags tg ON tg.id=tt.tag_id "
-        "WHERE t.completed_at IS NULL "
-        "AND t.deleted_at IS NULL "
-        "AND COALESCE(t.archived,0)=0 "
-        "AND (t.project_id IS NULL OR COALESCE(p.archived,0)=0) "
-        "AND LOWER(tg.name)=LOWER(%s) "
-        "ORDER BY (t.due_date IS NULL), t.due_date, t.id DESC",
-        ("NextAction",),
-    )
-
-    if not rows:
-
-        await update.message.reply_text("No hay siguientes acciones.")
-
-        return
-
-    text = "NextActions:\n\n" + "\n".join(format_task_line(r) for r in rows[:30])
-
-    await update.message.reply_text(text)
-
-
-async def cmd_hoy(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    if await reject_if_unauthorized(update):
-        return
-
-    today_d = today_local()
-
-    rows = q(
-        "SELECT t.id,t.title,t.due_date "
-        "FROM tasks t "
-        "LEFT JOIN projects p ON p.id=t.project_id "
-        "WHERE t.completed_at IS NULL "
-        "AND t.deleted_at IS NULL "
-        "AND COALESCE(t.archived,0)=0 "
-        "AND (t.project_id IS NULL OR COALESCE(p.archived,0)=0) "
-        "AND t.due_date=%s",
-        (today_d,),
-    )
-
-    if not rows:
-
-        await update.message.reply_text("No hay tareas para hoy.")
-
-        return
-
-    text = "Tareas para hoy:\n\n" + "\n".join(format_task_line(r) for r in rows[:30])
-
-    await update.message.reply_text(text)
-
-
-async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    if await reject_if_unauthorized(update):
-        return
-
-    if not update.message or not update.message.text:
-        return
-
-    raw = update.message.text.strip()
-
-    if not raw:
-        await update.message.reply_text("Mensaje vacío.")
-        return
-
-    try:
-
-        task_id, title, due_date, tags = create_inbox_task_from_text(raw)
-
-        parts = [f"✅ Tarea creada: {title}"]
-
-        if due_date:
-            parts.append(f"📅 {due_date.strftime('%d/%m/%Y')}")
-
-        if tags:
-            parts.append("🏷 " + ", ".join(tags))
-
-        parts.append(f"ID {task_id}")
-
-        await update.message.reply_text("\n".join(parts))
-
-    except ValueError as e:
-
-        await update.message.reply_text(str(e))
-
-    except Exception as e:
-
-        await update.message.reply_text(f"Error creando tarea: {e}")
-
-
-async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    print("Telegram bot error:", repr(context.error))
-
 def bot_help_text() -> str:
     return (
         "GtdAppBot\n\n"
@@ -824,22 +614,21 @@ def format_done_task_line(row: Dict[str, Any]) -> str:
 
     return f"• {title}"
 
-async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    print("cmd_start llamado")
 
+async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if await reject_if_unauthorized(update):
-        print("cmd_start rechazado")
         return
 
+    save_chat_id(update.effective_chat.id)
+
     if update.message:
-        await update.message.reply_text(bot_help_text())
+        await update.message.reply_text(
+            "Bot configurado 👍\n\n" + bot_help_text()
+        )
 
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    print("cmd_help llamado")
-
     if await reject_if_unauthorized(update):
-        print("cmd_help rechazado")
         return
 
     if update.message:
@@ -847,25 +636,117 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def cmd_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    print("cmd_info llamado")
-
     if await reject_if_unauthorized(update):
-        print("cmd_info rechazado")
         return
 
     if update.message:
         await update.message.reply_text(bot_help_text())
 
 
-async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    print("cmd_done llamado")
+async def cmd_whoami(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.message:
+        return
 
+    user = update.effective_user
+    chat = update.effective_chat
+
+    await update.message.reply_text(
+        "\n".join(
+            [
+                f"user_id={user.id if user else 'None'}",
+                f"chat_id={chat.id if chat else 'None'}",
+                f"chat_type={chat.type if chat else 'None'}",
+            ]
+        )
+    )
+
+
+async def cmd_nextactions(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if await reject_if_unauthorized(update):
-        print("cmd_done rechazado")
+        return
+
+    rows = q(
+        "SELECT t.id,t.title,t.due_date "
+        "FROM tasks t "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+        "JOIN task_tags tt ON tt.task_id=t.id "
+        "JOIN tags tg ON tg.id=tt.tag_id "
+        "WHERE t.completed_at IS NULL "
+        "AND t.deleted_at IS NULL "
+        "AND COALESCE(t.archived,0)=0 "
+        "AND (t.project_id IS NULL OR COALESCE(p.archived,0)=0) "
+        "AND LOWER(tg.name)=LOWER(%s) "
+        "ORDER BY (t.due_date IS NULL), t.due_date, t.id DESC",
+        ("NextAction",),
+    )
+
+    if not rows:
+        await update.message.reply_text("No hay siguientes acciones.")
+        return
+
+    text = "NextActions:\n\n" + "\n".join(format_task_line(r) for r in rows[:30])
+    await update.message.reply_text(text)
+
+
+async def cmd_hoy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if await reject_if_unauthorized(update):
         return
 
     today_d = today_local()
+    rows = q(
+        "SELECT t.id,t.title,t.due_date "
+        "FROM tasks t "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+        "WHERE t.completed_at IS NULL "
+        "AND t.deleted_at IS NULL "
+        "AND COALESCE(t.archived,0)=0 "
+        "AND (t.project_id IS NULL OR COALESCE(p.archived,0)=0) "
+        "AND t.due_date=%s",
+        (today_d,),
+    )
 
+    if not rows:
+        await update.message.reply_text("No hay tareas para hoy.")
+        return
+
+    text = "Tareas para hoy:\n\n" + "\n".join(format_task_line(r) for r in rows[:30])
+    await update.message.reply_text(text)
+
+
+async def cmd_today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if await reject_if_unauthorized(update):
+        return
+
+    rows = get_today_tasks_extended()
+    if not rows:
+        await update.message.reply_text("📅 Hoy no tienes tareas.")
+        return
+
+    text = "📅 Hoy\n\n" + "\n\n".join(format_task_extended(r, show_date=False) for r in rows[:20])
+    if len(rows) > 20:
+        text += f"\n\n… y {len(rows) - 20} más."
+
+    await update.message.reply_text(text)
+
+
+async def cmd_agenda(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if await reject_if_unauthorized(update):
+        return
+
+    rows = get_agenda_tasks_extended(limit=15)
+    if not rows:
+        await update.message.reply_text("📅 No hay tareas en agenda.")
+        return
+
+    text = "📅 Agenda\n\n" + "\n\n".join(format_task_extended(r) for r in rows)
+    await update.message.reply_text(text)
+
+
+async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if await reject_if_unauthorized(update):
+        return
+
+    today_d = today_local()
     rows = q(
         "SELECT t.id, t.title, t.completed_at "
         "FROM tasks t "
@@ -895,97 +776,51 @@ async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text(text)
 
 
+async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if await reject_if_unauthorized(update):
+        return
 
-def get_today_tasks():
-    """
-    Devuelve las tareas con due_date = hoy y no completadas
-    """
-    conn = pymysql.connect(
-        host="localhost",
-        user="gtd",
-        password="gtd_password",
-        database="gtd",
-        charset="utf8mb4",
-        cursorclass=pymysql.cursors.DictCursor
-    )
+    if not update.message or not update.message.text:
+        return
 
-    with conn.cursor() as cur:
-        cur.execute("""
-            SELECT t.id, t.title
-            FROM tasks t
-            LEFT JOIN projects p ON p.id=t.project_id
-            WHERE t.due_date = CURDATE()
-            AND t.completed_at IS NULL
-            AND t.deleted_at IS NULL
-            AND COALESCE(t.archived,0)=0
-            AND (t.project_id IS NULL OR COALESCE(p.archived,0)=0)
-            ORDER BY t.id
-        """)
-        rows = cur.fetchall()
+    raw = update.message.text.strip()
+    if not raw:
+        await update.message.reply_text("Mensaje vacío.")
+        return
 
-    conn.close()
+    try:
+        task_id, title, due_date, tags = create_inbox_task_from_text(raw)
+        parts = [f"✅ Tarea creada: {title}"]
 
-    return rows
+        if due_date:
+            parts.append(f"📅 {due_date.strftime('%d/%m/%Y')}")
+
+        if tags:
+            parts.append("🏷 " + ", ".join(tags))
+
+        parts.append(f"ID {task_id}")
+        await update.message.reply_text("\n".join(parts))
+
+    except ValueError as e:
+        await update.message.reply_text(str(e))
+    except Exception as e:
+        await update.message.reply_text(f"Error creando tarea: {e}")
 
 
-async def send_today_summary():
-    """
-    Envía la lista de tareas de hoy al chat configurado.
-    """
-    from telegram import Bot
-    import datetime
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    print("Telegram bot error:", repr(context.error))
 
-    token = load_bot_token()
-    bot = Bot(token)
-
-    chat_id = load_chat_id()   # veremos esto abajo
-
-    today_tasks = get_today_tasks()  # tu función existente
-
-    text = "================================= \n"
-    text += f"  Tareas para hoy ({datetime.date.today().strftime('%d/%m/%Y')}):\n"
-    text += "================================= \n\n"
-
-    if not today_tasks:
-        text += "📅 Hoy no tienes tareas."
-    else:
-        text += "📅 Tareas para hoy:\n\n"
-        for t in today_tasks:
-            text += f"• {t['title']}\n"
-
-    text += "\n\n¡Que tengas un gran día! 🚀 \n\n"
-
-    await bot.send_message(chat_id=chat_id, text=text)
-
-
-def save_chat_id(chat_id):
-    path = BASE_DIR / "instance" / "telegram_chat.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"chat_id": chat_id}), encoding="utf-8")
-
-
-async def cmd_start(update, context):
-    save_chat_id(update.effective_chat.id)
-    await update.message.reply_text("Bot configurado 👍")
-
-def load_chat_id():
-    path = BASE_DIR / "instance" / "telegram_chat.json"
-    return json.loads(path.read_text())["chat_id"]
-
-    
-    
 
 # =========================================================
 # Main
 # =========================================================
-def main():
-
+def main() -> None:
     validate_config()
-
     token = load_bot_token()
 
     app = Application.builder().token(token).build()
 
+    # Handlers
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("info", cmd_info))
@@ -997,40 +832,18 @@ def main():
     app.add_handler(CommandHandler("agenda", cmd_agenda))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
-
     app.add_error_handler(error_handler)
 
-    print("GtdAppBot arrancado.")
+    # Programar envío diario a las 8:00 AM
+    if app.job_queue:
+        tz = app_timezone()
+        target_time = time(8, 0, 0, tzinfo=tz)
 
-    app.run_polling(drop_pending_updates=False)
+        async def daily_job_callback(context: ContextTypes.DEFAULT_TYPE):
+            await send_today_summary(bot=context.bot)
 
-
-
-
-
-def main_debug() -> None:
-    print("Iniciando bot...")
-    validate_config()
-    print("Config OK")
-
-    token = load_bot_token()
-    print("Token OK")
-
-    app = Application.builder().token(token).build()
-
-    app.add_handler(CommandHandler("start", cmd_start))
-    app.add_handler(CommandHandler("help", cmd_help))
-    app.add_handler(CommandHandler("info", cmd_info))
-    app.add_handler(CommandHandler("whoami", cmd_whoami))
-    app.add_handler(CommandHandler("nextactions", cmd_nextactions))
-    app.add_handler(CommandHandler("done", cmd_done))   
-    app.add_handler(CommandHandler("hoy", cmd_hoy))
-    app.add_handler(CommandHandler("today", cmd_today))
-    app.add_handler(CommandHandler("agenda", cmd_agenda))
-
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
-
-    app.add_error_handler(error_handler)
+        app.job_queue.run_daily(daily_job_callback, time=target_time)
+        print(f"Programado envío diario de resumen a las 08:00 ({tz}).")
 
     print("GtdAppBot arrancado.")
     app.run_polling(drop_pending_updates=False)

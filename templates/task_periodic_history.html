@@ -6,7 +6,17 @@
   </div>
 
   <div class="card" style="margin-bottom:12px;">
-    <a class="btn btn-soft" href="{{ next_url }}">← Volver</a>
+    <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:space-between; align-items:center;">
+      <a class="btn btn-soft" href="{{ next_url }}">← Volver</a>
+      {% if total > 0 %}
+        <form method="post" action="{{ url_for('task_periodic_history_undo_last', task_id=task.id) }}" style="margin:0;">
+          <input type="hidden" name="next" value="{{ request.full_path }}">
+          <button class="btn btn-soft" type="submit" onclick="return confirm('¿Deshacer la última ejecución periódica?');">
+            ↶ Deshacer última ejecución
+          </button>
+        </form>
+      {% endif %}
+    </div>
   </div>
 
   <div class="card" style="margin-bottom:12px;">

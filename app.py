@@ -186,6 +186,7 @@ RECURRENCE_PATTERNS = {
     r"\bcada\s+semana\b": "FREQ=WEEKLY;INTERVAL=1",
     r"\bcada\s+mes\b": "FREQ=MONTHLY;INTERVAL=1",
     r"\bcada\s+año\b": "FREQ=YEARLY;INTERVAL=1",
+    r"\bcada\s+laboral\b": "FREQ=WORKDAY;INTERVAL=1",
 }
 
 
@@ -2425,6 +2426,15 @@ def next_due_date(current_due: date, rule: RRule) -> date:
     if rule.freq == "DAILY":
         return current_due + timedelta(days=rule.interval)
 
+    if rule.freq == "WORKDAY":
+        cand = current_due
+        remaining = max(rule.interval, 1)
+        while remaining > 0:
+            cand = cand + timedelta(days=1)
+            if cand.weekday() < 5:
+                remaining -= 1
+        return cand
+
     if rule.freq == "WEEKLY":
         if rule.byday:
             targets = sorted(WEEKDAY_MAP[d] for d in rule.byday if d in WEEKDAY_MAP)
@@ -4248,6 +4258,73 @@ def task_periodic_history(task_id: int):
     )
 
 
+@app.route("/tasks/<int:task_id>/periodic-history/undo-last", methods=["POST"])
+def task_periodic_history_undo_last(task_id: int):
+    next_url = safe_next_url(request.form.get("next"), "task_periodic_history", task_id=task_id)
+
+    task = q1(
+        "SELECT id, due_date, recurrence_rule "
+        "FROM tasks "
+        "WHERE id=%s",
+        (task_id,),
+    )
+    if not task:
+        abort(404)
+
+    if not (task.get("recurrence_rule") and str(task.get("recurrence_rule")).strip()):
+        flash("La tarea no es periódica.", "error")
+        return redirect(next_url)
+
+    last_run = q1(
+        "SELECT id, executed_at, previous_due_date, next_due_date "
+        "FROM recurring_task_runs "
+        "WHERE task_id=%s "
+        "ORDER BY executed_at DESC, id DESC "
+        "LIMIT 1",
+        (task_id,),
+    )
+    if not last_run:
+        flash("No hay ejecuciones para deshacer.", "error")
+        return redirect(next_url)
+
+    try:
+        exec_sql(
+            "DELETE FROM recurring_task_runs WHERE id=%s",
+            (int(last_run["id"]),),
+        )
+
+        remaining_last_run = q1(
+            "SELECT executed_at, next_due_date "
+            "FROM recurring_task_runs "
+            "WHERE task_id=%s "
+            "ORDER BY executed_at DESC, id DESC "
+            "LIMIT 1",
+            (task_id,),
+        )
+
+        restored_due = last_run.get("previous_due_date")
+        if restored_due is None and remaining_last_run and remaining_last_run.get("next_due_date") is not None:
+            restored_due = remaining_last_run.get("next_due_date")
+
+        restored_last_completed_at = remaining_last_run.get("executed_at") if remaining_last_run else None
+
+        exec_sql(
+            "UPDATE tasks "
+            "SET due_date=%s, last_completed_at=%s, completed_at=NULL "
+            "WHERE id=%s",
+            (restored_due, restored_last_completed_at, task_id),
+        )
+
+        _mark_task_calendar_dirty(task_id)
+        commit()
+        flash("Última ejecución deshecha y fecha recalculada.", "ok")
+    except Exception as e:
+        rollback()
+        flash(f"No se pudo deshacer la última ejecución: {e}", "error")
+
+    return redirect(next_url)
+
+
 from datetime import date, timedelta
 
 @app.route("/dashboard")
@@ -4990,6 +5067,7 @@ def task_create():
     title = re.sub(r'\bcada\s+semana\b', '', title, flags=re.IGNORECASE)
     title = re.sub(r'\bcada\s+mes\b', '', title, flags=re.IGNORECASE)
     title = re.sub(r'\bcada\s+año\b', '', title, flags=re.IGNORECASE)
+    title = re.sub(r'\bcada\s+laboral\b', '', title, flags=re.IGNORECASE)
     title = PROJ_RE.sub('', title)
     title = FOLDER_RE.sub('', title)
     title = re.sub(r'\s+', ' ', title).strip(" -_,.;:")
@@ -10377,6 +10455,7 @@ def gmail_import_to_inbox():
             title = re.sub(r'\bcada\s+semana\b', '', title, flags=re.IGNORECASE)
             title = re.sub(r'\bcada\s+mes\b', '', title, flags=re.IGNORECASE)
             title = re.sub(r'\bcada\s+año\b', '', title, flags=re.IGNORECASE)
+            title = re.sub(r'\bcada\s+laboral\b', '', title, flags=re.IGNORECASE)
             title = re.sub(r'#([^\s#]+)', '', title)
             title = re.sub(TIME_TOKEN_RE, '', title)
             title = re.sub(r'\s+', ' ', title).strip(" -_,.;:")

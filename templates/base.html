@@ -351,7 +351,7 @@
         <div>
           <div class="modal-title">Añadir tarea</div>
 		  <div class="hint">
-        Sintaxis: nombre + [@etiquetas] + [ [*]dd-mm-[aaaa] | *hoy | *mañana | *+nDias ] [h:HH:MM] [#proyecto]  [cada {día|semana|mes|año}] ^{alta|media|baja} <br>
+        Sintaxis: nombre + [@etiquetas] + [ [*]dd-mm-[aaaa] | *hoy | *mañana | *+nDias ] [h:HH:MM] [#proyecto]  [cada {día|semana|mes|año|laboral}] ^{alta|media|baja} <br>
 			  Ejemplos: <code>Llamar a Juan @NextAction *mañana</code>,
 			  <code>Comprar tinta 18-03 #Oficina</code>,
         <code>Revisar cuentas @Finanzas *+3 h:23:30 cada mes</code>.<br>
@@ -411,6 +411,7 @@
               <option value="FREQ=WEEKLY;INTERVAL=1">Semanal</option>
               <option value="FREQ=MONTHLY;INTERVAL=1">Mensual</option>
               <option value="FREQ=YEARLY;INTERVAL=1">Anual</option>
+              <option value="FREQ=WORKDAY;INTERVAL=1">Laborable (lunes a viernes)</option>
               <option value="FREQ=WEEKLY;BYDAY=FR;INTERVAL=1">Cada viernes</option>
               <option value="FREQ=MONTHLY;BYMONTHDAY=1;INTERVAL=1">Cada 1 de mes</option>
             </select>
@@ -420,7 +421,7 @@
         <label class="label">RRULE (editable)</label>
         <input name="recurrence_rule" class="input" id="recRule" placeholder="">
         <div class="modal-sub">
-          <i>Ej: FREQ=WEEKLY;BYDAY=MO,WE,FR;INTERVAL=1</i>
+          <i>Ej: FREQ=DAILY|WEEKLY|MONTHLY|YEARLY|WORKDAY;BYDAY=MO,WE,FR;INTERVAL=1</i>
         </div>
       </div>
 

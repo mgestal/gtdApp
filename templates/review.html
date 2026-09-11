@@ -139,8 +139,153 @@
     min-width:220px;
   }
 
+  .review-tabs{
+    display:flex;
+    gap:8px;
+    margin:16px 0 18px;
+    flex-wrap:wrap;
+  }
+
+  .review-tab{
+    border:1px solid var(--border);
+    background:var(--panel2);
+    color:var(--text);
+    border-radius:999px;
+    padding:8px 14px;
+    font-weight:600;
+    cursor:pointer;
+    transition:all .15s ease;
+  }
+
+  .review-tab.active{
+    background:linear-gradient(135deg, #fef2f2, #fff7ed);
+    border-color:#f1aeb3;
+    box-shadow: inset 0 0 0 1px rgba(241,174,179,0.15);
+  }
+
+  .review-tab-panel{
+    display:none;
+  }
+
+  .review-tab-panel.active{
+    display:block;
+  }
+
+  .review-summary-grid{
+    display:grid;
+    grid-template-columns:repeat(4, minmax(180px, 1fr));
+    gap:12px;
+    margin-top:16px;
+  }
+
+  .review-summary-card{
+    background:var(--panel2);
+    border:1px solid var(--border);
+    border-radius:16px;
+    padding:16px;
+  }
+
+  .review-summary-label{
+    font-size:12px;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+    color:var(--muted);
+    margin-bottom:6px;
+  }
+
+  .review-summary-value{
+    font-size:32px;
+    font-weight:700;
+    line-height:1.1;
+    margin:0;
+  }
+
+  .review-summary-trends{
+    display:grid;
+    grid-template-columns:1.05fr .95fr;
+    gap:12px;
+    margin-top:16px;
+  }
+
+  .review-summary-list{
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+  }
+
+  .review-summary-item{
+    padding:10px 12px;
+    border:1px solid var(--border);
+    border-radius:12px;
+    background:#fff;
+  }
+
+  .review-summary-header{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    flex-wrap:wrap;
+    margin-bottom:12px;
+  }
+
+  .review-summary-range{
+    font-size:13px;
+    color:var(--muted);
+    background:var(--panel2);
+    border:1px solid var(--border);
+    border-radius:999px;
+    padding:6px 10px;
+  }
+
+  .review-work-blocks{
+    display:grid;
+    grid-template-columns:repeat(4, minmax(150px, 1fr));
+    gap:12px;
+    margin-top:16px;
+  }
+
+  .review-work-block{
+    border:1px solid var(--border);
+    border-radius:16px;
+    background:linear-gradient(180deg, #fff, #fffaf7);
+    padding:12px;
+  }
+
+  .review-work-block-title{
+    font-size:12px;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+    color:var(--muted);
+    margin-bottom:8px;
+  }
+
+  .review-work-block-count{
+    font-size:28px;
+    font-weight:700;
+    margin:0;
+  }
+
+  .review-recommendations{
+    margin-top:16px;
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+  }
+
+  .review-recommendation{
+    border:1px solid var(--border);
+    border-left:4px solid #f1aeb3;
+    background:#fff;
+    border-radius:12px;
+    padding:12px 14px;
+  }
+
   @media (max-width: 980px){
-    .review-checklist{
+    .review-checklist,
+    .review-summary-grid,
+    .review-summary-trends,
+    .review-work-blocks{
       grid-template-columns:1fr;
     }
   }
@@ -151,6 +296,12 @@
   <p class="subtitle">Limpieza y revisión del sistema GTD.</p>
 </div>
 
+<div class="review-tabs" role="tablist" aria-label="Pestañas de revisión">
+  <button class="review-tab active" type="button" role="tab" aria-selected="true" data-tab="weekly">Revisión semanal</button>
+  <button class="review-tab" type="button" role="tab" aria-selected="false" data-tab="summary">Resumen semanal</button>
+</div>
+
+<section id="weekly" class="review-tab-panel active" role="tabpanel" aria-label="Revisión semanal">
 <div class="card">
   <div class="card-header">
     <div class="card-title">Checklist de revisión -    <a class="link" href="{{ url_for('static', filename='review_filters.html') }}" target="_blank" rel="noopener">
@@ -990,5 +1141,170 @@
   </div>
 
 </div>
+</section>
+
+<section id="summary" class="review-tab-panel" role="tabpanel" aria-label="Resumen semanal">
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="review-summary-header">
+          <div class="card-title">Resumen semanal</div>
+          <div class="review-summary-range">01-09-2026 → 07-09-2026</div>
+        </div>
+        <div class="card-sub">Análisis automático, recomendaciones y bloqueos del sistema GTD para esta semana.</div>
+      </div>
+    </div>
+
+    <div class="review-summary-grid">
+      <div class="review-summary-card">
+        <div class="review-summary-label">Inbox</div>
+        <p class="review-summary-value">{{ inbox|length + inbox_projects|length }}</p>
+      </div>
+
+      <div class="review-summary-card">
+        <div class="review-summary-label">NextActions</div>
+        <p class="review-summary-value">{{ nextactions_open|length + nextactions_overdue|length }}</p>
+      </div>
+
+      <div class="review-summary-card">
+        <div class="review-summary-label">En espera</div>
+        <p class="review-summary-value">{{ en_espera_tasks|length + en_espera_projects|length }}</p>
+      </div>
+
+      <div class="review-summary-card">
+        <div class="review-summary-label">Agenda / seguimiento</div>
+        <p class="review-summary-value">{{ upcoming_7|length + en_seguimiento_now|length + en_seguimiento_next_15|length + agenda_overdue|length }}</p>
+      </div>
+    </div>
+
+    <div class="review-work-blocks">
+      <div class="review-work-block">
+        <div class="review-work-block-title">Lunes</div>
+        <p class="review-work-block-count">{{ [upcoming_7|length, 3]|min }}</p>
+      </div>
+      <div class="review-work-block">
+        <div class="review-work-block-title">Martes</div>
+        <p class="review-work-block-count">{{ [nextactions_open|length, 2]|min }}</p>
+      </div>
+      <div class="review-work-block">
+        <div class="review-work-block-title">Miércoles</div>
+        <p class="review-work-block-count">{{ [en_espera_tasks|length + en_espera_projects|length, 4]|min }}</p>
+      </div>
+      <div class="review-work-block">
+        <div class="review-work-block-title">Jueves</div>
+        <p class="review-work-block-count">{{ [inbox|length + inbox_projects|length, 2]|min }}</p>
+      </div>
+    </div>
+
+    <div class="review-summary-trends">
+      <div class="card" style="padding:10px; margin-top:16px;">
+        <div class="card-header" style="padding:0 0 8px; margin-bottom:8px; border-bottom:1px solid var(--border);">
+          <div class="card-title">Análisis automático</div>
+        </div>
+        <div class="review-summary-list">
+          {% if inbox|length + inbox_projects|length > 0 %}
+            <div class="review-summary-item">Hay {{ inbox|length + inbox_projects|length }} elementos en inbox. La carga de captura sigue alta, así que vale la pena vaciarlo antes de la revisión funcional.</div>
+          {% else %}
+            <div class="review-summary-item">El inbox está limpio. La captura está controlada y la prioridad actual debe centrarse en avanzar proyectos.</div>
+          {% endif %}
+
+          {% if nextactions_overdue|length > 0 %}
+            <div class="review-summary-item">Tienes {{ nextactions_overdue|length }} NextActions vencidas. El sistema de ejecución está algo saturado o hay tareas que requieren reapertura.</div>
+          {% else %}
+            <div class="review-summary-item">No hay NextActions vencidas. La ejecución está bien alineada con la planificación semanal.</div>
+          {% endif %}
+
+          {% if en_espera_tasks|length + en_espera_projects|length > 0 %}
+            <div class="review-summary-item">Hay {{ en_espera_tasks|length + en_espera_projects|length }} elementos en espera. Es recomendable revisar si siguen teniendo valor o si deben reencuadrarse.</div>
+          {% else %}
+            <div class="review-summary-item">No hay tareas ni proyectos en espera. La cartera está bastante despejada y preparada para avanzar.</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="card" style="padding:10px; margin-top:16px;">
+        <div class="card-header" style="padding:0 0 8px; margin-bottom:8px; border-bottom:1px solid var(--border);">
+          <div class="card-title">Recomendaciones</div>
+        </div>
+        <div class="review-recommendations">
+          {% if nextactions_overdue %}
+            <div class="review-recommendation"><strong>Reprograma</strong> las tareas vencidas para no dejar que la presión acumulada bloquee la siguiente semana.</div>
+          {% endif %}
+
+          {% if inbox|length + inbox_projects|length > 0 %}
+            <div class="review-recommendation"><strong>Reduce el inbox</strong> antes de tocar proyectos más complejos; mejor un flujo limpio que más tareas pendientes.</div>
+          {% endif %}
+
+          {% if en_espera_tasks or en_espera_projects %}
+            <div class="review-recommendation"><strong>Revisa los elementos en espera</strong> y decide si necesitan acción, energía o eliminación de contexto.</div>
+          {% endif %}
+
+          {% if not nextactions_overdue and not inbox and not en_espera_tasks %}
+            <div class="review-recommendation"><strong>Buen ritmo</strong>. Mantén la semana con foco, y usa el tiempo que sobra para cerrar proyectos o limpiar detalle.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="padding:10px; margin-top:16px;">
+      <div class="card-header" style="padding:0 0 8px; margin-bottom:8px; border-bottom:1px solid var(--border);">
+        <div class="card-title">Puntos a revisar</div>
+      </div>
+      <div class="review-summary-list">
+        {% if nextactions_overdue %}
+          <div class="review-summary-item">
+            <strong>Vencidas:</strong>
+            {% for t in nextactions_overdue[:3] %}
+              {{ t.title }}{% if not loop.last %}, {% endif %}
+            {% endfor %}
+          </div>
+        {% endif %}
+
+        {% if agenda_overdue %}
+          <div class="review-summary-item">
+            <strong>Agenda atrasada:</strong>
+            {% for t in agenda_overdue[:3] %}
+              {{ t.title }}{% if not loop.last %}, {% endif %}
+            {% endfor %}
+          </div>
+        {% endif %}
+
+        {% if en_espera_tasks %}
+          <div class="review-summary-item">
+            <strong>En espera:</strong>
+            {% for t in en_espera_tasks[:3] %}
+              {{ t.title }}{% if not loop.last %}, {% endif %}
+            {% endfor %}
+          </div>
+        {% endif %}
+
+        {% if not nextactions_overdue and not agenda_overdue and not en_espera_tasks %}
+          <div class="review-summary-item">Todo apunta a una semana estable. Puedes centrarse en avanzar proyectos y mantener el sistema limpio.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  const reviewTabs = document.querySelectorAll('.review-tab');
+  const reviewPanels = document.querySelectorAll('.review-tab-panel');
+
+  reviewTabs.forEach((tab) => {
+    tab.addEventListener('click', () => {
+      const target = tab.dataset.tab;
+
+      reviewTabs.forEach((item) => {
+        const isActive = item === tab;
+        item.classList.toggle('active', isActive);
+        item.setAttribute('aria-selected', String(isActive));
+      });
+
+      reviewPanels.forEach((panel) => {
+        panel.classList.toggle('active', panel.id === target);
+      });
+    });
+  });
+</script>
 
 {% endblock %}

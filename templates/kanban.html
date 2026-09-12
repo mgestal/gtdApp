@@ -1,0 +1,625 @@
+{% extends "base.html" %}
+{% block content %}
+
+<style>
+  .kanban-page {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .kanban-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .kanban-filters {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .kanban-filter-input,
+  .kanban-filter-select {
+    min-height: 36px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: #fff;
+    padding: 0 10px;
+    color: var(--text);
+  }
+
+  .kanban-columns {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(180px, 1fr));
+    gap: 12px;
+    align-items: start;
+  }
+
+  .kanban-column {
+    background: #f4e7ea;
+    border: 1px solid #e5c9d0;
+    border-radius: 16px;
+    min-height: 170px;
+    padding: 8px;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .kanban-column[data-status="inbox"] {
+    grid-column: 1 / -1;
+    min-height: 0;
+  }
+
+  .kanban-column.drag-over {
+    border-color: #d17080;
+    box-shadow: 0 0 0 2px rgba(209, 112, 128, 0.15);
+  }
+
+  .kanban-column-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 4px 12px;
+    border-bottom: 1px solid rgba(0,0,0,0.06);
+    margin-bottom: 10px;
+  }
+
+  .kanban-column-title {
+    font-weight: 800;
+    font-size: 16px;
+  }
+
+  .kanban-column-heading {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .kanban-column-settings {
+    width: 26px;
+    height: 26px;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 17px;
+    line-height: 1;
+  }
+
+  .kanban-column-settings:hover {
+    background: rgba(0, 0, 0, 0.07);
+    color: var(--text);
+  }
+
+  .kanban-tag-dialog {
+    width: min(92vw, 380px);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0;
+    color: var(--text);
+  }
+
+  .kanban-tag-dialog form {
+    display: grid;
+    gap: 14px;
+    padding: 20px;
+  }
+
+  .kanban-tag-dialog input {
+    min-height: 38px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0 10px;
+    color: var(--text);
+  }
+
+  .kanban-tag-dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .kanban-counter {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.7);
+    border: 1px solid rgba(0,0,0,0.05);
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 700;
+    margin-left: 8px;
+  }
+
+  .kanban-cards {
+    display: grid;
+    gap: 8px;
+    margin-top: 8px;
+    min-height: 140px;
+  }
+
+  .kanban-column[data-status="inbox"] .kanban-cards {
+    grid-template-columns: repeat(4, minmax(120px, 1fr));
+    min-height: 0;
+  }
+
+  .kanban-column[data-status="next"] .kanban-cards,
+  .kanban-column[data-status="doing"] .kanban-cards,
+  .kanban-column[data-status="waiting"] .kanban-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .kanban-card {
+    background: rgba(255,255,255,0.6);
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 10px;
+    padding: 8px 10px;
+    cursor: grab;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    min-height: 72px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .kanban-card:active {
+    cursor: grabbing;
+  }
+
+  .kanban-card-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .kanban-toggle-form {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  .kanban-card-title {
+    font-weight: 700;
+    line-height: 1.2;
+    color: var(--text);
+    font-size: 14px;
+    flex: 1;
+  }
+
+  .kanban-card-meta {
+    font-size: 10px;
+    color: var(--muted);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 6px;
+    align-items: center;
+  }
+
+  .kanban-pill {
+    display: inline-block;
+    border-radius: 999px;
+    padding: 3px 6px;
+    background: rgba(216, 137, 145, 0.08);
+    border: 1px solid rgba(216, 137, 145, 0.18);
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .kanban-context-link {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .kanban-context-link:hover {
+    text-decoration: underline;
+  }
+
+  .kanban-empty {
+    color: var(--muted);
+    font-size: 13px;
+    padding: 10px 4px;
+    opacity: 0.8;
+  }
+
+  .kanban-waiting-group {
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.34);
+  }
+
+  .kanban-waiting-group summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 9px 10px;
+    cursor: pointer;
+    font-weight: 700;
+  }
+
+  .kanban-waiting-group summary::marker {
+    color: var(--muted);
+  }
+
+  .kanban-waiting-group-cards {
+    display: grid;
+    gap: 8px;
+    padding: 0 8px 8px;
+  }
+
+  .kanban-waiting-group-count {
+    min-width: 22px;
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.75);
+    font-size: 11px;
+    text-align: center;
+  }
+
+  @media (max-width: 1200px) {
+    .kanban-columns {
+      grid-template-columns: repeat(2, minmax(180px, 1fr));
+    }
+
+    .kanban-column[data-status="inbox"] {
+      grid-column: 1 / -1;
+    }
+  }
+
+  @media (max-width: 720px) {
+    .kanban-columns {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+
+<div class="kanban-page">
+  {% macro task_card(task, status) %}
+    <div class="kanban-card" draggable="true" data-task-id="{{ task.id }}" data-status="{{ status }}">
+      <div class="kanban-card-header">
+        <form class="kanban-toggle-form" method="post" action="{{ url_for('task_toggle', task_id=task.id) }}" onsubmit="return true;">
+          <button type="submit" class="radio" title="Marcar / desmarcar" aria-label="toggle"></button>
+        </form>
+        <div class="kanban-card-title">{{ task.title }}</div>
+      </div>
+      <div class="kanban-card-meta">
+        {% if task.priority in [1,2,3] %}
+          <span class="kanban-pill">{{ {'1': 'Alta', '2': 'Media', '3': 'Baja'}[task.priority|string] }}</span>
+        {% endif %}
+        {% if task.project_name %}
+          <a class="kanban-pill kanban-context-link" href="{{ url_for('project_detail', project_id=task.project_id) }}">#{{ task.project_name }}</a>
+        {% endif %}
+        {% if task.folder_name and task.context_folder_id %}
+          <a class="kanban-pill kanban-context-link" href="{{ url_for('folder_detail', folder_id=task.context_folder_id) }}">{{ task.folder_name }}</a>
+        {% endif %}
+        {% if task.due_date %}
+          <span>{{ task.due_date }}</span>
+        {% endif %}
+      </div>
+    </div>
+  {% endmacro %}
+
+  <div class="page-title">
+    <h1>Kanban</h1>
+    <p class="subtitle">Flujo visual de trabajo para mover tareas entre estados.</p>
+  </div>
+
+  <div class="card">
+    <div class="kanban-toolbar">
+      <div class="muted">Vista de ejecución visual</div>
+      <div class="kanban-filters">
+        <input id="kanbanFilterInput" class="kanban-filter-input" type="text" placeholder="Buscar tarea..." aria-label="Buscar tarea" />
+        <select id="kanbanFilterStatus" class="kanban-filter-select" aria-label="Filtrar por estado">
+          <option value="all">Todos</option>
+          <option value="inbox">Inbox</option>
+          <option value="next">Próximo</option>
+          <option value="doing">En proceso</option>
+          <option value="waiting">Esperando</option>
+        </select>
+        <button id="kanbanApplyFilter" class="btn btn-soft" type="button">Filtrar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="kanban-columns">
+    {% set labels = {'inbox': 'Inbox', 'next': 'Próximo', 'doing': 'En proceso', 'waiting': 'Esperando'} %}
+    {% for status in ['inbox', 'next', 'doing', 'waiting'] %}
+      <div class="kanban-column" data-status="{{ status }}" data-label="{{ labels[status] }}">
+        <div class="kanban-column-header">
+          <span class="kanban-column-heading">
+            {% if status != 'inbox' %}
+              <button class="kanban-column-settings" type="button" data-status="{{ status }}" data-label="{{ labels[status] }}" data-tag-name="{{ kanban_status_tags[status] }}" title="Configurar etiqueta de {{ labels[status] }}" aria-label="Configurar etiqueta de {{ labels[status] }}">&#9881;</button>
+            {% endif %}
+            <span class="kanban-column-title">{{ labels[status] }}</span>
+          </span>
+          {% if status == 'inbox' %}
+            <button class="btn btn-primary js-open-add-task" type="button">+ Nueva tarea</button>
+          {% endif %}
+          <span class="kanban-counter">{{ kanban_counts.get(status, 0) }}</span>
+        </div>
+        <div class="kanban-cards">
+          {% set column_tasks = tasks_by_status.get(status, []) %}
+          {% if column_tasks %}
+            {% for task in column_tasks %}
+              {{ task_card(task, status) }}
+            {% endfor %}
+          {% elif status != 'waiting' %}
+            <div class="kanban-empty">Sin tareas</div>
+          {% endif %}
+          {% if status in ['next', 'doing', 'waiting'] %}
+            {% for group in kanban_folder_groups[status] if group.tasks %}
+              <details class="kanban-waiting-group">
+                <summary>
+                  <span>{{ group.label }}</span>
+                  <span class="kanban-waiting-group-count">{{ group.tasks|length }}</span>
+                </summary>
+                <div class="kanban-waiting-group-cards">
+                  {% for task in group.tasks %}
+                    {{ task_card(task, status) }}
+                  {% endfor %}
+                </div>
+              </details>
+            {% endfor %}
+          {% endif %}
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+
+<dialog id="kanbanTagDialog" class="kanban-tag-dialog">
+  <form id="kanbanTagForm" method="dialog">
+    <div>
+      <strong id="kanbanTagDialogTitle">Etiqueta de columna</strong>
+      <div class="muted" style="margin-top:6px;">Las tareas con esta etiqueta aparecerán en esta columna.</div>
+    </div>
+    <label for="kanbanTagName">Etiqueta</label>
+    <input id="kanbanTagName" name="tag_name" type="text" maxlength="80" required autocomplete="off" />
+    <div class="kanban-tag-dialog-actions">
+      <button id="kanbanTagCancel" class="btn btn-soft" type="button">Cancelar</button>
+      <button class="btn btn-primary" type="submit">Guardar</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+  const kanbanColumns = document.querySelectorAll('.kanban-column');
+  const filterInput = document.getElementById('kanbanFilterInput');
+  const filterStatus = document.getElementById('kanbanFilterStatus');
+  const applyFilter = document.getElementById('kanbanApplyFilter');
+  const kanbanStatusUrlTemplate = "{{ url_for('api_task_kanban_status', task_id=0) }}";
+  const kanbanTagUrlTemplate = "{{ url_for('api_kanban_status_tag', status='__status__') }}";
+  const kanbanTagDialog = document.getElementById('kanbanTagDialog');
+  const kanbanTagForm = document.getElementById('kanbanTagForm');
+  const kanbanTagName = document.getElementById('kanbanTagName');
+  const kanbanTagDialogTitle = document.getElementById('kanbanTagDialogTitle');
+  let configuredStatus = null;
+
+  function getStatusLabel(status) {
+    const map = {
+      inbox: 'Inbox',
+      next: 'Próximo',
+      doing: 'En proceso',
+      waiting: 'Esperando'
+    };
+    return map[status] || status;
+  }
+
+  function getTaskStatusUrl(taskId) {
+    return kanbanStatusUrlTemplate.replace('/0/', '/' + taskId + '/');
+  }
+
+  function getKanbanTagUrl(status) {
+    return kanbanTagUrlTemplate.replace('__status__', status);
+  }
+
+  function applyKanbanFilter() {
+    const q = (filterInput.value || '').trim().toLowerCase();
+    const selectedStatus = filterStatus.value;
+
+    kanbanColumns.forEach((column) => {
+      const cards = column.querySelectorAll('.kanban-card');
+      let visibleCount = 0;
+
+      cards.forEach((card) => {
+        const title = (card.querySelector('.kanban-card-title')?.textContent || '').toLowerCase();
+        const matchesText = !q || title.includes(q);
+        const matchesStatus = selectedStatus === 'all' || card.dataset.status === selectedStatus;
+        const show = matchesText && matchesStatus;
+        card.style.display = show ? '' : 'none';
+        if (show) visibleCount += 1;
+      });
+
+      const counter = column.querySelector('.kanban-counter');
+      if (counter) {
+        counter.textContent = String(visibleCount);
+      }
+
+      const empty = column.querySelector('.kanban-empty');
+      if (empty) {
+        empty.style.display = visibleCount === 0 ? '' : 'none';
+      }
+    });
+  }
+
+  applyFilter.addEventListener('click', applyKanbanFilter);
+  filterInput.addEventListener('input', applyKanbanFilter);
+  filterStatus.addEventListener('change', applyKanbanFilter);
+
+  document.querySelectorAll('.kanban-column-settings').forEach((button) => {
+    button.addEventListener('click', () => {
+      configuredStatus = button.dataset.status;
+      kanbanTagDialogTitle.textContent = `Etiqueta de ${button.dataset.label}`;
+      kanbanTagName.value = `@${button.dataset.tagName}`;
+      kanbanTagDialog.showModal();
+      kanbanTagName.focus();
+      kanbanTagName.select();
+    });
+  });
+
+  document.getElementById('kanbanTagCancel').addEventListener('click', () => {
+    kanbanTagDialog.close();
+  });
+
+  kanbanTagForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!configuredStatus) return;
+
+    try {
+      const response = await fetch(getKanbanTagUrl(configuredStatus), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ tag_name: kanbanTagName.value }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || 'No se pudo guardar la etiqueta');
+      }
+      window.location.reload();
+    } catch (error) {
+      alert(error.message || 'No se pudo guardar la etiqueta');
+    }
+  });
+
+  let draggedTaskId = null;
+
+  function updateColumnCounter(column) {
+    if (!column) return;
+    const counter = column.querySelector('.kanban-counter');
+    const visibleCards = column.querySelectorAll('.kanban-card:not([style*="display: none"])');
+    if (counter) {
+      counter.textContent = String(visibleCards.length);
+    }
+  }
+
+  function getDraggedTaskIdFromEvent(event) {
+    if (draggedTaskId !== null && Number.isFinite(draggedTaskId)) {
+      return draggedTaskId;
+    }
+
+    const raw = event?.dataTransfer?.getData('application/x-gtd-task-id') ||
+                event?.dataTransfer?.getData('text/plain') ||
+                event?.dataTransfer?.getData('application/x-kanban-task-id') || '';
+    const clean = String(raw).replace(/^task:/, '').trim();
+    if (!clean) return null;
+    const parsed = Number(clean);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  document.querySelectorAll('.kanban-card').forEach((card) => {
+    card.addEventListener('dragstart', (event) => {
+      const taskId = Number(card.dataset.taskId);
+      draggedTaskId = Number.isFinite(taskId) ? taskId : null;
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', String(draggedTaskId));
+      event.dataTransfer.setData('application/x-gtd-task-id', String(draggedTaskId));
+      event.dataTransfer.setData('application/x-kanban-task-id', String(draggedTaskId));
+      card.style.opacity = '0.5';
+      card.classList.add('dragging');
+    });
+
+    card.addEventListener('dragend', () => {
+      draggedTaskId = null;
+      document.querySelectorAll('.kanban-column').forEach((col) => col.classList.remove('drag-over'));
+      document.querySelectorAll('.kanban-card').forEach((cardEl) => {
+        cardEl.style.opacity = '1';
+        cardEl.classList.remove('dragging');
+      });
+    });
+  });
+
+  kanbanColumns.forEach((column) => {
+    const cardsContainer = column.querySelector('.kanban-cards') || column;
+
+    column.addEventListener('dragenter', (event) => {
+      event.preventDefault();
+      column.classList.add('drag-over');
+    });
+
+    column.addEventListener('dragover', (event) => {
+      event.preventDefault();
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = 'move';
+      }
+      column.classList.add('drag-over');
+    });
+
+    column.addEventListener('dragleave', (event) => {
+      const nextTarget = event.relatedTarget || event.toElement;
+      if (!nextTarget || !column.contains(nextTarget)) {
+        column.classList.remove('drag-over');
+      }
+    });
+
+    column.addEventListener('drop', async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      column.classList.remove('drag-over');
+
+      const taskId = getDraggedTaskIdFromEvent(event);
+      if (taskId === null || taskId === undefined) {
+        draggedTaskId = null;
+        return;
+      }
+
+      const targetStatus = column.dataset.status;
+      const cardEl = document.querySelector(`.kanban-card[data-task-id="${taskId}"]`);
+      const sourceStatus = cardEl ? cardEl.dataset.status : null;
+
+      if (sourceStatus === targetStatus) {
+        draggedTaskId = null;
+        return;
+      }
+
+      const url = getTaskStatusUrl(taskId);
+      const payload = { status: targetStatus };
+
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify(payload),
+        });
+
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok || !data.ok) {
+          const errorText = (data && data.error) ? data.error : 'Error al actualizar el estado';
+          throw new Error(errorText);
+        }
+
+        if (cardEl) {
+          const sourceColumn = cardEl.closest('.kanban-column');
+          cardEl.dataset.status = targetStatus;
+          cardsContainer.appendChild(cardEl);
+          if (sourceColumn) updateColumnCounter(sourceColumn);
+          updateColumnCounter(column);
+        }
+
+        applyKanbanFilter();
+        window.location.reload();
+      } catch (err) {
+        console.error('Kanban drop error:', err);
+        alert(err.message || 'No se pudo mover la tarea');
+      } finally {
+        draggedTaskId = null;
+      }
+    });
+  });
+
+</script>
+
+{% endblock %}

@@ -262,6 +262,10 @@
           <span class="nav-count">{{ sidebar_counts.week }}</span>
         </a>
 
+        <a class="nav-item nav-item-count" href="{{ url_for('kanban') }}">
+          <span>[K] Kanban</span>
+        </a>
+
         <a class="nav-item nav-item-count" href="{{ url_for('next_actions') }}">
           <span>[N] NextActions</span>
           <span class="nav-count">
@@ -435,7 +439,7 @@
   <script>
     (function () {
       const dlg = document.getElementById('addTaskModal');
-      const openBtn = document.getElementById('openAddTask');
+      const openBtns = document.querySelectorAll('#openAddTask, .js-open-add-task');
       const closeBtn = document.getElementById('closeAddTask');
       const cancelBtn = document.getElementById('cancelAddTask');
 
@@ -447,7 +451,7 @@
       function openModal() { if (dlg && dlg.showModal) dlg.showModal(); }
       function closeModal() { if (dlg && dlg.close) dlg.close(); }
 
-      if (openBtn) openBtn.addEventListener('click', openModal);
+      openBtns.forEach((openBtn) => openBtn.addEventListener('click', openModal));
       if (closeBtn) closeBtn.addEventListener('click', closeModal);
       if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
 
@@ -877,6 +881,10 @@ document.addEventListener("keydown", function(e){
   
   if(key === "w"){
     window.location.href = "{{ url_for('week') }}";
+  }
+
+  if(key === "k"){
+    window.location.href = "{{ url_for('kanban') }}";
   }
 
 });

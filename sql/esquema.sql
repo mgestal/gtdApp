@@ -262,6 +262,7 @@ CREATE TABLE `tasks` (
   `max_occurrences` int(11) DEFAULT NULL,
   `priority` tinyint(4) DEFAULT NULL,
   `sort_order` int(11) DEFAULT NULL,
+  `kanban_status` varchar(20) NOT NULL DEFAULT 'inbox',
   `archived` tinyint(1) NOT NULL DEFAULT 0,
   `archived_at` datetime DEFAULT NULL,
   `deleted_at` datetime DEFAULT NULL,

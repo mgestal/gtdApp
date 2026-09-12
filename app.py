@@ -88,6 +88,13 @@ DEFAULT_CONFIG = {
             "calendar_id": "mgestal@gmail.com",
         },
     },
+    "kanban": {
+        "status_tags": {
+            "next": "NextAction",
+            "doing": "enCurso",
+            "waiting": "EnEspera",
+        },
+    },
 }
 
 
@@ -1420,6 +1427,11 @@ def _teardown(exc):
 def db():
     if "db_conn" not in g:
         g.db_conn = get_db_conn()
+    try:
+        g.db_conn.ping(reconnect=True)
+    except Exception:
+        g.db_conn = get_db_conn()
+        g.db_conn.ping(reconnect=True)
     return g.db_conn
 
 def q(sql: str, params: Tuple[Any, ...] = ()) -> List[Dict[str, Any]]:
@@ -1472,6 +1484,10 @@ def ensure_schema_updates() -> None:
     exec_sql(
         "ALTER TABLE tasks "
         "MODIFY COLUMN priority TINYINT NULL DEFAULT NULL"
+    )
+    exec_sql(
+        "ALTER TABLE tasks "
+        "ADD COLUMN IF NOT EXISTS kanban_status VARCHAR(20) NOT NULL DEFAULT 'inbox' AFTER sort_order"
     )
     exec_sql(
         "ALTER TABLE projects "
@@ -3341,6 +3357,213 @@ def today():
         sub_map=sub_map,
         today=today_d,
     )
+
+
+def _kanban_status_tag_map():
+    defaults = {
+        "next": "NextAction",
+        "doing": "enCurso",
+        "waiting": "EnEspera",
+    }
+    cfg = getattr(g, "cfg", None) or load_config()
+    configured_tags = (cfg.get("kanban") or {}).get("status_tags") or {}
+    return {
+        status: normalize_name(configured_tags.get(status, default)).lstrip("@") or default
+        for status, default in defaults.items()
+    }
+
+
+def _task_has_tag(task_id: int, tag_name: str) -> bool:
+    row = q1(
+        "SELECT 1 AS ok FROM task_tags tt JOIN tags tg ON tg.id=tt.tag_id WHERE tt.task_id=%s AND LOWER(tg.name)=LOWER(%s) LIMIT 1",
+        (task_id, tag_name),
+    )
+    return bool(row)
+
+
+def _sync_task_kanban_status(task_id: int, new_status: str) -> None:
+    status_map = _kanban_status_tag_map()
+    state_tags = list(set(status_map.values()))
+
+    for tag_name in state_tags:
+        exec_sql(
+            "DELETE FROM task_tags "
+            "WHERE task_id=%s AND tag_id IN ("
+            "SELECT id FROM (SELECT tg.id FROM tags tg WHERE LOWER(tg.name)=LOWER(%s)) AS tag_matches"
+            ")",
+            (task_id, tag_name),
+        )
+
+    if new_status == "inbox":
+        exec_sql("UPDATE tasks SET completed_at = NULL WHERE id=%s", (task_id,))
+        return
+
+    if new_status == "done":
+        exec_sql("UPDATE tasks SET completed_at = NOW() WHERE id=%s", (task_id,))
+        return
+
+    tag_name = status_map.get(new_status)
+    if not tag_name:
+        return
+
+    tag_id = get_or_create_tag(tag_name)
+    exec_sql(
+        "INSERT IGNORE INTO task_tags(task_id, tag_id) VALUES(%s, %s)",
+        (task_id, tag_id),
+    )
+
+    # Si la tarea ha dejado atrás un estado de GTD previa, lo dejamos sincronizado
+    # con la etiqueta del nuevo estado del tablero.
+
+
+@app.route("/kanban")
+def kanban():
+    recurring_due_join, effective_due_expr = recurring_effective_due_sql("t")
+
+    active_rows = q(
+        f"SELECT t.id, t.title, t.location, t.notes, {effective_due_expr} AS due_date, t.due_time, t.completed_at, t.priority, "
+        "t.project_id, t.folder_id, COALESCE(t.folder_id, p.folder_id) AS context_folder_id, "
+        "p.name AS project_name, "
+        "fd.name AS folder_name "
+        "FROM tasks t "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+        f"{recurring_due_join} "
+        "LEFT JOIN folders fd ON fd.id = COALESCE(t.folder_id, p.folder_id) "
+        "WHERE t.deleted_at IS NULL "
+        "AND t.archived = 0 "
+        "AND t.completed_at IS NULL "
+        "AND (t.project_id IS NULL OR (p.archived = 0 AND p.deleted_at IS NULL)) "
+        "ORDER BY t.id DESC",
+    ) or []
+
+    done_rows = q(
+        f"SELECT t.id, t.title, t.location, t.notes, {effective_due_expr} AS due_date, t.due_time, t.completed_at, t.priority, "
+        "t.project_id, t.folder_id, COALESCE(t.folder_id, p.folder_id) AS context_folder_id, "
+        "p.name AS project_name, "
+        "fd.name AS folder_name "
+        "FROM tasks t "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+        f"{recurring_due_join} "
+        "LEFT JOIN folders fd ON fd.id = COALESCE(t.folder_id, p.folder_id) "
+        "WHERE t.deleted_at IS NULL "
+        "AND t.archived = 0 "
+        "AND t.completed_at IS NOT NULL "
+        "AND (t.project_id IS NULL OR (p.archived = 0 AND p.deleted_at IS NULL)) "
+        "ORDER BY t.completed_at DESC, t.id DESC",
+    ) or []
+
+    tasks_by_status = {"inbox": [], "next": [], "doing": [], "waiting": []}
+    status_tags = _kanban_status_tag_map()
+    folder_group_definitions = [
+        {"key": "en-espera", "label": "EnEspera", "folder_ids": set()},
+        {"key": "seguimiento", "label": "Seguimiento", "folder_ids": set()},
+        {"key": "sometime", "label": "Sometime", "folder_ids": set()},
+    ]
+    kanban_folder_groups = {
+        status: [
+            {"key": group["key"], "label": group["label"], "tasks": [], "folder_ids": set()}
+            for group in folder_group_definitions
+        ]
+        for status in ("next", "doing", "waiting")
+    }
+
+    for group in folder_group_definitions:
+        folder_name = group["label"].lstrip("@")
+        root_folder = q1(
+            "SELECT id FROM folders WHERE LOWER(REPLACE(name, '@', ''))=LOWER(%s) LIMIT 1",
+            (folder_name,),
+        )
+        if root_folder and root_folder.get("id") is not None:
+            group["folder_ids"] = get_folder_tree_ids(int(root_folder["id"]))
+            for status_groups in kanban_folder_groups.values():
+                matching_group = next(item for item in status_groups if item["key"] == group["key"])
+                matching_group["folder_ids"] = group["folder_ids"]
+
+    for task in active_rows:
+        context_folder_id = task.get("context_folder_id")
+        folder_group_definition = next(
+            (
+                group for group in folder_group_definitions
+                if context_folder_id is not None and context_folder_id in group["folder_ids"]
+            ),
+            None,
+        )
+        matching_status = next(
+            (status for status, tag_name in status_tags.items() if _task_has_tag(task["id"], tag_name)),
+            None,
+        )
+
+        if folder_group_definition and matching_status in kanban_folder_groups:
+            matching_group = next(
+                group for group in kanban_folder_groups[matching_status]
+                if group["key"] == folder_group_definition["key"]
+            )
+            matching_group["tasks"].append(task)
+            continue
+
+        if matching_status:
+            tasks_by_status[matching_status].append(task)
+        else:
+            is_real_inbox = task.get("project_id") is None and task.get("folder_id") is None
+            if is_real_inbox:
+                tasks_by_status["inbox"].append(task)
+
+    kanban_counts = {
+        status: len(tasks)
+        for status, tasks in tasks_by_status.items()
+    }
+    for status, groups in kanban_folder_groups.items():
+        kanban_counts[status] += sum(len(group["tasks"]) for group in groups)
+
+    return render_template(
+        "kanban.html",
+        tasks_by_status=tasks_by_status,
+        kanban_status_tags=status_tags,
+        kanban_folder_groups=kanban_folder_groups,
+        kanban_counts=kanban_counts,
+        kanban_columns=["inbox", "next", "doing", "waiting"],
+    )
+
+
+@app.route("/api/tasks/<int:task_id>/kanban_status", methods=["POST"])
+def api_task_kanban_status(task_id: int):
+    payload = request.get_json(silent=True) or {}
+    new_status = (payload.get("status") or "").strip().lower()
+    valid_statuses = {"inbox", "next", "doing", "waiting", "done"}
+
+    if new_status not in valid_statuses:
+        return jsonify({"ok": False, "error": "Estado Kanban inválido"}), 400
+
+    task = q1("SELECT id FROM tasks WHERE id=%s AND deleted_at IS NULL", (task_id,))
+    if not task:
+        return jsonify({"ok": False, "error": "Tarea no encontrada"}), 404
+
+    try:
+        _sync_task_kanban_status(task_id, new_status)
+        commit()
+        return jsonify({"ok": True, "status": new_status})
+    except Exception as exc:
+        rollback()
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@app.route("/api/kanban/status-tags/<status>", methods=["POST"])
+def api_kanban_status_tag(status: str):
+    if status not in _kanban_status_tag_map():
+        return jsonify({"ok": False, "error": "Estado Kanban inválido"}), 400
+
+    payload = request.get_json(silent=True) or {}
+    tag_name = normalize_name(payload.get("tag_name")).lstrip("@")
+    if not tag_name or not re.fullmatch(r"[A-Za-z0-9_\-áéíóúÁÉÍÓÚñÑ]+", tag_name):
+        return jsonify({"ok": False, "error": "Indica una etiqueta válida"}), 400
+
+    cfg = load_config()
+    kanban_cfg = cfg.setdefault("kanban", {})
+    status_tags = kanban_cfg.setdefault("status_tags", {})
+    status_tags[status] = tag_name
+    save_config(cfg)
+    g.cfg = cfg
+    return jsonify({"ok": True, "status": status, "tag_name": tag_name})
 
 
 @app.route("/week")

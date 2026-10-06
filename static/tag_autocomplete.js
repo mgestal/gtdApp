@@ -103,7 +103,7 @@
       // El trigger debe estar precedido por espacio, inicio de línea o separadores.
       if (idx > 0) {
         const prevChar = before.charAt(idx - 1);
-        if (!/[\s,(\[{]/.test(prevChar)) continue;
+        if (!/[\s,(\[{^|!]/.test(prevChar)) continue;
       }
 
       const afterTrig = before.slice(idx + trig.length);
@@ -256,8 +256,11 @@
 
   const debouncedLookup = debounce(async function (input) {
     const tokenInfo = findActiveToken(input);
+    const minQuery = input.dataset.tagAutocompleteMinQuery === "0"
+      ? 0
+      : tokenInfo?.config.minQuery;
 
-    if (!tokenInfo || tokenInfo.query.length < tokenInfo.config.minQuery) {
+    if (!tokenInfo || tokenInfo.query.length < minQuery) {
       closeDropdown(input);
       return;
     }

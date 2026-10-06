@@ -10765,7 +10765,13 @@ def api_tags_search():
     qtxt = (request.args.get("q") or "").strip().lower()
 
     if not qtxt:
-        return jsonify({"items": []})
+        rows = q(
+            "SELECT id, name "
+            "FROM tags "
+            "ORDER BY name "
+            "LIMIT 8",
+        )
+        return jsonify({"items": rows})
 
     qtxt = qtxt[:50]
 

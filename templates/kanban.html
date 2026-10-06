@@ -480,7 +480,7 @@
     </div>
     <div id="kanbanTagExpressionField">
       <label for="kanbanTagExpression">Expresión de etiquetas</label>
-      <input id="kanbanTagExpression" name="tag_expression" type="text" maxlength="240" autocomplete="off" placeholder="@casa ^ !@delegada" />
+      <input id="kanbanTagExpression" class="js-tag-autocomplete" data-tag-autocomplete-min-query="0" name="tag_expression" type="text" maxlength="240" autocomplete="off" placeholder="@casa ^ !@delegada" />
       <div class="muted">Usa ^ (AND), | (OR) y ! (NOT).</div>
     </div>
     <div id="kanbanPriorityField" hidden>
@@ -518,7 +518,7 @@
     </div>
     <div id="kanbanNewTagExpressionField">
       <label for="kanbanNewTagExpression">Expresión de etiquetas</label>
-      <input id="kanbanNewTagExpression" name="tag_expression" type="text" maxlength="240" autocomplete="off" placeholder="@pocotiempo ^ @pocaenergia" />
+      <input id="kanbanNewTagExpression" class="js-tag-autocomplete" data-tag-autocomplete-min-query="0" name="tag_expression" type="text" maxlength="240" autocomplete="off" placeholder="@pocotiempo ^ @pocaenergia" />
       <div class="muted">Usa ^ (AND), | (OR) y ! (NOT).</div>
     </div>
     <div id="kanbanNewPriorityField" hidden>

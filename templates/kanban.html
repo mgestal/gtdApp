@@ -35,9 +35,32 @@
 
   .kanban-columns {
     display: grid;
-    grid-template-columns: repeat(3, minmax(180px, 1fr));
+    grid-template-columns: repeat(3, minmax(220px, 1fr));
     gap: 12px;
     align-items: start;
+  }
+
+  .kanban-columns[data-per-row="1"] { grid-template-columns: repeat(1, minmax(220px, 1fr)); }
+  .kanban-columns[data-per-row="2"] { grid-template-columns: repeat(2, minmax(220px, 1fr)); }
+  .kanban-columns[data-per-row="4"] { grid-template-columns: repeat(4, minmax(200px, 1fr)); }
+
+  .kanban-add-column {
+    border: 2px dashed var(--border);
+    border-radius: 16px;
+    min-height: 170px;
+    padding: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    font-weight: 700;
+  }
+
+  .kanban-add-column:hover {
+    border-color: #d17080;
+    color: var(--text);
   }
 
   .kanban-column {
@@ -118,10 +141,24 @@
     color: var(--text);
   }
 
+  .kanban-tag-dialog label {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--muted);
+  }
+
   .kanban-tag-dialog-actions {
     display: flex;
     justify-content: flex-end;
+    align-items: center;
     gap: 8px;
+  }
+
+  .kanban-tag-dialog-actions .btn-danger-soft {
+    margin-right: auto;
+    background: rgba(209, 60, 60, 0.08);
+    border: 1px solid rgba(209, 60, 60, 0.25);
+    color: #b3261e;
   }
 
   .kanban-counter {
@@ -151,9 +188,7 @@
     min-height: 0;
   }
 
-  .kanban-column[data-status="next"] .kanban-cards,
-  .kanban-column[data-status="doing"] .kanban-cards,
-  .kanban-column[data-status="waiting"] .kanban-cards {
+  .kanban-column:not([data-status="inbox"]) .kanban-cards {
     grid-template-columns: 1fr;
   }
 
@@ -311,83 +346,224 @@
   {% endmacro %}
 
   <div class="page-title">
-    <h1>Kanban</h1>
+    <h1>🧮 Kanban</h1>
     <p class="subtitle">Flujo visual de trabajo para mover tareas entre estados.</p>
   </div>
 
   <div class="card">
     <div class="kanban-toolbar">
-      <div class="muted">Vista de ejecución visual</div>
       <div class="kanban-filters">
-        <input id="kanbanFilterInput" class="kanban-filter-input" type="text" placeholder="Buscar tarea..." aria-label="Buscar tarea" />
-        <select id="kanbanFilterStatus" class="kanban-filter-select" aria-label="Filtrar por estado">
+        <label for="kanbanPanelSelect" class="muted">Panel</label>
+        <select id="kanbanPanelSelect" class="kanban-filter-select" aria-label="Panel Kanban">
+          {% for key, panel in kanban_panels.items() %}
+            <option value="{{ key }}" {% if key == active_kanban_panel %}selected{% endif %}>{{ panel.name }}</option>
+          {% endfor %}
+        </select>
+        <div class="dropdown kanban-panel-actions" id="kanbanPanelActions">
+          <button id="kanbanPanelActionsToggle" class="btn btn-soft" type="button" title="Configurar panel" aria-label="Configurar panel" aria-haspopup="true" aria-expanded="false">&#9881;</button>
+          <div class="dropdown-menu" id="kanbanPanelActionsMenu" style="display:none; left:0; right:auto;">
+            <button id="kanbanNewEmptyPanel" class="dropdown-item" type="button">Nuevo panel vacío</button>
+            <button id="kanbanSavePanel" class="dropdown-item" type="button">Guardar como panel</button>
+            <button id="kanbanRenamePanel" class="dropdown-item" type="button">Renombrar panel</button>
+            {% if kanban_panels|length > 1 %}
+              <div class="dropdown-sep"></div>
+              <button id="kanbanDeletePanel" class="dropdown-item danger" type="button">Eliminar panel</button>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      <form class="kanban-filters" method="get">
+        <input id="kanbanFilterInput" name="q" class="kanban-filter-input" type="text" placeholder="Buscar tarea..." aria-label="Buscar tarea" value="{{ kanban_filter.q }}" />
+        <select id="kanbanFilterStatus" name="status" class="kanban-filter-select" aria-label="Filtrar por card">
           <option value="all">Todos</option>
           <option value="inbox">Inbox</option>
-          <option value="next">Próximo</option>
-          <option value="doing">En proceso</option>
-          <option value="waiting">Esperando</option>
+          {% for column in kanban_columns %}
+            <option value="{{ column.key }}" {% if kanban_filter.status == column.key %}selected{% endif %}>{{ column.label }}</option>
+          {% endfor %}
         </select>
-        <button id="kanbanApplyFilter" class="btn btn-soft" type="button">Filtrar</button>
-      </div>
+        <select id="kanbanFilterProject" name="project_id" class="kanban-filter-select" aria-label="Filtrar por proyecto">
+          <option value="">Todos los proyectos</option>
+          {% for project in kanban_projects %}
+            <option value="{{ project.id }}" {% if kanban_filter.project_id == project.id %}selected{% endif %}>{{ project.name }}</option>
+          {% endfor %}
+        </select>
+        <select id="kanbanFilterFolder" name="folder_id" class="kanban-filter-select" aria-label="Filtrar por carpeta">
+          <option value="">Todas las carpetas</option>
+          {% for folder in kanban_folders %}
+            <option value="{{ folder.id }}" {% if kanban_filter.folder_id == folder.id %}selected{% endif %}>{{ folder.name }}</option>
+          {% endfor %}
+        </select>
+        <label class="muted"><input id="kanbanFilterFolderRecursive" name="folder_recursive" type="checkbox" value="1" {% if kanban_filter.folder_recursive %}checked{% endif %} /> Incluir subcarpetas</label>
+        <button id="kanbanApplyFilter" class="btn btn-soft" type="submit">Filtrar</button>
+        <button id="kanbanOpenAddColumn" class="btn btn-soft" type="button">+ Añadir card</button>
+      </form>
     </div>
   </div>
 
-  <div class="kanban-columns">
-    {% set labels = {'inbox': 'Inbox', 'next': 'Próximo', 'doing': 'En proceso', 'waiting': 'Esperando'} %}
-    {% for status in ['inbox', 'next', 'doing', 'waiting'] %}
-      <div class="kanban-column" data-status="{{ status }}" data-label="{{ labels[status] }}">
+  <div class="kanban-columns" data-per-row="3">
+    <div class="kanban-column" data-status="inbox" data-label="Inbox">
+      <div class="kanban-column-header">
+        <span class="kanban-column-heading">
+          <span class="kanban-column-title">Inbox</span>
+        </span>
+        <button class="btn btn-primary js-open-add-task" type="button">+ Nueva tarea</button>
+        <span class="kanban-counter">{{ kanban_counts.get('inbox', 0) }}</span>
+      </div>
+      <div class="kanban-cards">
+        {% set column_tasks = tasks_by_status.get('inbox', []) %}
+        {% if column_tasks %}
+          {% for task in column_tasks %}
+            {{ task_card(task, 'inbox') }}
+          {% endfor %}
+        {% else %}
+          <div class="kanban-empty">Sin tareas</div>
+        {% endif %}
+      </div>
+    </div>
+
+    {% for column in kanban_columns %}
+      <div class="kanban-column" data-status="{{ column.key }}" data-label="{{ column.label }}" data-accept-drop="{{ 'true' if column.drag_drop_supported else 'false' }}">
         <div class="kanban-column-header">
           <span class="kanban-column-heading">
-            {% if status != 'inbox' %}
-              <button class="kanban-column-settings" type="button" data-status="{{ status }}" data-label="{{ labels[status] }}" data-tag-name="{{ kanban_status_tags[status] }}" title="Configurar etiqueta de {{ labels[status] }}" aria-label="Configurar etiqueta de {{ labels[status] }}">&#9881;</button>
-            {% endif %}
-            <span class="kanban-column-title">{{ labels[status] }}</span>
+            <button class="kanban-column-settings" type="button" data-key="{{ column.key }}" data-label="{{ column.label }}" data-rule-type="{{ column.rule_type }}" data-tag-expression="{{ column.tag_expression or '' }}" data-priority="{{ column.priority or '' }}" title="Configurar {{ column.label }}" aria-label="Configurar {{ column.label }}">&#9881;</button>
+            <span class="kanban-column-title">{{ column.label }}</span>
           </span>
-          {% if status == 'inbox' %}
-            <button class="btn btn-primary js-open-add-task" type="button">+ Nueva tarea</button>
-          {% endif %}
-          <span class="kanban-counter">{{ kanban_counts.get(status, 0) }}</span>
+          <span class="kanban-counter">{{ kanban_counts.get(column.key, 0) }}</span>
         </div>
         <div class="kanban-cards">
-          {% set column_tasks = tasks_by_status.get(status, []) %}
+          {% set column_tasks = tasks_by_status.get(column.key, []) %}
           {% if column_tasks %}
             {% for task in column_tasks %}
-              {{ task_card(task, status) }}
+              {{ task_card(task, column.key) }}
             {% endfor %}
-          {% elif status != 'waiting' %}
-            <div class="kanban-empty">Sin tareas</div>
           {% endif %}
-          {% if status in ['next', 'doing', 'waiting'] %}
-            {% for group in kanban_folder_groups[status] if group.tasks %}
-              <details class="kanban-waiting-group">
-                <summary>
-                  <span>{{ group.label }}</span>
-                  <span class="kanban-waiting-group-count">{{ group.tasks|length }}</span>
-                </summary>
-                <div class="kanban-waiting-group-cards">
-                  {% for task in group.tasks %}
-                    {{ task_card(task, status) }}
-                  {% endfor %}
-                </div>
-              </details>
-            {% endfor %}
+          {% for group in kanban_folder_groups.get(column.key, []) if group.tasks %}
+            <details class="kanban-waiting-group">
+              <summary>
+                <span>{{ group.label }}</span>
+                <span class="kanban-waiting-group-count">{{ group.tasks|length }}</span>
+              </summary>
+              <div class="kanban-waiting-group-cards">
+                {% for task in group.tasks %}
+                  {{ task_card(task, column.key) }}
+                {% endfor %}
+              </div>
+            </details>
+          {% endfor %}
+          {% if not column_tasks and not (kanban_folder_groups.get(column.key, []) | selectattr('tasks') | list) %}
+            <div class="kanban-empty">Sin tareas</div>
           {% endif %}
         </div>
       </div>
     {% endfor %}
+
+    <button class="kanban-add-column" id="kanbanAddColumnGhost" type="button">+ Añadir card</button>
   </div>
 </div>
 
 <dialog id="kanbanTagDialog" class="kanban-tag-dialog">
   <form id="kanbanTagForm" method="dialog">
     <div>
-      <strong id="kanbanTagDialogTitle">Etiqueta de columna</strong>
-      <div class="muted" style="margin-top:6px;">Las tareas con esta etiqueta aparecerán en esta columna.</div>
+      <strong id="kanbanTagDialogTitle">Configurar card</strong>
+      <div class="muted" style="margin-top:6px;">Define una expresión de etiquetas o una prioridad para mostrar tareas.</div>
     </div>
-    <label for="kanbanTagName">Etiqueta</label>
-    <input id="kanbanTagName" name="tag_name" type="text" maxlength="80" required autocomplete="off" />
+    <div>
+      <label for="kanbanColumnLabel">Nombre de la card</label>
+      <input id="kanbanColumnLabel" name="label" type="text" maxlength="60" required autocomplete="off" />
+    </div>
+    <div>
+      <label for="kanbanRuleType">Criterio</label>
+      <select id="kanbanRuleType" name="rule_type">
+        <option value="tag_expression">Expresión de etiquetas</option>
+        <option value="priority">Prioridad</option>
+      </select>
+    </div>
+    <div id="kanbanTagExpressionField">
+      <label for="kanbanTagExpression">Expresión de etiquetas</label>
+      <input id="kanbanTagExpression" name="tag_expression" type="text" maxlength="240" autocomplete="off" placeholder="@casa ^ !@delegada" />
+      <div class="muted">Usa ^ (AND), | (OR) y ! (NOT).</div>
+    </div>
+    <div id="kanbanPriorityField" hidden>
+      <label for="kanbanPriority">Prioridad</label>
+      <select id="kanbanPriority" name="priority">
+        <option value="1">Alta</option>
+        <option value="2">Media</option>
+        <option value="3">Baja</option>
+      </select>
+    </div>
     <div class="kanban-tag-dialog-actions">
+      <button id="kanbanTagDelete" class="btn btn-danger-soft" type="button">Eliminar tarjeta</button>
       <button id="kanbanTagCancel" class="btn btn-soft" type="button">Cancelar</button>
+      <button class="btn btn-primary" type="submit">Guardar</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="kanbanAddColumnDialog" class="kanban-tag-dialog">
+  <form id="kanbanAddColumnForm" method="dialog">
+    <div>
+      <strong>Nueva card</strong>
+      <div class="muted" style="margin-top:6px;">Se añadirá al final del tablero.</div>
+    </div>
+    <div>
+      <label for="kanbanNewColumnLabel">Nombre de la card</label>
+      <input id="kanbanNewColumnLabel" name="label" type="text" maxlength="60" required autocomplete="off" />
+    </div>
+    <div>
+      <label for="kanbanNewRuleType">Criterio</label>
+      <select id="kanbanNewRuleType" name="rule_type">
+        <option value="tag_expression">Expresión de etiquetas</option>
+        <option value="priority">Prioridad</option>
+      </select>
+    </div>
+    <div id="kanbanNewTagExpressionField">
+      <label for="kanbanNewTagExpression">Expresión de etiquetas</label>
+      <input id="kanbanNewTagExpression" name="tag_expression" type="text" maxlength="240" autocomplete="off" placeholder="@pocotiempo ^ @pocaenergia" />
+      <div class="muted">Usa ^ (AND), | (OR) y ! (NOT).</div>
+    </div>
+    <div id="kanbanNewPriorityField" hidden>
+      <label for="kanbanNewPriority">Prioridad</label>
+      <select id="kanbanNewPriority" name="priority">
+        <option value="1">Alta</option>
+        <option value="2">Media</option>
+        <option value="3">Baja</option>
+      </select>
+    </div>
+    <div class="kanban-tag-dialog-actions">
+      <button id="kanbanAddColumnCancel" class="btn btn-soft" type="button">Cancelar</button>
+      <button class="btn btn-primary" type="submit">Crear</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="kanbanSavePanelDialog" class="kanban-tag-dialog">
+  <form id="kanbanSavePanelForm" method="dialog">
+    <div>
+      <strong id="kanbanSavePanelDialogTitle">Guardar como panel</strong>
+      <div id="kanbanSavePanelDialogDescription" class="muted" style="margin-top:6px;">Se copiarán las cards y etiquetas del panel actual.</div>
+    </div>
+    <div>
+      <label for="kanbanPanelName">Nombre del panel</label>
+      <input id="kanbanPanelName" name="name" type="text" maxlength="60" required autocomplete="off" />
+    </div>
+    <div class="kanban-tag-dialog-actions">
+      <button id="kanbanSavePanelCancel" class="btn btn-soft" type="button">Cancelar</button>
+      <button id="kanbanSavePanelSubmit" class="btn btn-primary" type="submit">Guardar</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="kanbanRenamePanelDialog" class="kanban-tag-dialog">
+  <form id="kanbanRenamePanelForm" method="dialog">
+    <div>
+      <strong>Renombrar panel</strong>
+    </div>
+    <div>
+      <label for="kanbanRenamePanelName">Nombre del panel</label>
+      <input id="kanbanRenamePanelName" name="name" type="text" maxlength="60" required autocomplete="off" />
+    </div>
+    <div class="kanban-tag-dialog-actions">
+      <button id="kanbanRenamePanelCancel" class="btn btn-soft" type="button">Cancelar</button>
       <button class="btn btn-primary" type="submit">Guardar</button>
     </div>
   </form>
@@ -399,29 +575,188 @@
   const filterStatus = document.getElementById('kanbanFilterStatus');
   const applyFilter = document.getElementById('kanbanApplyFilter');
   const kanbanStatusUrlTemplate = "{{ url_for('api_task_kanban_status', task_id=0) }}";
-  const kanbanTagUrlTemplate = "{{ url_for('api_kanban_status_tag', status='__status__') }}";
+  const kanbanColumnsCreateUrl = "{{ url_for('api_kanban_column_create') }}";
+  const kanbanColumnUrlTemplate = "{{ url_for('api_kanban_column_update', key='__key__') }}";
+  const kanbanPanelsCreateUrl = "{{ url_for('api_kanban_panel_create') }}";
+  const kanbanPanelRenameUrlTemplate = "{{ url_for('api_kanban_panel_rename', key='__key__') }}";
+  const kanbanPanelActivateUrlTemplate = "{{ url_for('api_kanban_panel_activate', key='__key__') }}";
+  const kanbanPanelDeleteUrlTemplate = "{{ url_for('api_kanban_panel_delete', key='__key__') }}";
+  const kanbanPanelSelect = document.getElementById('kanbanPanelSelect');
+  const kanbanPanelActions = document.getElementById('kanbanPanelActions');
+  const kanbanPanelActionsToggle = document.getElementById('kanbanPanelActionsToggle');
+  const kanbanPanelActionsMenu = document.getElementById('kanbanPanelActionsMenu');
+  const kanbanSavePanelDialog = document.getElementById('kanbanSavePanelDialog');
+  const kanbanSavePanelForm = document.getElementById('kanbanSavePanelForm');
+  const kanbanPanelName = document.getElementById('kanbanPanelName');
+  const kanbanSavePanelDialogTitle = document.getElementById('kanbanSavePanelDialogTitle');
+  const kanbanSavePanelDialogDescription = document.getElementById('kanbanSavePanelDialogDescription');
+  const kanbanSavePanelSubmit = document.getElementById('kanbanSavePanelSubmit');
+  const kanbanRenamePanelDialog = document.getElementById('kanbanRenamePanelDialog');
+  const kanbanRenamePanelForm = document.getElementById('kanbanRenamePanelForm');
+  const kanbanRenamePanelName = document.getElementById('kanbanRenamePanelName');
   const kanbanTagDialog = document.getElementById('kanbanTagDialog');
   const kanbanTagForm = document.getElementById('kanbanTagForm');
-  const kanbanTagName = document.getElementById('kanbanTagName');
+  const kanbanTagDelete = document.getElementById('kanbanTagDelete');
+  const kanbanColumnLabel = document.getElementById('kanbanColumnLabel');
+  const kanbanRuleType = document.getElementById('kanbanRuleType');
+  const kanbanTagExpression = document.getElementById('kanbanTagExpression');
+  const kanbanPriority = document.getElementById('kanbanPriority');
+  const kanbanTagExpressionField = document.getElementById('kanbanTagExpressionField');
+  const kanbanPriorityField = document.getElementById('kanbanPriorityField');
   const kanbanTagDialogTitle = document.getElementById('kanbanTagDialogTitle');
-  let configuredStatus = null;
-
-  function getStatusLabel(status) {
-    const map = {
-      inbox: 'Inbox',
-      next: 'Próximo',
-      doing: 'En proceso',
-      waiting: 'Esperando'
-    };
-    return map[status] || status;
-  }
+  const kanbanAddColumnDialog = document.getElementById('kanbanAddColumnDialog');
+  const kanbanAddColumnForm = document.getElementById('kanbanAddColumnForm');
+  const kanbanNewColumnLabel = document.getElementById('kanbanNewColumnLabel');
+  const kanbanNewRuleType = document.getElementById('kanbanNewRuleType');
+  const kanbanNewTagExpression = document.getElementById('kanbanNewTagExpression');
+  const kanbanNewPriority = document.getElementById('kanbanNewPriority');
+  const kanbanNewTagExpressionField = document.getElementById('kanbanNewTagExpressionField');
+  const kanbanNewPriorityField = document.getElementById('kanbanNewPriorityField');
+  let configuredKey = null;
 
   function getTaskStatusUrl(taskId) {
     return kanbanStatusUrlTemplate.replace('/0/', '/' + taskId + '/');
   }
 
-  function getKanbanTagUrl(status) {
-    return kanbanTagUrlTemplate.replace('__status__', status);
+  function getKanbanColumnUrl(key) {
+    return kanbanColumnUrlTemplate.replace('__key__', key);
+  }
+
+  function getKanbanPanelUrl(template, key) {
+    return template.replace('__key__', key);
+  }
+
+  function setRuleFields(ruleType, expressionField, priorityField) {
+    const isPriority = ruleType.value === 'priority';
+    expressionField.hidden = isPriority;
+    priorityField.hidden = !isPriority;
+  }
+
+  kanbanRuleType.addEventListener('change', () => setRuleFields(kanbanRuleType, kanbanTagExpressionField, kanbanPriorityField));
+  kanbanNewRuleType.addEventListener('change', () => setRuleFields(kanbanNewRuleType, kanbanNewTagExpressionField, kanbanNewPriorityField));
+
+  function closeKanbanPanelActions() {
+    kanbanPanelActionsMenu.style.display = 'none';
+    kanbanPanelActionsToggle.setAttribute('aria-expanded', 'false');
+  }
+
+  kanbanPanelActionsToggle.addEventListener('click', () => {
+    const open = kanbanPanelActionsMenu.style.display !== 'block';
+    kanbanPanelActionsMenu.style.display = open ? 'block' : 'none';
+    kanbanPanelActionsToggle.setAttribute('aria-expanded', String(open));
+  });
+
+  document.addEventListener('click', (event) => {
+    if (!kanbanPanelActions.contains(event.target)) closeKanbanPanelActions();
+  });
+
+  kanbanPanelSelect.addEventListener('change', async () => {
+    try {
+      const response = await fetch(getKanbanPanelUrl(kanbanPanelActivateUrlTemplate, kanbanPanelSelect.value), {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.ok) throw new Error(data.error || 'No se pudo cambiar de panel');
+      window.location.reload();
+    } catch (error) {
+      alert(error.message || 'No se pudo cambiar de panel');
+      window.location.reload();
+    }
+  });
+
+  document.getElementById('kanbanSavePanel').addEventListener('click', () => {
+    closeKanbanPanelActions();
+    kanbanPanelName.value = '';
+    kanbanSavePanelDialogTitle.textContent = 'Guardar como panel';
+    kanbanSavePanelDialogDescription.textContent = 'Se copiarán las cards y etiquetas del panel actual.';
+    kanbanSavePanelSubmit.textContent = 'Guardar';
+    kanbanSavePanelDialog.showModal();
+    kanbanPanelName.focus();
+  });
+
+  document.getElementById('kanbanNewEmptyPanel').addEventListener('click', () => {
+    closeKanbanPanelActions();
+    kanbanPanelName.value = '';
+    kanbanSavePanelDialogTitle.textContent = 'Nuevo panel vacío';
+    kanbanSavePanelDialogDescription.textContent = 'Podrás añadir cards al nuevo panel cuando se cree.';
+    kanbanSavePanelSubmit.textContent = 'Crear';
+    kanbanSavePanelDialog.showModal();
+    kanbanPanelName.focus();
+    kanbanSavePanelForm.dataset.empty = 'true';
+  });
+
+  document.getElementById('kanbanSavePanelCancel').addEventListener('click', () => {
+    kanbanSavePanelDialog.close();
+  });
+
+  kanbanSavePanelForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    try {
+      const response = await fetch(kanbanPanelsCreateUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ name: kanbanPanelName.value, empty: kanbanSavePanelForm.dataset.empty === 'true' }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.ok) throw new Error(data.error || 'No se pudo guardar el panel');
+      window.location.reload();
+    } catch (error) {
+      alert(error.message || 'No se pudo guardar el panel');
+    }
+  });
+
+  kanbanSavePanelDialog.addEventListener('close', () => {
+    delete kanbanSavePanelForm.dataset.empty;
+  });
+
+  document.getElementById('kanbanRenamePanel').addEventListener('click', () => {
+    closeKanbanPanelActions();
+    kanbanRenamePanelName.value = kanbanPanelSelect.options[kanbanPanelSelect.selectedIndex].text;
+    kanbanRenamePanelDialog.showModal();
+    kanbanRenamePanelName.focus();
+    kanbanRenamePanelName.select();
+  });
+
+  document.getElementById('kanbanRenamePanelCancel').addEventListener('click', () => {
+    kanbanRenamePanelDialog.close();
+  });
+
+  kanbanRenamePanelForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    try {
+      const response = await fetch(getKanbanPanelUrl(kanbanPanelRenameUrlTemplate, kanbanPanelSelect.value), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ name: kanbanRenamePanelName.value }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.ok) throw new Error(data.error || 'No se pudo renombrar el panel');
+      window.location.reload();
+    } catch (error) {
+      alert(error.message || 'No se pudo renombrar el panel');
+    }
+  });
+
+  const kanbanDeletePanel = document.getElementById('kanbanDeletePanel');
+  if (kanbanDeletePanel) {
+    kanbanDeletePanel.addEventListener('click', async () => {
+      closeKanbanPanelActions();
+      if (!confirm('¿Eliminar el panel actual? Las tareas y sus etiquetas no se modificarán.')) return;
+      try {
+        const response = await fetch(getKanbanPanelUrl(kanbanPanelDeleteUrlTemplate, kanbanPanelSelect.value), {
+          method: 'DELETE',
+          credentials: 'same-origin',
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok) throw new Error(data.error || 'No se pudo eliminar el panel');
+        window.location.reload();
+      } catch (error) {
+        alert(error.message || 'No se pudo eliminar el panel');
+      }
+    });
   }
 
   function applyKanbanFilter() {
@@ -453,18 +788,22 @@
     });
   }
 
-  applyFilter.addEventListener('click', applyKanbanFilter);
   filterInput.addEventListener('input', applyKanbanFilter);
   filterStatus.addEventListener('change', applyKanbanFilter);
+  applyKanbanFilter();
 
   document.querySelectorAll('.kanban-column-settings').forEach((button) => {
     button.addEventListener('click', () => {
-      configuredStatus = button.dataset.status;
-      kanbanTagDialogTitle.textContent = `Etiqueta de ${button.dataset.label}`;
-      kanbanTagName.value = `@${button.dataset.tagName}`;
+      configuredKey = button.dataset.key;
+      kanbanTagDialogTitle.textContent = `Configurar ${button.dataset.label}`;
+      kanbanColumnLabel.value = button.dataset.label;
+      kanbanRuleType.value = button.dataset.ruleType;
+      kanbanTagExpression.value = button.dataset.tagExpression;
+      kanbanPriority.value = button.dataset.priority || '1';
+      setRuleFields(kanbanRuleType, kanbanTagExpressionField, kanbanPriorityField);
       kanbanTagDialog.showModal();
-      kanbanTagName.focus();
-      kanbanTagName.select();
+      kanbanColumnLabel.focus();
+      kanbanColumnLabel.select();
     });
   });
 
@@ -474,22 +813,87 @@
 
   kanbanTagForm.addEventListener('submit', async (event) => {
     event.preventDefault();
-    if (!configuredStatus) return;
+    if (!configuredKey) return;
 
     try {
-      const response = await fetch(getKanbanTagUrl(configuredStatus), {
+      const response = await fetch(getKanbanColumnUrl(configuredKey), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ tag_name: kanbanTagName.value }),
+        body: JSON.stringify({
+          label: kanbanColumnLabel.value,
+          rule_type: kanbanRuleType.value,
+          tag_expression: kanbanTagExpression.value,
+          priority: kanbanPriority.value,
+        }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.ok) {
-        throw new Error(data.error || 'No se pudo guardar la etiqueta');
+        throw new Error(data.error || 'No se pudo guardar la card');
       }
       window.location.reload();
     } catch (error) {
-      alert(error.message || 'No se pudo guardar la etiqueta');
+      alert(error.message || 'No se pudo guardar la card');
+    }
+  });
+
+  kanbanTagDelete.addEventListener('click', async () => {
+    if (!configuredKey) return;
+    if (!confirm('¿Eliminar esta card del tablero? Las tareas no se borrarán, solo dejarán de mostrarse aquí.')) return;
+
+    try {
+      const response = await fetch(getKanbanColumnUrl(configuredKey), {
+        method: 'DELETE',
+        credentials: 'same-origin',
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || 'No se pudo eliminar la card');
+      }
+      window.location.reload();
+    } catch (error) {
+      alert(error.message || 'No se pudo eliminar la card');
+    }
+  });
+
+  function openAddColumnDialog() {
+    kanbanNewColumnLabel.value = '';
+    kanbanNewRuleType.value = 'tag_expression';
+    kanbanNewTagExpression.value = '';
+    kanbanNewPriority.value = '1';
+    setRuleFields(kanbanNewRuleType, kanbanNewTagExpressionField, kanbanNewPriorityField);
+    kanbanAddColumnDialog.showModal();
+    kanbanNewColumnLabel.focus();
+  }
+
+  document.getElementById('kanbanOpenAddColumn').addEventListener('click', openAddColumnDialog);
+  document.getElementById('kanbanAddColumnGhost').addEventListener('click', openAddColumnDialog);
+  document.getElementById('kanbanAddColumnCancel').addEventListener('click', () => {
+    kanbanAddColumnDialog.close();
+  });
+
+  kanbanAddColumnForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+
+    try {
+      const response = await fetch(kanbanColumnsCreateUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          label: kanbanNewColumnLabel.value,
+          rule_type: kanbanNewRuleType.value,
+          tag_expression: kanbanNewTagExpression.value,
+          priority: kanbanNewPriority.value,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || 'No se pudo crear la card');
+      }
+      window.location.reload();
+    } catch (error) {
+      alert(error.message || 'No se pudo crear la card');
     }
   });
 
@@ -542,13 +946,16 @@
 
   kanbanColumns.forEach((column) => {
     const cardsContainer = column.querySelector('.kanban-cards') || column;
+    const acceptsDrop = column.dataset.acceptDrop !== 'false';
 
     column.addEventListener('dragenter', (event) => {
+      if (!acceptsDrop) return;
       event.preventDefault();
       column.classList.add('drag-over');
     });
 
     column.addEventListener('dragover', (event) => {
+      if (!acceptsDrop) return;
       event.preventDefault();
       if (event.dataTransfer) {
         event.dataTransfer.dropEffect = 'move';
@@ -564,6 +971,7 @@
     });
 
     column.addEventListener('drop', async (event) => {
+      if (!acceptsDrop) return;
       event.preventDefault();
       event.stopPropagation();
       column.classList.remove('drag-over');

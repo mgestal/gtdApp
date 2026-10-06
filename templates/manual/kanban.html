@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="page-title">
+    <h1>Kanban</h1>
+  </div>
+  <p class="subtitle">Organiza visualmente las tareas activas mediante expresiones de etiquetas o prioridades.</p>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Cómo funciona el tablero</div>
+        <div class="card-sub">Cada card, excepto Inbox, usa una expresión de etiquetas o una prioridad.</div>
+      </div>
+    </div>
+    <div class="list">
+      <div class="list-row">
+        <div>
+          <div style="font-weight:600;">Inbox</div>
+          <div class="hint">Muestra las tareas activas que no pertenecen a ningún proyecto ni carpeta. Es una card fija: no se puede editar ni eliminar.</div>
+        </div>
+      </div>
+      <div class="list-row">
+        <div>
+          <div style="font-weight:600;">Cards de reglas</div>
+          <div class="hint">Una tarea aparece en la primera card cuya expresión de etiquetas o prioridad coincida. El orden de las cards define la prioridad cuando una tarea coincide con más de una regla.</div>
+          <div class="hint">Las tareas de las carpetas EnEspera, Seguimiento y Sometime se agrupan dentro de su card de estado para mantener el tablero ordenado.</div>
+        </div>
+      </div>
+      <div class="list-row">
+        <div>
+          <div style="font-weight:600;">Información de cada tarea</div>
+          <div class="hint">Las tarjetas muestran prioridad, proyecto, carpeta y fecha cuando están definidos. Los enlaces de proyecto y carpeta abren su detalle.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Expresiones de etiquetas</div>
+        <div class="card-sub">Combina etiquetas para definir con precisión qué tareas muestra una card.</div>
+      </div>
+    </div>
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Operador</th>
+          <th>Significado</th>
+          <th>Ejemplo</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>^</code></td>
+          <td>AND: la tarea debe tener ambas etiquetas.</td>
+          <td><code>@pocotiempo ^ @pocaenergia</code></td>
+        </tr>
+        <tr>
+          <td><code>|</code></td>
+          <td>OR: la tarea debe tener al menos una de las etiquetas.</td>
+          <td><code>@casa | @oficina</code></td>
+        </tr>
+        <tr>
+          <td><code>!</code></td>
+          <td>NOT: la tarea no debe tener la etiqueta indicada.</td>
+          <td><code>@llamadas ^ !@delegada</code></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="hint" style="margin-top:10px;">Las etiquetas deben empezar por <code>@</code>. No se admiten paréntesis. La precedencia es <code>!</code>, después <code>^</code> y finalmente <code>|</code>; por ejemplo, <code>@casa | @oficina ^ !@delegada</code> equivale a <code>@casa | (@oficina ^ !@delegada)</code>.</div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Mover y completar tareas</div>
+        <div class="card-sub">Actualiza el estado sin salir del tablero.</div>
+      </div>
+    </div>
+    <div class="list">
+      <div class="list-row">
+        <div class="hint">Arrastra una tarea a una card con una única etiqueta para asignársela, o a una card de prioridad para actualizarla. Las cards con expresiones compuestas solo se usan para mostrar tareas, porque no hay una modificación única que pueda deducirse de una expresión. Al moverla a Inbox, se elimina la etiqueta de estado Kanban de una card de etiqueta simple.</div>
+      </div>
+      <div class="list-row">
+        <div class="hint">Usa el círculo situado junto al título de la tarea para marcarla como realizada o desmarcarla. Las tareas completadas dejan de mostrarse en el tablero.</div>
+      </div>
+      <div class="list-row">
+        <div class="hint">Para crear una tarea directamente en Inbox, pulsa <strong>+ Nueva tarea</strong> en el encabezado de esa card.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Crear y configurar cards</div>
+        <div class="card-sub">Adapta los estados a tu flujo de trabajo.</div>
+      </div>
+    </div>
+    <div class="list">
+      <div class="list-row">
+        <div class="hint">Pulsa <strong>+ Añadir card</strong>, en la barra superior o al final del tablero, indica un nombre y selecciona el criterio. Para una expresión de etiquetas, escribe una o varias etiquetas con los operadores disponibles. Para prioridad, selecciona Alta, Media o Baja. La nueva card se añade al final.</div>
+      </div>
+      <div class="list-row">
+        <div class="hint">El icono de configuración de una card permite cambiar su nombre y su regla, y eliminarla.</div>
+      </div>
+      <div class="list-row">
+        <div class="hint">Al eliminar una card no se eliminan sus tareas, sus etiquetas ni sus prioridades; simplemente dejan de aparecer en ese tablero hasta que coincidan con otra card.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Paneles y filtros</div>
+        <div class="card-sub">Guarda distintas vistas para cada contexto de trabajo.</div>
+      </div>
+    </div>
+    <div class="list">
+      <div class="list-row">
+        <div class="hint">Selecciona un panel en el desplegable. Desde el icono de configuración puedes crear un panel vacío, guardar una copia del actual, renombrarlo o eliminarlo. Debe permanecer al menos un panel.</div>
+      </div>
+      <div class="list-row">
+        <div class="hint">Usa los filtros de texto, card, proyecto y carpeta para centrarte en las tareas relevantes. Al filtrar por carpeta puedes incluir también sus subcarpetas.</div>
+      </div>
+      <div class="list-row">
+        <div class="hint">Ejemplo: crea un panel “Trabajo” con las cards <code>@Pendiente</code>, <code>@EnCurso</code>, <code>@EnEspera</code> y una card de prioridad Alta; después filtra por el proyecto de una entrega para revisar su avance.</div>
+      </div>
+    </div>
+  </div>
+{% endblock %}

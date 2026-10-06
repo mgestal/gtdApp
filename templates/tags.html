@@ -19,6 +19,9 @@
     {% if qtxt or type_filter %}
       <a class="btn btn-soft" href="{{ url_for('tags') }}">Quitar filtro</a>
     {% endif %}
+    {% if type_filter %}
+      <a class="btn btn-soft" href="{{ url_for('tag_type_tasks', type=type_filter) }}">Mostrar Tareas Tipo</a>
+    {% endif %}
   </div>
 </form>
 

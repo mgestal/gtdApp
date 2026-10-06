@@ -89,11 +89,11 @@ DEFAULT_CONFIG = {
         },
     },
     "kanban": {
-        "status_tags": {
-            "next": "NextAction",
-            "doing": "enCurso",
-            "waiting": "EnEspera",
-        },
+        "columns": [
+            {"key": "next", "label": "Próximo", "tag_name": "NextAction"},
+            {"key": "doing", "label": "En proceso", "tag_name": "enCurso"},
+            {"key": "waiting", "label": "Esperando", "tag_name": "EnEspera"},
+        ],
     },
 }
 
@@ -3359,31 +3359,196 @@ def today():
     )
 
 
-def _kanban_status_tag_map():
-    defaults = {
-        "next": "NextAction",
-        "doing": "enCurso",
-        "waiting": "EnEspera",
-    }
+DEFAULT_KANBAN_COLUMNS = [
+    {"key": "next", "label": "Próximo", "rule_type": "tag_expression", "tag_expression": "@NextAction"},
+    {"key": "doing", "label": "En proceso", "rule_type": "tag_expression", "tag_expression": "@enCurso"},
+    {"key": "waiting", "label": "Esperando", "rule_type": "tag_expression", "tag_expression": "@EnEspera"},
+]
+
+KANBAN_TAG_EXPRESSION_TOKEN_RE = re.compile(r"@[A-Za-z0-9_\-áéíóúÁÉÍÓÚñÑ]+|[!^|]")
+
+
+def _parse_kanban_tag_expression(expression: str):
+    raw_expression = normalize_name(expression)
+    tokens = KANBAN_TAG_EXPRESSION_TOKEN_RE.findall(raw_expression)
+    if not tokens or "".join(tokens) != re.sub(r"\s+", "", raw_expression):
+        raise ValueError("La expresión solo puede contener etiquetas (@etiqueta), ^, | y !")
+
+    normalized_tokens = [
+        f"@{token[1:]}" if token.startswith("@") else token
+        for token in tokens
+    ]
+    index = 0
+
+    def parse_term():
+        nonlocal index
+        if index >= len(normalized_tokens):
+            raise ValueError("Falta una etiqueta en la expresión")
+        token = normalized_tokens[index]
+        index += 1
+        if token == "!":
+            return ("not", parse_term())
+        if token.startswith("@"):
+            return ("tag", token[1:])
+        raise ValueError("Se esperaba una etiqueta o ! en la expresión")
+
+    def parse_and():
+        nonlocal index
+        result = parse_term()
+        while index < len(normalized_tokens) and normalized_tokens[index] == "^":
+            index += 1
+            result = ("and", result, parse_term())
+        return result
+
+    def parse_or():
+        nonlocal index
+        result = parse_and()
+        while index < len(normalized_tokens) and normalized_tokens[index] == "|":
+            index += 1
+            result = ("or", result, parse_and())
+        return result
+
+    parsed = parse_or()
+    if index != len(normalized_tokens):
+        raise ValueError("Los operadores de la expresión no están bien colocados")
+    return parsed, " ".join(normalized_tokens)
+
+
+def _kanban_expression_matches(expression, tag_names) -> bool:
+    operator = expression[0]
+    if operator == "tag":
+        return normalize_tag_key(expression[1]) in tag_names
+    if operator == "not":
+        return not _kanban_expression_matches(expression[1], tag_names)
+    if operator == "and":
+        return _kanban_expression_matches(expression[1], tag_names) and _kanban_expression_matches(expression[2], tag_names)
+    return _kanban_expression_matches(expression[1], tag_names) or _kanban_expression_matches(expression[2], tag_names)
+
+
+def _kanban_expression_single_tag(expression):
+    return expression[1] if expression[0] == "tag" else None
+
+
+def _kanban_panels():
     cfg = getattr(g, "cfg", None) or load_config()
-    configured_tags = (cfg.get("kanban") or {}).get("status_tags") or {}
-    return {
-        status: normalize_name(configured_tags.get(status, default)).lstrip("@") or default
-        for status, default in defaults.items()
-    }
+    kanban_cfg = cfg.get("kanban") or {}
+    panels = kanban_cfg.get("panels")
+    if panels:
+        return panels, kanban_cfg.get("active_panel") or next(iter(panels))
+
+    columns = kanban_cfg.get("columns")
+    if not columns:
+        legacy_tags = kanban_cfg.get("status_tags") or {}
+        columns = [
+            {
+                "key": col["key"],
+                "label": col["label"],
+                "rule_type": "tag_expression",
+                "tag_expression": f"@{normalize_name(legacy_tags.get(col['key'], col['tag_expression'])).lstrip('@') or col['tag_expression'].lstrip('@')}",
+            }
+            for col in DEFAULT_KANBAN_COLUMNS
+        ]
+    return {"principal": {"name": "Principal", "columns": columns}}, "principal"
 
 
-def _task_has_tag(task_id: int, tag_name: str) -> bool:
-    row = q1(
-        "SELECT 1 AS ok FROM task_tags tt JOIN tags tg ON tg.id=tt.tag_id WHERE tt.task_id=%s AND LOWER(tg.name)=LOWER(%s) LIMIT 1",
-        (task_id, tag_name),
-    )
-    return bool(row)
+def _kanban_columns():
+    panels, active_panel = _kanban_panels()
+    panel = panels.get(active_panel) or next(iter(panels.values()))
+    columns = panel.get("columns") or []
+
+    result = []
+    for col in columns:
+        key = str(col.get("key") or "").strip()
+        if not key:
+            continue
+        rule_type = col.get("rule_type") or "tag_expression"
+        if rule_type == "priority":
+            priority = coerce_priority(col.get("priority"), default=None)
+            if priority is None:
+                continue
+            result.append({
+                "key": key,
+                "label": normalize_name(col.get("label")) or key,
+                "rule_type": "priority",
+                "priority": priority,
+                "drag_drop_supported": True,
+            })
+            continue
+
+        legacy_tag_name = normalize_name(col.get("tag_name")).lstrip("@")
+        expression = normalize_name(col.get("tag_expression")) or (f"@{legacy_tag_name}" if legacy_tag_name else "")
+        try:
+            parsed_expression, normalized_expression = _parse_kanban_tag_expression(expression)
+        except ValueError:
+            continue
+        result.append({
+            "key": key,
+            "label": normalize_name(col.get("label")) or key,
+            "rule_type": "tag_expression",
+            "tag_expression": normalized_expression,
+            "parsed_expression": parsed_expression,
+            "drag_drop_supported": bool(_kanban_expression_single_tag(parsed_expression)),
+        })
+    return result
+
+
+def _kanban_column_by_key(key: str):
+    return next((c for c in _kanban_columns() if c["key"] == key), None)
+
+
+def _kanban_unique_key(label: str, existing_keys) -> str:
+    base = re.sub(r"[^a-z0-9]+", "-", normalize_tag_key(label)).strip("-") or "columna"
+    key = base
+    i = 2
+    while key in existing_keys:
+        key = f"{base}-{i}"
+        i += 1
+    return key
+
+
+def _save_kanban_panels(panels, active_panel: str) -> None:
+    cfg = load_config()
+    kanban_cfg = cfg.setdefault("kanban", {})
+    kanban_cfg["panels"] = panels
+    kanban_cfg["active_panel"] = active_panel
+    kanban_cfg.pop("columns", None)
+    kanban_cfg.pop("status_tags", None)
+    save_config(cfg)
+    g.cfg = cfg
+
+
+def _save_kanban_columns(columns) -> None:
+    panels, active_panel = _kanban_panels()
+    saved_columns = []
+    for column in columns:
+        saved_column = {
+            "key": column["key"],
+            "label": column["label"],
+            "rule_type": column["rule_type"],
+        }
+        if column["rule_type"] == "priority":
+            saved_column["priority"] = column["priority"]
+        else:
+            saved_column["tag_expression"] = column["tag_expression"]
+        saved_columns.append(saved_column)
+    panels[active_panel]["columns"] = saved_columns
+    _save_kanban_panels(panels, active_panel)
+
+
+def _task_matches_kanban_column(task, column, task_tags) -> bool:
+    if column["rule_type"] == "priority":
+        return coerce_priority(task.get("priority"), default=None) == column["priority"]
+    tag_names = {normalize_tag_key(tag["name"]) for tag in task_tags}
+    return _kanban_expression_matches(column["parsed_expression"], tag_names)
 
 
 def _sync_task_kanban_status(task_id: int, new_status: str) -> None:
-    status_map = _kanban_status_tag_map()
-    state_tags = list(set(status_map.values()))
+    columns = _kanban_columns()
+    state_tags = list({
+        _kanban_expression_single_tag(col["parsed_expression"])
+        for col in columns
+        if col["rule_type"] == "tag_expression" and _kanban_expression_single_tag(col["parsed_expression"])
+    })
 
     for tag_name in state_tags:
         exec_sql(
@@ -3402,9 +3567,17 @@ def _sync_task_kanban_status(task_id: int, new_status: str) -> None:
         exec_sql("UPDATE tasks SET completed_at = NOW() WHERE id=%s", (task_id,))
         return
 
-    tag_name = status_map.get(new_status)
-    if not tag_name:
+    column = _kanban_column_by_key(new_status)
+    if not column:
         return
+
+    if column["rule_type"] == "priority":
+        exec_sql("UPDATE tasks SET priority=%s WHERE id=%s", (column["priority"], task_id))
+        return
+
+    tag_name = _kanban_expression_single_tag(column["parsed_expression"])
+    if not tag_name:
+        raise ValueError("No se puede arrastrar una tarea a una card con una expresión compuesta")
 
     tag_id = get_or_create_tag(tag_name)
     exec_sql(
@@ -3419,6 +3592,12 @@ def _sync_task_kanban_status(task_id: int, new_status: str) -> None:
 @app.route("/kanban")
 def kanban():
     recurring_due_join, effective_due_expr = recurring_effective_due_sql("t")
+    filter_project_id = request.args.get("project_id", type=int)
+    filter_folder_id = request.args.get("folder_id", type=int)
+    filter_folder_recursive = (request.args.get("folder_recursive") or "").strip() in ("1", "true", "yes")
+    filter_folder_ids = set()
+    if filter_folder_id:
+        filter_folder_ids = get_folder_tree_ids(filter_folder_id) if filter_folder_recursive else {filter_folder_id}
 
     active_rows = q(
         f"SELECT t.id, t.title, t.location, t.notes, {effective_due_expr} AS due_date, t.due_time, t.completed_at, t.priority, "
@@ -3452,20 +3631,34 @@ def kanban():
         "ORDER BY t.completed_at DESC, t.id DESC",
     ) or []
 
-    tasks_by_status = {"inbox": [], "next": [], "doing": [], "waiting": []}
-    status_tags = _kanban_status_tag_map()
+    if filter_project_id:
+        active_rows = [task for task in active_rows if task.get("project_id") == filter_project_id]
+    if filter_folder_ids:
+        active_rows = [task for task in active_rows if task.get("context_folder_id") in filter_folder_ids]
+
+    kanban_projects = q(
+        "SELECT id, name FROM projects WHERE archived=0 AND deleted_at IS NULL ORDER BY name"
+    ) or []
+    kanban_folders = q("SELECT id, parent_id, name FROM folders ORDER BY name") or []
+
+    kanban_columns = _kanban_columns()
+    tasks_by_status = {"inbox": []}
+    for col in kanban_columns:
+        tasks_by_status[col["key"]] = []
+
     folder_group_definitions = [
         {"key": "en-espera", "label": "EnEspera", "folder_ids": set()},
         {"key": "seguimiento", "label": "Seguimiento", "folder_ids": set()},
         {"key": "sometime", "label": "Sometime", "folder_ids": set()},
     ]
     kanban_folder_groups = {
-        status: [
+        col["key"]: [
             {"key": group["key"], "label": group["label"], "tasks": [], "folder_ids": set()}
             for group in folder_group_definitions
         ]
-        for status in ("next", "doing", "waiting")
+        for col in kanban_columns
     }
+    task_tags_map = load_tags_map([task["id"] for task in active_rows])
 
     for group in folder_group_definitions:
         folder_name = group["label"].lstrip("@")
@@ -3488,10 +3681,11 @@ def kanban():
             ),
             None,
         )
-        matching_status = next(
-            (status for status, tag_name in status_tags.items() if _task_has_tag(task["id"], tag_name)),
+        matching_column = next(
+            (col for col in kanban_columns if _task_matches_kanban_column(task, col, task_tags_map.get(task["id"], []))),
             None,
         )
+        matching_status = matching_column["key"] if matching_column else None
 
         if folder_group_definition and matching_status in kanban_folder_groups:
             matching_group = next(
@@ -3518,10 +3712,20 @@ def kanban():
     return render_template(
         "kanban.html",
         tasks_by_status=tasks_by_status,
-        kanban_status_tags=status_tags,
+        kanban_columns=kanban_columns,
         kanban_folder_groups=kanban_folder_groups,
         kanban_counts=kanban_counts,
-        kanban_columns=["inbox", "next", "doing", "waiting"],
+        kanban_panels=_kanban_panels()[0],
+        active_kanban_panel=_kanban_panels()[1],
+        kanban_projects=kanban_projects,
+        kanban_folders=kanban_folders,
+        kanban_filter={
+            "q": request.args.get("q", ""),
+            "status": request.args.get("status", "all"),
+            "project_id": filter_project_id,
+            "folder_id": filter_folder_id,
+            "folder_recursive": filter_folder_recursive,
+        },
     )
 
 
@@ -3529,7 +3733,7 @@ def kanban():
 def api_task_kanban_status(task_id: int):
     payload = request.get_json(silent=True) or {}
     new_status = (payload.get("status") or "").strip().lower()
-    valid_statuses = {"inbox", "next", "doing", "waiting", "done"}
+    valid_statuses = {"inbox", "done"} | {col["key"] for col in _kanban_columns()}
 
     if new_status not in valid_statuses:
         return jsonify({"ok": False, "error": "Estado Kanban inválido"}), 400
@@ -3547,23 +3751,155 @@ def api_task_kanban_status(task_id: int):
         return jsonify({"ok": False, "error": str(exc)}), 500
 
 
-@app.route("/api/kanban/status-tags/<status>", methods=["POST"])
-def api_kanban_status_tag(status: str):
-    if status not in _kanban_status_tag_map():
-        return jsonify({"ok": False, "error": "Estado Kanban inválido"}), 400
+def _validate_kanban_column_payload(payload):
+    label = normalize_name(payload.get("label"))
+    if not label:
+        return None, None, None, None, "Indica un nombre para la card"
+
+    rule_type = normalize_name(payload.get("rule_type"))
+    if rule_type == "priority":
+        priority = coerce_priority(payload.get("priority"), default=None)
+        if priority is None:
+            return None, None, None, None, "Indica una prioridad válida"
+        return label, rule_type, None, priority, None
+
+    if rule_type != "tag_expression":
+        return None, None, None, None, "Indica un criterio válido para la card"
+
+    try:
+        _, tag_expression = _parse_kanban_tag_expression(payload.get("tag_expression"))
+    except ValueError as exc:
+        return None, None, None, None, str(exc)
+    return label, rule_type, tag_expression, None, None
+
+
+def _validate_kanban_panel_name(payload):
+    name = normalize_name(payload.get("name"))
+    if not name:
+        return None, "Indica un nombre para el panel"
+    if len(name) > 60:
+        return None, "El nombre del panel no puede superar 60 caracteres"
+    return name, None
+
+
+@app.route("/api/kanban/panels", methods=["POST"])
+def api_kanban_panel_create():
+    payload = request.get_json(silent=True) or {}
+    name, error = _validate_kanban_panel_name(payload)
+    if error:
+        return jsonify({"ok": False, "error": error}), 400
+
+    panels, active_panel = _kanban_panels()
+    panel_key = _kanban_unique_key(name, set(panels))
+    columns = [] if payload.get("empty") else _kanban_columns()
+    panels[panel_key] = {"name": name, "columns": columns}
+    _save_kanban_panels(panels, panel_key)
+    return jsonify({"ok": True, "key": panel_key, "name": name})
+
+
+@app.route("/api/kanban/panels/<key>", methods=["POST"])
+def api_kanban_panel_rename(key: str):
+    payload = request.get_json(silent=True) or {}
+    name, error = _validate_kanban_panel_name(payload)
+    if error:
+        return jsonify({"ok": False, "error": error}), 400
+
+    panels, active_panel = _kanban_panels()
+    panel = panels.get(key)
+    if not panel:
+        return jsonify({"ok": False, "error": "Panel no encontrado"}), 404
+
+    panel["name"] = name
+    _save_kanban_panels(panels, active_panel)
+    return jsonify({"ok": True, "key": key, "name": name})
+
+
+@app.route("/api/kanban/panels/<key>/activate", methods=["POST"])
+def api_kanban_panel_activate(key: str):
+    panels, active_panel = _kanban_panels()
+    if key not in panels:
+        return jsonify({"ok": False, "error": "Panel no encontrado"}), 404
+
+    _save_kanban_panels(panels, key)
+    return jsonify({"ok": True, "key": key})
+
+
+@app.route("/api/kanban/panels/<key>", methods=["DELETE"])
+def api_kanban_panel_delete(key: str):
+    panels, active_panel = _kanban_panels()
+    if key not in panels:
+        return jsonify({"ok": False, "error": "Panel no encontrado"}), 404
+    if len(panels) == 1:
+        return jsonify({"ok": False, "error": "Debe existir al menos un panel"}), 400
+
+    del panels[key]
+    next_active_panel = next(iter(panels)) if active_panel == key else active_panel
+    _save_kanban_panels(panels, next_active_panel)
+    return jsonify({"ok": True, "key": next_active_panel})
+
+
+@app.route("/api/kanban/columns", methods=["POST"])
+def api_kanban_column_create():
+    payload = request.get_json(silent=True) or {}
+    label, rule_type, tag_expression, priority, error = _validate_kanban_column_payload(payload)
+    if error:
+        return jsonify({"ok": False, "error": error}), 400
+
+    columns = _kanban_columns()
+    existing_keys = {c["key"] for c in columns} | {"inbox", "done"}
+    new_key = _kanban_unique_key(label, existing_keys)
+    column = {"key": new_key, "label": label, "rule_type": rule_type}
+    if rule_type == "priority":
+        column["priority"] = priority
+    else:
+        column["tag_expression"] = tag_expression
+    columns.append(column)
+    _save_kanban_columns(columns)
+    return jsonify({"ok": True, "column": column})
+
+
+@app.route("/api/kanban/columns/<key>", methods=["POST"])
+def api_kanban_column_update(key: str):
+    if key in ("inbox", "done"):
+        return jsonify({"ok": False, "error": "Esa columna no se puede editar"}), 400
+
+    columns = _kanban_columns()
+    if not any(c["key"] == key for c in columns):
+        return jsonify({"ok": False, "error": "Columna no encontrada"}), 404
 
     payload = request.get_json(silent=True) or {}
-    tag_name = normalize_name(payload.get("tag_name")).lstrip("@")
-    if not tag_name or not re.fullmatch(r"[A-Za-z0-9_\-áéíóúÁÉÍÓÚñÑ]+", tag_name):
-        return jsonify({"ok": False, "error": "Indica una etiqueta válida"}), 400
+    label, rule_type, tag_expression, priority, error = _validate_kanban_column_payload(payload)
+    if error:
+        return jsonify({"ok": False, "error": error}), 400
 
-    cfg = load_config()
-    kanban_cfg = cfg.setdefault("kanban", {})
-    status_tags = kanban_cfg.setdefault("status_tags", {})
-    status_tags[status] = tag_name
-    save_config(cfg)
-    g.cfg = cfg
-    return jsonify({"ok": True, "status": status, "tag_name": tag_name})
+    for c in columns:
+        if c["key"] == key:
+            c["label"] = label
+            c["rule_type"] = rule_type
+            c.pop("tag_name", None)
+            c.pop("tag_expression", None)
+            c.pop("priority", None)
+            if rule_type == "priority":
+                c["priority"] = priority
+            else:
+                c["tag_expression"] = tag_expression
+            break
+    _save_kanban_columns(columns)
+    return jsonify({"ok": True, "column": _kanban_column_by_key(key)})
+
+
+@app.route("/api/kanban/columns/<key>", methods=["DELETE"])
+def api_kanban_column_delete(key: str):
+    if key in ("inbox", "done"):
+        return jsonify({"ok": False, "error": "Esa columna no se puede eliminar"}), 400
+
+    columns = _kanban_columns()
+    remaining = [c for c in columns if c["key"] != key]
+    if len(remaining) == len(columns):
+        return jsonify({"ok": False, "error": "Columna no encontrada"}), 404
+
+    _save_kanban_columns(remaining)
+    return jsonify({"ok": True})
 
 
 @app.route("/week")

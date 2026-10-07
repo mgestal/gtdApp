@@ -111,6 +111,101 @@
       cursor: grab;
     }
 
+    .project-kanban {
+      margin-top: 14px;
+    }
+
+    .project-kanban-columns {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 10px;
+    }
+
+    .project-kanban-column {
+      background: #f4e7ea;
+      border: 1px solid #e5c9d0;
+      border-radius: 8px;
+      min-height: 130px;
+      padding: 8px;
+    }
+
+    .project-kanban-column.drag-over {
+      border-color: #d17080;
+      box-shadow: 0 0 0 2px rgba(209, 112, 128, 0.15);
+    }
+
+    .project-kanban-column-title {
+      font-weight: 800;
+      margin: 2px 2px 8px;
+    }
+
+    .project-kanban-column-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+
+    .project-kanban-column-header .project-kanban-column-title {
+      flex: 1;
+      margin: 2px;
+    }
+
+    .project-kanban-cards {
+      display: grid;
+      gap: 8px;
+    }
+
+    .project-kanban-task {
+      background: rgba(255, 255, 255, 0.78);
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      border-radius: 6px;
+      padding: 8px;
+      cursor: grab;
+    }
+
+    .project-kanban-task-title {
+      color: var(--text);
+      font-weight: 700;
+      text-decoration: none;
+    }
+
+    .project-kanban-task.row-done .project-kanban-task-title {
+      color: #b8b0b4;
+      font-style: italic;
+    }
+
+    .project-kanban-task.row-done .project-kanban-card-meta {
+      color: #b8b0b4;
+    }
+
+    .project-kanban-card-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 6px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 11px;
+      margin-top: 6px;
+    }
+
+    .project-kanban-pill {
+      display: inline-block;
+      border: 1px solid rgba(216, 137, 145, 0.18);
+      border-radius: 999px;
+      background: rgba(216, 137, 145, 0.08);
+      color: var(--text);
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 6px;
+    }
+
+    .project-kanban-empty {
+      color: var(--muted);
+      font-size: 12px;
+      padding: 8px 2px;
+    }
+
     @media (max-width: 768px) {
       .project-detail-page .card {
         overflow: hidden;
@@ -218,6 +313,10 @@
           <button type="button" class="dropdown-item" onclick="startProjectImport()">Importar…</button>
         </form>
         <div class="dropdown-sep"></div>
+        <form method="post" action="{{ url_for('project_board_toggle', project_id=project.id) }}">
+          <button class="dropdown-item" type="submit">{{ 'Ocultar tablero' if project.board_visible else 'Mostrar tablero' }}</button>
+        </form>
+        <div class="dropdown-sep"></div>
         {% if not project.archived %}
           <button type="button" class="dropdown-item danger" onclick="openPurgeModal()">Vaciar tareas…</button>
         {% endif %}
@@ -238,6 +337,50 @@
       </form>
     </div>
   </div>
+
+  {% if project.board_visible %}
+    <div class="card project-kanban">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Tablero Kanban</div>
+          <div class="card-sub">Arrastra las tareas entre columnas para cambiar su estado.</div>
+        </div>
+        <button id="projectBoardAddColumn" class="btn btn-soft" type="button" title="Añadir columna" aria-label="Añadir columna">+</button>
+      </div>
+      {% if project_kanban_columns %}
+        <div class="project-kanban-columns" id="projectKanbanBoard">
+          {% for column in project_kanban_columns %}
+            <div class="project-kanban-column" data-column-key="{{ column.key }}" draggable="true">
+              <div class="project-kanban-column-header">
+                <div class="project-kanban-column-title">{{ column.label }}</div>
+                {% if column.key != 'done' %}
+                  <button class="btn btn-soft js-project-board-add-task" type="button" data-status="{{ column.key }}" title="Añadir tarea a {{ column.label }}" aria-label="Añadir tarea a {{ column.label }}">+</button>
+                {% endif %}
+                <button class="btn btn-soft js-project-board-column-rename" type="button" data-key="{{ column.key }}" data-label="{{ column.label }}" title="Renombrar {{ column.label }}" aria-label="Renombrar {{ column.label }}">✎</button>
+                <button class="btn btn-soft js-project-board-column-delete" type="button" data-key="{{ column.key }}" title="Eliminar {{ column.label }}" aria-label="Eliminar {{ column.label }}">×</button>
+              </div>
+              <div class="project-kanban-cards">
+                {% for task in project_tasks_by_status[column.key] %}
+                  <div class="project-kanban-task {% if task.completed_at %}row-done{% endif %}" data-task-id="{{ task.id }}" draggable="true">
+                    <a class="project-kanban-task-title" href="{{ url_for('task_edit', task_id=task.id, next=url_for('project_detail', project_id=project.id)) }}">{{ task.title }}</a>
+                    <div class="project-kanban-card-meta">
+                      {% if task.priority in [1, 2, 3] %}<span class="project-kanban-pill">{{ {1: 'Alta', 2: 'Media', 3: 'Baja'}[task.priority] }}</span>{% endif %}
+                      {% for tag in tags_map.get(task.id, []) %}<span class="project-kanban-pill">@{{ tag.name }}</span>{% endfor %}
+                      {% if task.due_date %}<span>{{ task.due_date }}</span>{% endif %}
+                    </div>
+                  </div>
+                {% else %}
+                  <div class="project-kanban-empty">Sin tareas</div>
+                {% endfor %}
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty">Configura cards en Kanban para mostrar el tablero del proyecto.</div>
+      {% endif %}
+    </div>
+  {% endif %}
 
 
   <div class="card">
@@ -391,12 +534,14 @@
 
 {% if not project.archived %}
   <div class="card" style="margin-top:14px;">
-    <form method="post" action="{{ url_for('task_create') }}" class="form">
+    <form id="projectQuickAddForm" method="post" action="{{ url_for('task_create') }}" class="form">
       <input type="hidden" name="project_id" value="{{ project.id }}">
+      <input id="projectBoardStatus" type="hidden" name="project_board_status" value="">
 <div class="project-quick-add" style="display:flex; gap:10px; align-items:flex-start;">
   <div class="quick-input-wrap" style="flex:1;">
     <input
       class="input"
+      id="projectQuickAddInput"
       name="quick"
       placeholder="Nueva tarea @etiqueta *18-03 cada semana..."
       autocomplete="off"
@@ -518,6 +663,103 @@
       else { el.style.display='none'; icon.textContent='▸'; }
     }
     function startProjectImport(){ document.getElementById('importFile').click(); }
+
+    (function setupProjectBoard(){
+      const board = document.getElementById('projectKanbanBoard');
+      if (!board) return;
+
+      const quickInput = document.getElementById('projectQuickAddInput');
+      const statusInput = document.getElementById('projectBoardStatus');
+      const createColumnUrl = "{{ url_for('api_project_board_column_create', project_id=project.id) }}";
+      const columnUrl = "{{ url_for('api_project_board_column_update', project_id=project.id, key='__key__') }}";
+      const reorderUrl = "{{ url_for('api_project_board_columns_reorder', project_id=project.id) }}";
+      const taskUrl = "{{ url_for('api_project_board_task_status', project_id=project.id, task_id=0) }}";
+      let draggedTask = null;
+      let draggedColumn = null;
+
+      const requestJson = async (url, options) => {
+        const response = await fetch(url, options);
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok) throw new Error(data.error || 'No se pudo actualizar el tablero.');
+        return data;
+      };
+
+      document.querySelectorAll('.js-project-board-add-task').forEach((button) => {
+        button.addEventListener('click', () => {
+          statusInput.value = button.dataset.status;
+          quickInput.focus();
+        });
+      });
+
+      document.getElementById('projectBoardAddColumn').addEventListener('click', async () => {
+        const label = window.prompt('Nombre de la columna');
+        if (!label) return;
+        try {
+          await requestJson(createColumnUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ label }) });
+          window.location.reload();
+        } catch (error) { alert(error.message); }
+      });
+
+      document.querySelectorAll('.js-project-board-column-rename').forEach((button) => {
+        button.addEventListener('click', async () => {
+          const label = window.prompt('Nombre de la columna', button.dataset.label);
+          if (!label || label === button.dataset.label) return;
+          try {
+            await requestJson(columnUrl.replace('__key__', button.dataset.key), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ label }) });
+            window.location.reload();
+          } catch (error) { alert(error.message); }
+        });
+      });
+
+      document.querySelectorAll('.js-project-board-column-delete').forEach((button) => {
+        button.addEventListener('click', async () => {
+          if (!window.confirm('¿Eliminar esta columna? Sus tareas activas pasarán a Brainstorm.')) return;
+          try {
+            await requestJson(columnUrl.replace('__key__', button.dataset.key), { method: 'DELETE' });
+            window.location.reload();
+          } catch (error) { alert(error.message); }
+        });
+      });
+
+      board.querySelectorAll('.project-kanban-task').forEach((task) => {
+        task.addEventListener('dragstart', (event) => {
+          draggedTask = task;
+          event.stopPropagation();
+          event.dataTransfer.effectAllowed = 'move';
+        });
+        task.addEventListener('dragend', () => { draggedTask = null; });
+      });
+
+      board.querySelectorAll('.project-kanban-column').forEach((column) => {
+        column.addEventListener('dragstart', (event) => {
+          if (event.target.closest('.project-kanban-task')) return;
+          draggedColumn = column;
+          event.dataTransfer.effectAllowed = 'move';
+        });
+        column.addEventListener('dragend', () => { draggedColumn = null; });
+        column.addEventListener('dragover', (event) => {
+          event.preventDefault();
+          column.classList.add('drag-over');
+        });
+        column.addEventListener('dragleave', () => column.classList.remove('drag-over'));
+        column.addEventListener('drop', async (event) => {
+          event.preventDefault();
+          column.classList.remove('drag-over');
+          try {
+            if (draggedTask) {
+              await requestJson(taskUrl.replace('/0/', '/' + draggedTask.dataset.taskId + '/'), {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: column.dataset.columnKey })
+              });
+              window.location.reload();
+            } else if (draggedColumn && draggedColumn !== column) {
+              board.insertBefore(draggedColumn, column);
+              const keys = Array.from(board.querySelectorAll('.project-kanban-column')).map((item) => item.dataset.columnKey);
+              await requestJson(reorderUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ keys }) });
+            }
+          } catch (error) { alert(error.message); window.location.reload(); }
+        });
+      });
+    })();
 
     (function setupProjectTaskReorder(){
       const tbody = document.getElementById('projectActiveTasksBody');

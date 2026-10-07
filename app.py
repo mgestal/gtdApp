@@ -1490,6 +1490,14 @@ def ensure_schema_updates() -> None:
         "ADD COLUMN IF NOT EXISTS kanban_status VARCHAR(20) NOT NULL DEFAULT 'inbox' AFTER sort_order"
     )
     exec_sql(
+        "ALTER TABLE tasks "
+        "ADD COLUMN IF NOT EXISTS project_board_status VARCHAR(80) NULL AFTER kanban_status"
+    )
+    exec_sql(
+        "ALTER TABLE tasks "
+        "ADD COLUMN IF NOT EXISTS project_board_order INT NULL AFTER project_board_status"
+    )
+    exec_sql(
         "ALTER TABLE projects "
         "ADD COLUMN IF NOT EXISTS archived_at DATETIME NULL AFTER archived"
     )
@@ -1500,6 +1508,10 @@ def ensure_schema_updates() -> None:
     exec_sql(
         "ALTER TABLE projects "
         "ADD COLUMN IF NOT EXISTS deleted_prev_archived TINYINT(1) NOT NULL DEFAULT 0 AFTER deleted_at"
+    )
+    exec_sql(
+        "ALTER TABLE projects "
+        "ADD COLUMN IF NOT EXISTS board_columns JSON NULL AFTER board_visible"
     )
     exec_sql(
         "ALTER TABLE tasks "
@@ -2616,6 +2628,8 @@ def complete_recurring_task_run(
             "UPDATE tasks SET last_completed_at=%s, completed_at=%s, recurrence_rule=NULL WHERE id=%s",
             (now, now, task_id),
         )
+        project_row = q1("SELECT project_id FROM tasks WHERE id=%s", (task_id,))
+        _project_board_status_for_task(task_id, project_row.get("project_id") if project_row else None, "done")
         exec_sql(
             "INSERT INTO recurring_task_runs(task_id, executed_at, previous_due_date, next_due_date) "
             "VALUES(%s, %s, %s, %s)",
@@ -3360,73 +3374,10 @@ def today():
 
 
 DEFAULT_KANBAN_COLUMNS = [
-    {"key": "next", "label": "Próximo", "rule_type": "tag_expression", "tag_expression": "@NextAction"},
-    {"key": "doing", "label": "En proceso", "rule_type": "tag_expression", "tag_expression": "@enCurso"},
-    {"key": "waiting", "label": "Esperando", "rule_type": "tag_expression", "tag_expression": "@EnEspera"},
+    {"key": "next", "label": "Próximo", "tag_name": "NextAction"},
+    {"key": "doing", "label": "En proceso", "tag_name": "enCurso"},
+    {"key": "waiting", "label": "Esperando", "tag_name": "EnEspera"},
 ]
-
-KANBAN_TAG_EXPRESSION_TOKEN_RE = re.compile(r"@[A-Za-z0-9_\-áéíóúÁÉÍÓÚñÑ]+|[!^|]")
-
-
-def _parse_kanban_tag_expression(expression: str):
-    raw_expression = normalize_name(expression)
-    tokens = KANBAN_TAG_EXPRESSION_TOKEN_RE.findall(raw_expression)
-    if not tokens or "".join(tokens) != re.sub(r"\s+", "", raw_expression):
-        raise ValueError("La expresión solo puede contener etiquetas (@etiqueta), ^, | y !")
-
-    normalized_tokens = [
-        f"@{token[1:]}" if token.startswith("@") else token
-        for token in tokens
-    ]
-    index = 0
-
-    def parse_term():
-        nonlocal index
-        if index >= len(normalized_tokens):
-            raise ValueError("Falta una etiqueta en la expresión")
-        token = normalized_tokens[index]
-        index += 1
-        if token == "!":
-            return ("not", parse_term())
-        if token.startswith("@"):
-            return ("tag", token[1:])
-        raise ValueError("Se esperaba una etiqueta o ! en la expresión")
-
-    def parse_and():
-        nonlocal index
-        result = parse_term()
-        while index < len(normalized_tokens) and normalized_tokens[index] == "^":
-            index += 1
-            result = ("and", result, parse_term())
-        return result
-
-    def parse_or():
-        nonlocal index
-        result = parse_and()
-        while index < len(normalized_tokens) and normalized_tokens[index] == "|":
-            index += 1
-            result = ("or", result, parse_and())
-        return result
-
-    parsed = parse_or()
-    if index != len(normalized_tokens):
-        raise ValueError("Los operadores de la expresión no están bien colocados")
-    return parsed, " ".join(normalized_tokens)
-
-
-def _kanban_expression_matches(expression, tag_names) -> bool:
-    operator = expression[0]
-    if operator == "tag":
-        return normalize_tag_key(expression[1]) in tag_names
-    if operator == "not":
-        return not _kanban_expression_matches(expression[1], tag_names)
-    if operator == "and":
-        return _kanban_expression_matches(expression[1], tag_names) and _kanban_expression_matches(expression[2], tag_names)
-    return _kanban_expression_matches(expression[1], tag_names) or _kanban_expression_matches(expression[2], tag_names)
-
-
-def _kanban_expression_single_tag(expression):
-    return expression[1] if expression[0] == "tag" else None
 
 
 def _kanban_panels():
@@ -3443,8 +3394,7 @@ def _kanban_panels():
             {
                 "key": col["key"],
                 "label": col["label"],
-                "rule_type": "tag_expression",
-                "tag_expression": f"@{normalize_name(legacy_tags.get(col['key'], col['tag_expression'])).lstrip('@') or col['tag_expression'].lstrip('@')}",
+                "tag_name": normalize_name(legacy_tags.get(col["key"], col["tag_name"])).lstrip("@") or col["tag_name"],
             }
             for col in DEFAULT_KANBAN_COLUMNS
         ]
@@ -3459,35 +3409,13 @@ def _kanban_columns():
     result = []
     for col in columns:
         key = str(col.get("key") or "").strip()
-        if not key:
-            continue
-        rule_type = col.get("rule_type") or "tag_expression"
-        if rule_type == "priority":
-            priority = coerce_priority(col.get("priority"), default=None)
-            if priority is None:
-                continue
-            result.append({
-                "key": key,
-                "label": normalize_name(col.get("label")) or key,
-                "rule_type": "priority",
-                "priority": priority,
-                "drag_drop_supported": True,
-            })
-            continue
-
-        legacy_tag_name = normalize_name(col.get("tag_name")).lstrip("@")
-        expression = normalize_name(col.get("tag_expression")) or (f"@{legacy_tag_name}" if legacy_tag_name else "")
-        try:
-            parsed_expression, normalized_expression = _parse_kanban_tag_expression(expression)
-        except ValueError:
+        tag_name = normalize_name(col.get("tag_name")).lstrip("@")
+        if not key or not tag_name:
             continue
         result.append({
             "key": key,
             "label": normalize_name(col.get("label")) or key,
-            "rule_type": "tag_expression",
-            "tag_expression": normalized_expression,
-            "parsed_expression": parsed_expression,
-            "drag_drop_supported": bool(_kanban_expression_single_tag(parsed_expression)),
+            "tag_name": tag_name,
         })
     return result
 
@@ -3519,36 +3447,21 @@ def _save_kanban_panels(panels, active_panel: str) -> None:
 
 def _save_kanban_columns(columns) -> None:
     panels, active_panel = _kanban_panels()
-    saved_columns = []
-    for column in columns:
-        saved_column = {
-            "key": column["key"],
-            "label": column["label"],
-            "rule_type": column["rule_type"],
-        }
-        if column["rule_type"] == "priority":
-            saved_column["priority"] = column["priority"]
-        else:
-            saved_column["tag_expression"] = column["tag_expression"]
-        saved_columns.append(saved_column)
-    panels[active_panel]["columns"] = saved_columns
+    panels[active_panel]["columns"] = columns
     _save_kanban_panels(panels, active_panel)
 
 
-def _task_matches_kanban_column(task, column, task_tags) -> bool:
-    if column["rule_type"] == "priority":
-        return coerce_priority(task.get("priority"), default=None) == column["priority"]
-    tag_names = {normalize_tag_key(tag["name"]) for tag in task_tags}
-    return _kanban_expression_matches(column["parsed_expression"], tag_names)
+def _task_has_tag(task_id: int, tag_name: str) -> bool:
+    row = q1(
+        "SELECT 1 AS ok FROM task_tags tt JOIN tags tg ON tg.id=tt.tag_id WHERE tt.task_id=%s AND LOWER(tg.name)=LOWER(%s) LIMIT 1",
+        (task_id, tag_name),
+    )
+    return bool(row)
 
 
 def _sync_task_kanban_status(task_id: int, new_status: str) -> None:
     columns = _kanban_columns()
-    state_tags = list({
-        _kanban_expression_single_tag(col["parsed_expression"])
-        for col in columns
-        if col["rule_type"] == "tag_expression" and _kanban_expression_single_tag(col["parsed_expression"])
-    })
+    state_tags = list({col["tag_name"] for col in columns})
 
     for tag_name in state_tags:
         exec_sql(
@@ -3561,25 +3474,21 @@ def _sync_task_kanban_status(task_id: int, new_status: str) -> None:
 
     if new_status == "inbox":
         exec_sql("UPDATE tasks SET completed_at = NULL WHERE id=%s", (task_id,))
+        task = q1("SELECT project_id FROM tasks WHERE id=%s", (task_id,))
+        _project_board_status_for_task(task_id, task.get("project_id") if task else None, "brainstorm")
         return
 
     if new_status == "done":
         exec_sql("UPDATE tasks SET completed_at = NOW() WHERE id=%s", (task_id,))
+        task = q1("SELECT project_id FROM tasks WHERE id=%s", (task_id,))
+        _project_board_status_for_task(task_id, task.get("project_id") if task else None, "done")
         return
 
     column = _kanban_column_by_key(new_status)
     if not column:
         return
 
-    if column["rule_type"] == "priority":
-        exec_sql("UPDATE tasks SET priority=%s WHERE id=%s", (column["priority"], task_id))
-        return
-
-    tag_name = _kanban_expression_single_tag(column["parsed_expression"])
-    if not tag_name:
-        raise ValueError("No se puede arrastrar una tarea a una card con una expresión compuesta")
-
-    tag_id = get_or_create_tag(tag_name)
+    tag_id = get_or_create_tag(column["tag_name"])
     exec_sql(
         "INSERT IGNORE INTO task_tags(task_id, tag_id) VALUES(%s, %s)",
         (task_id, tag_id),
@@ -3587,6 +3496,105 @@ def _sync_task_kanban_status(task_id: int, new_status: str) -> None:
 
     # Si la tarea ha dejado atrás un estado de GTD previa, lo dejamos sincronizado
     # con la etiqueta del nuevo estado del tablero.
+
+
+DEFAULT_PROJECT_BOARD_COLUMNS = [
+    {"key": "brainstorm", "label": "Brainstorm"},
+    {"key": "to-do", "label": "To-Do"},
+    {"key": "in-progress", "label": "In-Progress"},
+    {"key": "done", "label": "Done"},
+]
+
+
+def _project_board_columns(project: Dict[str, Any]) -> List[Dict[str, str]]:
+    raw_columns = project.get("board_columns")
+    if isinstance(raw_columns, str):
+        try:
+            raw_columns = json.loads(raw_columns)
+        except (TypeError, ValueError):
+            raw_columns = None
+
+    columns = raw_columns if isinstance(raw_columns, list) else []
+    result = []
+    used_keys = set()
+    for column in columns:
+        if not isinstance(column, dict):
+            continue
+        key = str(column.get("key") or "").strip().lower()
+        label = normalize_name(column.get("label"))
+        if not key or not re.fullmatch(r"[a-z0-9-]{1,80}", key) or not label or key in used_keys:
+            continue
+        result.append({"key": key, "label": label})
+        used_keys.add(key)
+
+    if "done" not in used_keys:
+        result.append({"key": "done", "label": "Done"})
+    return result
+
+
+def _project_board_is_initialized(project: Dict[str, Any]) -> bool:
+    return bool(project.get("board_columns"))
+
+
+def _initialize_project_board(project_id: int) -> List[Dict[str, str]]:
+    project = q1("SELECT id, board_columns FROM projects WHERE id=%s", (project_id,))
+    if not project:
+        raise ValueError("Proyecto no encontrado")
+
+    columns = _project_board_columns(project)
+    if not _project_board_is_initialized(project):
+        exec_sql(
+            "UPDATE projects SET board_columns=%s, updated_at=NOW() WHERE id=%s",
+            (json.dumps(DEFAULT_PROJECT_BOARD_COLUMNS), project_id),
+        )
+        columns = list(DEFAULT_PROJECT_BOARD_COLUMNS)
+
+    exec_sql(
+        "UPDATE tasks SET project_board_status='brainstorm', project_board_order=id "
+        "WHERE project_id=%s AND completed_at IS NULL AND archived=0 AND deleted_at IS NULL "
+        "AND project_board_status IS NULL",
+        (project_id,),
+    )
+    exec_sql(
+        "UPDATE tasks SET project_board_status='done', project_board_order=id "
+        "WHERE project_id=%s AND completed_at IS NOT NULL AND archived=0 AND deleted_at IS NULL "
+        "AND project_board_status IS NULL",
+        (project_id,),
+    )
+    return columns
+
+
+def _project_board_status_for_task(task_id: int, project_id: Optional[int], status: str) -> None:
+    if not project_id:
+        return
+    project = q1("SELECT id, board_columns FROM projects WHERE id=%s", (project_id,))
+    if not project or not _project_board_is_initialized(project):
+        return
+    valid_statuses = {column["key"] for column in _project_board_columns(project)}
+    target_status = status if status in valid_statuses else "brainstorm"
+    exec_sql(
+        "UPDATE tasks SET project_board_status=%s, project_board_order=id WHERE id=%s",
+        (target_status, task_id),
+    )
+
+
+def _save_project_board_columns(project_id: int, columns: List[Dict[str, str]]) -> None:
+    normalized_columns = _project_board_columns({"board_columns": columns})
+    exec_sql(
+        "UPDATE projects SET board_columns=%s, updated_at=NOW() WHERE id=%s",
+        (json.dumps(normalized_columns), project_id),
+    )
+
+
+def _project_board_column_key(label: str, columns: List[Dict[str, str]]) -> str:
+    base = re.sub(r"[^a-z0-9]+", "-", normalize_tag_key(label)).strip("-") or "columna"
+    key = base
+    suffix = 2
+    existing_keys = {column["key"] for column in columns}
+    while key in existing_keys or key == "done":
+        key = f"{base}-{suffix}"
+        suffix += 1
+    return key
 
 
 @app.route("/kanban")
@@ -3658,7 +3666,6 @@ def kanban():
         ]
         for col in kanban_columns
     }
-    task_tags_map = load_tags_map([task["id"] for task in active_rows])
 
     for group in folder_group_definitions:
         folder_name = group["label"].lstrip("@")
@@ -3682,7 +3689,7 @@ def kanban():
             None,
         )
         matching_column = next(
-            (col for col in kanban_columns if _task_matches_kanban_column(task, col, task_tags_map.get(task["id"], []))),
+            (col for col in kanban_columns if _task_has_tag(task["id"], col["tag_name"])),
             None,
         )
         matching_status = matching_column["key"] if matching_column else None
@@ -3753,24 +3760,12 @@ def api_task_kanban_status(task_id: int):
 
 def _validate_kanban_column_payload(payload):
     label = normalize_name(payload.get("label"))
+    tag_name = normalize_name(payload.get("tag_name")).lstrip("@")
     if not label:
-        return None, None, None, None, "Indica un nombre para la card"
-
-    rule_type = normalize_name(payload.get("rule_type"))
-    if rule_type == "priority":
-        priority = coerce_priority(payload.get("priority"), default=None)
-        if priority is None:
-            return None, None, None, None, "Indica una prioridad válida"
-        return label, rule_type, None, priority, None
-
-    if rule_type != "tag_expression":
-        return None, None, None, None, "Indica un criterio válido para la card"
-
-    try:
-        _, tag_expression = _parse_kanban_tag_expression(payload.get("tag_expression"))
-    except ValueError as exc:
-        return None, None, None, None, str(exc)
-    return label, rule_type, tag_expression, None, None
+        return None, None, "Indica un nombre para la card"
+    if not tag_name or not re.fullmatch(r"[A-Za-z0-9_\-áéíóúÁÉÍÓÚñÑ]+", tag_name):
+        return None, None, "Indica una etiqueta válida"
+    return label, tag_name, None
 
 
 def _validate_kanban_panel_name(payload):
@@ -3841,21 +3836,16 @@ def api_kanban_panel_delete(key: str):
 @app.route("/api/kanban/columns", methods=["POST"])
 def api_kanban_column_create():
     payload = request.get_json(silent=True) or {}
-    label, rule_type, tag_expression, priority, error = _validate_kanban_column_payload(payload)
+    label, tag_name, error = _validate_kanban_column_payload(payload)
     if error:
         return jsonify({"ok": False, "error": error}), 400
 
     columns = _kanban_columns()
     existing_keys = {c["key"] for c in columns} | {"inbox", "done"}
     new_key = _kanban_unique_key(label, existing_keys)
-    column = {"key": new_key, "label": label, "rule_type": rule_type}
-    if rule_type == "priority":
-        column["priority"] = priority
-    else:
-        column["tag_expression"] = tag_expression
-    columns.append(column)
+    columns.append({"key": new_key, "label": label, "tag_name": tag_name})
     _save_kanban_columns(columns)
-    return jsonify({"ok": True, "column": column})
+    return jsonify({"ok": True, "column": {"key": new_key, "label": label, "tag_name": tag_name}})
 
 
 @app.route("/api/kanban/columns/<key>", methods=["POST"])
@@ -3868,24 +3858,17 @@ def api_kanban_column_update(key: str):
         return jsonify({"ok": False, "error": "Columna no encontrada"}), 404
 
     payload = request.get_json(silent=True) or {}
-    label, rule_type, tag_expression, priority, error = _validate_kanban_column_payload(payload)
+    label, tag_name, error = _validate_kanban_column_payload(payload)
     if error:
         return jsonify({"ok": False, "error": error}), 400
 
     for c in columns:
         if c["key"] == key:
             c["label"] = label
-            c["rule_type"] = rule_type
-            c.pop("tag_name", None)
-            c.pop("tag_expression", None)
-            c.pop("priority", None)
-            if rule_type == "priority":
-                c["priority"] = priority
-            else:
-                c["tag_expression"] = tag_expression
+            c["tag_name"] = tag_name
             break
     _save_kanban_columns(columns)
-    return jsonify({"ok": True, "column": _kanban_column_by_key(key)})
+    return jsonify({"ok": True, "column": {"key": key, "label": label, "tag_name": tag_name}})
 
 
 @app.route("/api/kanban/columns/<key>", methods=["DELETE"])
@@ -4308,7 +4291,7 @@ def projects():
 
 @app.route("/projects/<int:project_id>")
 def project_detail(project_id: int):
-    project = q1("SELECT id, name, description, archived, archived_at, folder_id, auto_promote_nextaction FROM projects WHERE id=%s", (project_id,))
+    project = q1("SELECT id, name, description, archived, archived_at, folder_id, auto_promote_nextaction, board_visible, board_columns FROM projects WHERE id=%s", (project_id,))
     if not project:
         abort(404)
     recurring_due_join, effective_due_expr = recurring_effective_due_sql("t")
@@ -4316,7 +4299,7 @@ def project_detail(project_id: int):
     folder_breadcrumb = build_folder_breadcrumb(project.get("folder_id"), include_self=True)
 
     active_tasks = q(
-        f"SELECT t.id, t.title, t.location, t.notes, {effective_due_expr} AS due_date, t.due_time, t.completed_at, t.recurrence_rule, t.priority, t.sort_order "
+        f"SELECT t.id, t.title, t.location, t.notes, {effective_due_expr} AS due_date, t.due_time, t.completed_at, t.recurrence_rule, t.priority, t.sort_order, t.project_board_status, t.project_board_order "
         "FROM tasks t "
         f"{recurring_due_join}"
         "WHERE project_id=%s AND completed_at IS NULL AND archived=0 AND deleted_at IS NULL "
@@ -4325,7 +4308,7 @@ def project_detail(project_id: int):
     )
 
     done_tasks = q(
-        "SELECT id, title, notes, due_date, due_time, completed_at, recurrence_rule, priority "
+        "SELECT id, title, notes, due_date, due_time, completed_at, recurrence_rule, priority, project_board_status, project_board_order "
         "FROM tasks "
         "WHERE project_id=%s AND completed_at IS NOT NULL AND archived=0 AND deleted_at IS NULL "
         "ORDER BY completed_at DESC, id",
@@ -4337,6 +4320,18 @@ def project_detail(project_id: int):
     tags_map = load_tags_map(all_ids) if all_ids else {}
     sub_counts = load_subtask_counts(subdb, all_ids)
     sub_map = load_subtasks_map(subdb, all_ids)
+    if project.get("board_visible") and not _project_board_is_initialized(project):
+        _initialize_project_board(project_id)
+        commit()
+        project["board_columns"] = json.dumps(DEFAULT_PROJECT_BOARD_COLUMNS)
+    project_kanban_columns = _project_board_columns(project) if project.get("board_visible") else []
+    project_tasks_by_status = {column["key"]: [] for column in project_kanban_columns}
+    if project.get("board_visible"):
+        for task in active_tasks + done_tasks:
+            status = task.get("project_board_status") or ("done" if task.get("completed_at") else "brainstorm")
+            if status not in project_tasks_by_status:
+                status = "done" if task.get("completed_at") else "brainstorm"
+            project_tasks_by_status[status].append(task)
 
     # Valor efectivo del auto-promote: override de proyecto si está definido, si no el global
     proj_override = project.get("auto_promote_nextaction")
@@ -4357,7 +4352,127 @@ def project_detail(project_id: int):
         tags_map=tags_map,
         sub_counts=sub_counts, sub_map=sub_map,
         promote_effective=promote_effective,
+        project_kanban_columns=project_kanban_columns,
+        project_tasks_by_status=project_tasks_by_status,
     )
+
+
+@app.route("/projects/<int:project_id>/board-toggle", methods=["POST"])
+def project_board_toggle(project_id: int):
+    project = q1("SELECT id, board_visible, board_columns FROM projects WHERE id=%s", (project_id,))
+    if not project:
+        abort(404)
+
+    try:
+        if not project.get("board_visible"):
+            _initialize_project_board(project_id)
+        exec_sql(
+            "UPDATE projects SET board_visible=1-board_visible, updated_at=NOW() WHERE id=%s",
+            (project_id,),
+        )
+        commit()
+        flash("Visibilidad del proyecto en el tablero actualizada.", "ok")
+    except Exception as e:
+        rollback()
+        flash(f"No se pudo actualizar el tablero del proyecto: {e}", "error")
+
+    return redirect(url_for("project_detail", project_id=project_id))
+
+
+@app.route("/api/projects/<int:project_id>/board/columns", methods=["POST"])
+def api_project_board_column_create(project_id: int):
+    project = q1("SELECT id, board_columns FROM projects WHERE id=%s", (project_id,))
+    if not project:
+        return jsonify({"ok": False, "error": "Proyecto no encontrado"}), 404
+    label = normalize_name((request.get_json(silent=True) or {}).get("label"))
+    if not label:
+        return jsonify({"ok": False, "error": "Indica un nombre para la columna"}), 400
+    try:
+        columns = _project_board_columns(project)
+        columns.insert(max(0, len(columns) - 1), {"key": _project_board_column_key(label, columns), "label": label})
+        _save_project_board_columns(project_id, columns)
+        commit()
+        return jsonify({"ok": True, "columns": columns})
+    except Exception as exc:
+        rollback()
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@app.route("/api/projects/<int:project_id>/board/columns/<key>", methods=["POST", "DELETE"])
+def api_project_board_column_update(project_id: int, key: str):
+    project = q1("SELECT id, board_columns FROM projects WHERE id=%s", (project_id,))
+    if not project:
+        return jsonify({"ok": False, "error": "Proyecto no encontrado"}), 404
+    try:
+        columns = _project_board_columns(project)
+        column = next((item for item in columns if item["key"] == key), None)
+        if not column:
+            return jsonify({"ok": False, "error": "Columna no encontrada"}), 404
+        if request.method == "POST":
+            label = normalize_name((request.get_json(silent=True) or {}).get("label"))
+            if not label:
+                return jsonify({"ok": False, "error": "Indica un nombre para la columna"}), 400
+            column["label"] = label
+        elif key == "done":
+            columns = [item for item in columns if item["key"] != "done"]
+        else:
+            columns = [item for item in columns if item["key"] != key]
+            exec_sql(
+                "UPDATE tasks SET project_board_status='brainstorm' WHERE project_id=%s AND project_board_status=%s",
+                (project_id, key),
+            )
+        _save_project_board_columns(project_id, columns)
+        commit()
+        return jsonify({"ok": True, "columns": _project_board_columns({"board_columns": columns})})
+    except Exception as exc:
+        rollback()
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@app.route("/api/projects/<int:project_id>/board/columns/reorder", methods=["POST"])
+def api_project_board_columns_reorder(project_id: int):
+    project = q1("SELECT id, board_columns FROM projects WHERE id=%s", (project_id,))
+    if not project:
+        return jsonify({"ok": False, "error": "Proyecto no encontrado"}), 404
+    payload = request.get_json(silent=True) or {}
+    ordered_keys = payload.get("keys") or []
+    columns = _project_board_columns(project)
+    if set(ordered_keys) != {column["key"] for column in columns}:
+        return jsonify({"ok": False, "error": "Orden de columnas inválido"}), 400
+    ordered_columns = [next(column for column in columns if column["key"] == key) for key in ordered_keys]
+    try:
+        _save_project_board_columns(project_id, ordered_columns)
+        commit()
+        return jsonify({"ok": True})
+    except Exception as exc:
+        rollback()
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@app.route("/api/projects/<int:project_id>/board/tasks/<int:task_id>/status", methods=["POST"])
+def api_project_board_task_status(project_id: int, task_id: int):
+    task = q1(
+        "SELECT id, project_id FROM tasks WHERE id=%s AND project_id=%s AND deleted_at IS NULL",
+        (task_id, project_id),
+    )
+    if not task:
+        return jsonify({"ok": False, "error": "Tarea no encontrada"}), 404
+    project = q1("SELECT id, board_columns FROM projects WHERE id=%s", (project_id,))
+    status = str((request.get_json(silent=True) or {}).get("status") or "").strip().lower()
+    valid_statuses = {column["key"] for column in _project_board_columns(project or {})}
+    if status not in valid_statuses:
+        return jsonify({"ok": False, "error": "Estado inválido"}), 400
+    try:
+        completed_at = "NOW()" if status == "done" else "NULL"
+        exec_sql(
+            f"UPDATE tasks SET completed_at={completed_at}, project_board_status=%s, project_board_order=id WHERE id=%s",
+            (status, task_id),
+        )
+        commit()
+        return jsonify({"ok": True, "status": status})
+    except Exception as exc:
+        rollback()
+        return jsonify({"ok": False, "error": str(exc)}), 500
 
 
 @app.route("/projects/<int:project_id>/edit", methods=["GET", "POST"])
@@ -5616,6 +5731,11 @@ def manual_filters():
     return render_template("manual/filters.html", title="Manual: Filtros")
 
 
+@app.route("/gtdApp/manual/kanban")
+def manual_kanban():
+    return render_template("manual/kanban.html", title="Manual: Kanban")
+
+
 @app.route("/gtdApp/manual/gmail")
 def manual_gmail():
     return render_template("manual/gmail.html", title="Manual: Integración con Gmail")
@@ -5779,6 +5899,15 @@ def task_create():
                 next_project_task_sort_order(project_id) if project_id else None,
             ),
         )
+        requested_board_status = (request.form.get("project_board_status") or "").strip().lower()
+        if project_id:
+            project_board = q1("SELECT id, board_columns FROM projects WHERE id=%s", (project_id,))
+            if requested_board_status or (project_board and _project_board_is_initialized(project_board)):
+                _project_board_status_for_task(
+                    task_id,
+                    project_id,
+                    requested_board_status or "brainstorm",
+                )
 
         for t in tags:
             tag_id = get_or_create_tag(t)
@@ -6207,6 +6336,7 @@ def task_toggle(task_id: int):
         if task["completed_at"]:
             # Desmarcar: funciona exactamente como ahora
             exec_sql("UPDATE tasks SET completed_at=NULL WHERE id=%s", (task_id,))
+            _project_board_status_for_task(task_id, task.get("project_id"), "brainstorm")
 
         else:
             # CASO 1: tarea recurrente -> comportamiento actual, sin tocar NextAction
@@ -6236,6 +6366,7 @@ def task_toggle(task_id: int):
 
                 # Marcar como hecha
                 exec_sql("UPDATE tasks SET completed_at=%s WHERE id=%s", (now, task_id))
+                _project_board_status_for_task(task_id, task.get("project_id"), "done")
 
                 # Si tenía NextAction y pertenece a un proyecto, promocionar la siguiente
                 promote_nextaction = cfg_bool(
@@ -10631,6 +10762,7 @@ def api_extension_task_toggle(task_id: int):
     try:
         if task["completed_at"]:
             exec_sql("UPDATE tasks SET completed_at=NULL WHERE id=%s", (task_id,))
+            _project_board_status_for_task(task_id, task.get("project_id"), "brainstorm")
             completed = False
         else:
             if task.get("recurrence_rule") and task.get("due_date"):
@@ -10662,6 +10794,7 @@ def api_extension_task_toggle(task_id: int):
                     )
 
                 exec_sql("UPDATE tasks SET completed_at=%s WHERE id=%s", (now, task_id))
+                _project_board_status_for_task(task_id, task.get("project_id"), "done")
                 completed = True
 
                 promote_nextaction = cfg_bool(
@@ -10765,13 +10898,7 @@ def api_tags_search():
     qtxt = (request.args.get("q") or "").strip().lower()
 
     if not qtxt:
-        rows = q(
-            "SELECT id, name "
-            "FROM tags "
-            "ORDER BY name "
-            "LIMIT 8",
-        )
-        return jsonify({"items": rows})
+        return jsonify({"items": []})
 
     qtxt = qtxt[:50]
 

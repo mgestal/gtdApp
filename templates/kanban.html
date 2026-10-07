@@ -422,10 +422,10 @@
     </div>
 
     {% for column in kanban_columns %}
-      <div class="kanban-column" data-status="{{ column.key }}" data-label="{{ column.label }}" data-accept-drop="{{ 'true' if column.drag_drop_supported else 'false' }}">
+      <div class="kanban-column" data-status="{{ column.key }}" data-label="{{ column.label }}">
         <div class="kanban-column-header">
           <span class="kanban-column-heading">
-            <button class="kanban-column-settings" type="button" data-key="{{ column.key }}" data-label="{{ column.label }}" data-rule-type="{{ column.rule_type }}" data-tag-expression="{{ column.tag_expression or '' }}" data-priority="{{ column.priority or '' }}" title="Configurar {{ column.label }}" aria-label="Configurar {{ column.label }}">&#9881;</button>
+            <button class="kanban-column-settings" type="button" data-key="{{ column.key }}" data-label="{{ column.label }}" data-tag-name="{{ column.tag_name }}" title="Configurar {{ column.label }}" aria-label="Configurar {{ column.label }}">&#9881;</button>
             <span class="kanban-column-title">{{ column.label }}</span>
           </span>
           <span class="kanban-counter">{{ kanban_counts.get(column.key, 0) }}</span>
@@ -465,31 +465,15 @@
   <form id="kanbanTagForm" method="dialog">
     <div>
       <strong id="kanbanTagDialogTitle">Configurar card</strong>
-      <div class="muted" style="margin-top:6px;">Define una expresión de etiquetas o una prioridad para mostrar tareas.</div>
+      <div class="muted" style="margin-top:6px;">Las tareas con esta etiqueta aparecerán en esta card.</div>
     </div>
     <div>
       <label for="kanbanColumnLabel">Nombre de la card</label>
       <input id="kanbanColumnLabel" name="label" type="text" maxlength="60" required autocomplete="off" />
     </div>
     <div>
-      <label for="kanbanRuleType">Criterio</label>
-      <select id="kanbanRuleType" name="rule_type">
-        <option value="tag_expression">Expresión de etiquetas</option>
-        <option value="priority">Prioridad</option>
-      </select>
-    </div>
-    <div id="kanbanTagExpressionField">
-      <label for="kanbanTagExpression">Expresión de etiquetas</label>
-      <input id="kanbanTagExpression" class="js-tag-autocomplete" data-tag-autocomplete-min-query="0" name="tag_expression" type="text" maxlength="240" autocomplete="off" placeholder="@casa ^ !@delegada" />
-      <div class="muted">Usa ^ (AND), | (OR) y ! (NOT).</div>
-    </div>
-    <div id="kanbanPriorityField" hidden>
-      <label for="kanbanPriority">Prioridad</label>
-      <select id="kanbanPriority" name="priority">
-        <option value="1">Alta</option>
-        <option value="2">Media</option>
-        <option value="3">Baja</option>
-      </select>
+      <label for="kanbanTagName">Etiqueta</label>
+      <input id="kanbanTagName" class="js-tag-autocomplete" name="tag_name" type="text" maxlength="80" required autocomplete="off" />
     </div>
     <div class="kanban-tag-dialog-actions">
       <button id="kanbanTagDelete" class="btn btn-danger-soft" type="button">Eliminar tarjeta</button>
@@ -510,24 +494,8 @@
       <input id="kanbanNewColumnLabel" name="label" type="text" maxlength="60" required autocomplete="off" />
     </div>
     <div>
-      <label for="kanbanNewRuleType">Criterio</label>
-      <select id="kanbanNewRuleType" name="rule_type">
-        <option value="tag_expression">Expresión de etiquetas</option>
-        <option value="priority">Prioridad</option>
-      </select>
-    </div>
-    <div id="kanbanNewTagExpressionField">
-      <label for="kanbanNewTagExpression">Expresión de etiquetas</label>
-      <input id="kanbanNewTagExpression" class="js-tag-autocomplete" data-tag-autocomplete-min-query="0" name="tag_expression" type="text" maxlength="240" autocomplete="off" placeholder="@pocotiempo ^ @pocaenergia" />
-      <div class="muted">Usa ^ (AND), | (OR) y ! (NOT).</div>
-    </div>
-    <div id="kanbanNewPriorityField" hidden>
-      <label for="kanbanNewPriority">Prioridad</label>
-      <select id="kanbanNewPriority" name="priority">
-        <option value="1">Alta</option>
-        <option value="2">Media</option>
-        <option value="3">Baja</option>
-      </select>
+      <label for="kanbanNewColumnTag">Etiqueta</label>
+      <input id="kanbanNewColumnTag" class="js-tag-autocomplete" name="tag_name" type="text" maxlength="80" required autocomplete="off" placeholder="@MiEtiqueta" />
     </div>
     <div class="kanban-tag-dialog-actions">
       <button id="kanbanAddColumnCancel" class="btn btn-soft" type="button">Cancelar</button>
@@ -598,20 +566,12 @@
   const kanbanTagForm = document.getElementById('kanbanTagForm');
   const kanbanTagDelete = document.getElementById('kanbanTagDelete');
   const kanbanColumnLabel = document.getElementById('kanbanColumnLabel');
-  const kanbanRuleType = document.getElementById('kanbanRuleType');
-  const kanbanTagExpression = document.getElementById('kanbanTagExpression');
-  const kanbanPriority = document.getElementById('kanbanPriority');
-  const kanbanTagExpressionField = document.getElementById('kanbanTagExpressionField');
-  const kanbanPriorityField = document.getElementById('kanbanPriorityField');
+  const kanbanTagName = document.getElementById('kanbanTagName');
   const kanbanTagDialogTitle = document.getElementById('kanbanTagDialogTitle');
   const kanbanAddColumnDialog = document.getElementById('kanbanAddColumnDialog');
   const kanbanAddColumnForm = document.getElementById('kanbanAddColumnForm');
   const kanbanNewColumnLabel = document.getElementById('kanbanNewColumnLabel');
-  const kanbanNewRuleType = document.getElementById('kanbanNewRuleType');
-  const kanbanNewTagExpression = document.getElementById('kanbanNewTagExpression');
-  const kanbanNewPriority = document.getElementById('kanbanNewPriority');
-  const kanbanNewTagExpressionField = document.getElementById('kanbanNewTagExpressionField');
-  const kanbanNewPriorityField = document.getElementById('kanbanNewPriorityField');
+  const kanbanNewColumnTag = document.getElementById('kanbanNewColumnTag');
   let configuredKey = null;
 
   function getTaskStatusUrl(taskId) {
@@ -625,15 +585,6 @@
   function getKanbanPanelUrl(template, key) {
     return template.replace('__key__', key);
   }
-
-  function setRuleFields(ruleType, expressionField, priorityField) {
-    const isPriority = ruleType.value === 'priority';
-    expressionField.hidden = isPriority;
-    priorityField.hidden = !isPriority;
-  }
-
-  kanbanRuleType.addEventListener('change', () => setRuleFields(kanbanRuleType, kanbanTagExpressionField, kanbanPriorityField));
-  kanbanNewRuleType.addEventListener('change', () => setRuleFields(kanbanNewRuleType, kanbanNewTagExpressionField, kanbanNewPriorityField));
 
   function closeKanbanPanelActions() {
     kanbanPanelActionsMenu.style.display = 'none';
@@ -797,10 +748,7 @@
       configuredKey = button.dataset.key;
       kanbanTagDialogTitle.textContent = `Configurar ${button.dataset.label}`;
       kanbanColumnLabel.value = button.dataset.label;
-      kanbanRuleType.value = button.dataset.ruleType;
-      kanbanTagExpression.value = button.dataset.tagExpression;
-      kanbanPriority.value = button.dataset.priority || '1';
-      setRuleFields(kanbanRuleType, kanbanTagExpressionField, kanbanPriorityField);
+      kanbanTagName.value = `@${button.dataset.tagName}`;
       kanbanTagDialog.showModal();
       kanbanColumnLabel.focus();
       kanbanColumnLabel.select();
@@ -820,12 +768,7 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({
-          label: kanbanColumnLabel.value,
-          rule_type: kanbanRuleType.value,
-          tag_expression: kanbanTagExpression.value,
-          priority: kanbanPriority.value,
-        }),
+        body: JSON.stringify({ label: kanbanColumnLabel.value, tag_name: kanbanTagName.value }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.ok) {
@@ -858,10 +801,7 @@
 
   function openAddColumnDialog() {
     kanbanNewColumnLabel.value = '';
-    kanbanNewRuleType.value = 'tag_expression';
-    kanbanNewTagExpression.value = '';
-    kanbanNewPriority.value = '1';
-    setRuleFields(kanbanNewRuleType, kanbanNewTagExpressionField, kanbanNewPriorityField);
+    kanbanNewColumnTag.value = '';
     kanbanAddColumnDialog.showModal();
     kanbanNewColumnLabel.focus();
   }
@@ -880,12 +820,7 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({
-          label: kanbanNewColumnLabel.value,
-          rule_type: kanbanNewRuleType.value,
-          tag_expression: kanbanNewTagExpression.value,
-          priority: kanbanNewPriority.value,
-        }),
+        body: JSON.stringify({ label: kanbanNewColumnLabel.value, tag_name: kanbanNewColumnTag.value }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.ok) {
@@ -946,16 +881,13 @@
 
   kanbanColumns.forEach((column) => {
     const cardsContainer = column.querySelector('.kanban-cards') || column;
-    const acceptsDrop = column.dataset.acceptDrop !== 'false';
 
     column.addEventListener('dragenter', (event) => {
-      if (!acceptsDrop) return;
       event.preventDefault();
       column.classList.add('drag-over');
     });
 
     column.addEventListener('dragover', (event) => {
-      if (!acceptsDrop) return;
       event.preventDefault();
       if (event.dataTransfer) {
         event.dataTransfer.dropEffect = 'move';
@@ -971,7 +903,6 @@
     });
 
     column.addEventListener('drop', async (event) => {
-      if (!acceptsDrop) return;
       event.preventDefault();
       event.stopPropagation();
       column.classList.remove('drag-over');

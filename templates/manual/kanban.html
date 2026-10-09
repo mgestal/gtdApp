@@ -9,7 +9,7 @@
     <div class="card-header">
       <div>
         <div class="card-title">Cómo funciona el tablero</div>
-        <div class="card-sub">Cada card, excepto Inbox, está vinculada a una etiqueta.</div>
+        <div class="card-sub">Las cards pueden basarse en etiquetas, expresiones de etiquetas o prioridades.</div>
       </div>
     </div>
     <div class="list">
@@ -22,7 +22,7 @@
       <div class="list-row">
         <div>
           <div style="font-weight:600;">Cards de estado</div>
-          <div class="hint">Una tarea aparece en la card cuya etiqueta tenga asignada. El contador del encabezado indica cuántas tareas contiene.</div>
+          <div class="hint">Una tarea aparece en las cards cuyos criterios cumple. Las expresiones admiten etiquetas con AND, OR y NOT, sin paréntesis. El contador del encabezado indica cuántas tareas contiene.</div>
           <div class="hint">Las tareas de las carpetas EnEspera, Seguimiento y Sometime se agrupan dentro de su card de estado para mantener el tablero ordenado.</div>
         </div>
       </div>
@@ -44,7 +44,10 @@
     </div>
     <div class="list">
       <div class="list-row">
-        <div class="hint">Arrastra una tarea hasta otra card para asignarle la etiqueta de ese estado. Al moverla a Inbox, se elimina la etiqueta de estado Kanban.</div>
+        <div class="hint">Arrastra una tarea hasta otra card para aplicar su criterio. El movimiento admite expresiones que solo usen AND y NOT. En esas cards, se añaden las etiquetas positivas y se quitan las negadas; las demás etiquetas se conservan. Si tras el movimiento la tarea aparece en varias cards, podrás confirmarlo o cancelarlo.</div>
+      </div>
+      <div class="list-row">
+        <div class="hint">Al moverla a Inbox, se eliminan de la tarea las etiquetas de estado Kanban.</div>
       </div>
       <div class="list-row">
         <div class="hint">Usa el círculo situado junto al título de la tarea para marcarla como realizada o desmarcarla. Las tareas completadas dejan de mostrarse en el tablero.</div>
@@ -64,10 +67,10 @@
     </div>
     <div class="list">
       <div class="list-row">
-        <div class="hint">Pulsa <strong>+ Añadir card</strong>, en la barra superior o al final del tablero, indica un nombre visible y la etiqueta que la identificará. La nueva card se añade al final.</div>
+        <div class="hint">Pulsa <strong>+ Añadir card</strong>, en la barra superior o al final del tablero, indica un nombre visible y una expresión de etiquetas o una prioridad. Las expresiones pueden combinar etiquetas con AND, OR y NOT, sin paréntesis. La nueva card se añade al final.</div>
       </div>
       <div class="list-row">
-        <div class="hint">El icono de configuración de una card permite cambiar su nombre o la etiqueta asociada, y eliminarla.</div>
+        <div class="hint">El icono de configuración de una card permite cambiar su nombre, su expresión de etiquetas o su prioridad, y eliminarla.</div>
       </div>
       <div class="list-row">
         <div class="hint">Al eliminar una card no se eliminan sus tareas ni su etiqueta; simplemente dejan de aparecer en ese tablero hasta que se muestre una card vinculada a esa etiqueta.</div>

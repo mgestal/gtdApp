@@ -3426,19 +3426,54 @@ def _kanban_columns():
     return result
 
 
-def _kanban_expression_matches(task_id: int, expression: str) -> bool:
+def _parse_kanban_tag_expression(expression: str):
+    parts = re.split(r"\s*(?:\^|&|\bAND\b)\s*", expression.strip(), flags=re.I)
+    if not expression.strip() or any(not part for part in parts):
+        raise ValueError("La expresión debe combinar etiquetas con AND")
+
+    terms = []
+    polarities = {}
+    for part in parts:
+        match = re.fullmatch(
+            r"(?:(?:NOT)\s+|!)?@([A-Za-z0-9_\-áéíóúÁÉÍÓÚñÑ]+)",
+            part,
+            flags=re.I,
+        )
+        if not match:
+            raise ValueError("Solo se permiten etiquetas y los operadores AND y NOT, sin paréntesis")
+        tag_name = match.group(1)
+        negated = bool(re.match(r"(?:(?:NOT)\s+|!)", part, flags=re.I))
+        tag_key = normalize_tag_key(tag_name)
+        if tag_key in polarities and polarities[tag_key] != negated:
+            raise ValueError(f"La etiqueta @{tag_name} no puede aparecer con AND y NOT a la vez")
+        polarities[tag_key] = negated
+        terms.append((tag_name, negated))
+    return terms
+
+
+def _kanban_filter_parser_expression(expression: str) -> str:
+    expression = expression.replace("^", "&")
+    return re.sub(r"(?<![@\w])NOT\s+(?=@)", "!", expression, flags=re.I)
+
+
+def _kanban_expression_matches(task_id: int, expression: str, tag_names=None) -> bool:
     try:
-        ast = parse_filter_expression(expression.replace("^", "&"))
+        if "(" in expression or ")" in expression:
+            return False
+        ast = parse_filter_expression(_kanban_filter_parser_expression(expression))
     except FilterParseError:
         return False
 
-    tag_names = {
-        normalize_tag_key(row["name"])
-        for row in q(
-            "SELECT tg.name FROM task_tags tt JOIN tags tg ON tg.id=tt.tag_id WHERE tt.task_id=%s",
-            (task_id,),
-        )
-    }
+    if tag_names is None:
+        tag_names = {
+            normalize_tag_key(row["name"])
+            for row in q(
+                "SELECT tg.name FROM task_tags tt JOIN tags tg ON tg.id=tt.tag_id WHERE tt.task_id=%s",
+                (task_id,),
+            )
+        }
+    else:
+        tag_names = {normalize_tag_key(name) for name in tag_names}
 
     def matches(node: Node) -> bool:
         if isinstance(node, Term):
@@ -3454,12 +3489,16 @@ def _kanban_expression_matches(task_id: int, expression: str) -> bool:
     return matches(ast)
 
 
-def _kanban_column_matches_task(column: Dict[str, Any], task: Dict[str, Any]) -> bool:
+def _kanban_column_matches_task(column: Dict[str, Any], task: Dict[str, Any], tag_names=None) -> bool:
     priority_filter = column.get("priority_filter")
     if priority_filter is not None:
         return task.get("priority") is None if priority_filter == "none" else task.get("priority") == priority_filter
     if column.get("expression"):
-        return _kanban_expression_matches(task["id"], column["expression"])
+        return _kanban_expression_matches(task["id"], column["expression"], tag_names)
+    if tag_names is not None:
+        return normalize_tag_key(column.get("tag_name") or "") in {
+            normalize_tag_key(name) for name in tag_names
+        }
     return _task_has_tag(task["id"], column.get("tag_name") or "")
 
 
@@ -3510,24 +3549,15 @@ def _sync_task_kanban_status(task_id: int, new_status: str) -> None:
         exec_sql("UPDATE tasks SET priority=%s WHERE id=%s", (priority, task_id))
         return
 
-    state_tags = list({col["tag_name"] for col in columns if col.get("tag_name")})
-
-    for tag_name in state_tags:
-        exec_sql(
-            "DELETE FROM task_tags "
-            "WHERE task_id=%s AND tag_id IN ("
-            "SELECT id FROM (SELECT tg.id FROM tags tg WHERE LOWER(tg.name)=LOWER(%s)) AS tag_matches"
-            ")",
-            (task_id, tag_name),
-        )
-
     if new_status == "inbox":
+        _remove_kanban_state_tags(task_id, columns)
         exec_sql("UPDATE tasks SET completed_at = NULL WHERE id=%s", (task_id,))
         task = q1("SELECT project_id FROM tasks WHERE id=%s", (task_id,))
         _project_board_status_for_task(task_id, task.get("project_id") if task else None, "brainstorm")
         return
 
     if new_status == "done":
+        _remove_kanban_state_tags(task_id, columns)
         exec_sql("UPDATE tasks SET completed_at = NOW() WHERE id=%s", (task_id,))
         task = q1("SELECT project_id FROM tasks WHERE id=%s", (task_id,))
         _project_board_status_for_task(task_id, task.get("project_id") if task else None, "done")
@@ -3537,10 +3567,19 @@ def _sync_task_kanban_status(task_id: int, new_status: str) -> None:
         return
 
     if column.get("expression"):
-        simple_tag = re.fullmatch(r"\s*@([A-Za-z0-9_\-áéíóúÁÉÍÓÚñÑ]+)\s*", column["expression"])
-        if not simple_tag:
-            raise ValueError("Las cards con una expresión no se pueden usar como destino de arrastre")
-        column["tag_name"] = simple_tag.group(1)
+        terms = _parse_kanban_tag_expression(column["expression"])
+        for tag_name, _ in terms:
+            _remove_task_tag(task_id, tag_name)
+        for tag_name, negated in terms:
+            if not negated:
+                tag_id = get_or_create_tag(tag_name)
+                exec_sql(
+                    "INSERT IGNORE INTO task_tags(task_id, tag_id) VALUES(%s, %s)",
+                    (task_id, tag_id),
+                )
+        return
+
+    _remove_kanban_state_tags(task_id, columns)
 
     tag_id = get_or_create_tag(column["tag_name"])
     exec_sql(
@@ -3550,6 +3589,61 @@ def _sync_task_kanban_status(task_id: int, new_status: str) -> None:
 
     # Si la tarea ha dejado atrás un estado de GTD previa, lo dejamos sincronizado
     # con la etiqueta del nuevo estado del tablero.
+
+
+def _remove_task_tag(task_id: int, tag_name: str) -> None:
+    exec_sql(
+        "DELETE FROM task_tags "
+        "WHERE task_id=%s AND tag_id IN ("
+        "SELECT id FROM (SELECT tg.id FROM tags tg WHERE LOWER(tg.name)=LOWER(%s)) AS tag_matches"
+        ")",
+        (task_id, tag_name),
+    )
+
+
+def _remove_kanban_state_tags(task_id: int, columns) -> None:
+    for tag_name in {col["tag_name"] for col in columns if col.get("tag_name")}:
+        _remove_task_tag(task_id, tag_name)
+
+
+def _kanban_matching_columns_after_move(task: Dict[str, Any], new_status: str):
+    columns = _kanban_columns()
+    tags = {
+        normalize_tag_key(row["name"])
+        for row in q(
+            "SELECT tg.name FROM task_tags tt JOIN tags tg ON tg.id=tt.tag_id WHERE tt.task_id=%s",
+            (task["id"],),
+        )
+    }
+    resulting_task = dict(task)
+    column = next((col for col in columns if col["key"] == new_status), None)
+
+    if new_status == "done":
+        return []
+    if new_status == "inbox":
+        for state_tag in {col["tag_name"] for col in columns if col.get("tag_name")}:
+            tags.discard(normalize_tag_key(state_tag))
+    elif column and column.get("priority_filter") is not None:
+        resulting_task["priority"] = None if column["priority_filter"] == "none" else column["priority_filter"]
+    elif column and column.get("expression"):
+        for tag_name, negated in _parse_kanban_tag_expression(column["expression"]):
+            tag_key = normalize_tag_key(tag_name)
+            tags.discard(tag_key)
+            if not negated:
+                tags.add(tag_key)
+    elif column:
+        for state_tag in {col["tag_name"] for col in columns if col.get("tag_name")}:
+            tags.discard(normalize_tag_key(state_tag))
+        tags.add(normalize_tag_key(column.get("tag_name") or ""))
+
+    matching_columns = [
+        col for col in columns
+        if _kanban_column_matches_task(col, resulting_task, tags)
+    ]
+    if new_status == "inbox" and not matching_columns:
+        if task.get("project_id") is None and task.get("folder_id") is None:
+            return [{"key": "inbox", "label": "Inbox"}]
+    return matching_columns
 
 
 DEFAULT_PROJECT_BOARD_COLUMNS = [
@@ -3796,9 +3890,26 @@ def api_task_kanban_status(task_id: int):
     if new_status not in valid_statuses:
         return jsonify({"ok": False, "error": "Estado Kanban inválido"}), 400
 
-    task = q1("SELECT id FROM tasks WHERE id=%s AND deleted_at IS NULL", (task_id,))
+    task = q1(
+        "SELECT id, priority, project_id, folder_id FROM tasks WHERE id=%s AND deleted_at IS NULL",
+        (task_id,),
+    )
     if not task:
         return jsonify({"ok": False, "error": "Tarea no encontrada"}), 404
+
+    try:
+        matching_columns = _kanban_matching_columns_after_move(task, new_status)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:
+        rollback()
+        return jsonify({"ok": False, "error": str(exc)}), 500
+    if len(matching_columns) > 1 and payload.get("confirm_multiple") is not True:
+        return jsonify({
+            "ok": False,
+            "requires_confirmation": True,
+            "matching_cards": [column["label"] for column in matching_columns],
+        }), 409
 
     try:
         _sync_task_kanban_status(task_id, new_status)
@@ -3821,11 +3932,13 @@ def _validate_kanban_column_payload(payload):
     if priority_filter == "none":
         return label, "", "", "none", None
     if expression:
+        if "(" in expression or ")" in expression:
+            return None, None, None, None, "Las expresiones de las cards no admiten paréntesis"
         try:
-            ast = parse_filter_expression(expression.replace("^", "&"))
+            parse_filter_expression(_kanban_filter_parser_expression(expression))
         except FilterParseError as exc:
             return None, None, None, None, f"Expresión inválida: {exc}"
-        if not expression.startswith("@") and not expression.startswith("!@") and "@" not in expression:
+        if "@" not in expression:
             return None, None, None, None, "La expresión debe usar etiquetas con @"
         return label, "", expression, None, None
     if tag_name and re.fullmatch(r"[A-Za-z0-9_\-áéíóúÁÉÍÓÚñÑ]+", tag_name):

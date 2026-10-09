@@ -500,7 +500,7 @@
   <form id="kanbanTagForm" method="dialog">
     <div>
       <strong id="kanbanTagDialogTitle">Configurar card</strong>
-      <div class="muted" style="margin-top:6px;">Usa etiquetas con ^ (AND), | (OR) y ! (NOT), o una prioridad.</div>
+      <div class="muted" style="margin-top:6px;">Usa etiquetas con AND, OR y NOT, sin paréntesis, o una prioridad. El arrastre admite expresiones solo con AND y NOT.</div>
     </div>
     <div>
       <label for="kanbanColumnLabel">Nombre de la card</label>
@@ -508,7 +508,7 @@
     </div>
     <div>
       <label for="kanbanExpression">Expresión de etiquetas</label>
-      <input id="kanbanExpression" class="js-tag-autocomplete" name="expression" type="text" maxlength="200" placeholder="@Casa ^ !@EnEspera | @Urgente" autocomplete="off" />
+      <input id="kanbanExpression" class="js-tag-autocomplete" name="expression" type="text" maxlength="200" placeholder="@Casa AND NOT @EnEspera" autocomplete="off" />
     </div>
     <div>
       <label for="kanbanPriorityFilter">O prioridad</label>
@@ -539,8 +539,8 @@
       <input id="kanbanNewColumnLabel" name="label" type="text" maxlength="60" required autocomplete="off" />
     </div>
     <div>
-      <label for="kanbanNewColumnTag">Etiqueta</label>
-      <input id="kanbanNewColumnExpression" class="js-tag-autocomplete" name="expression" type="text" maxlength="200" autocomplete="off" placeholder="@MiEtiqueta ^ !@Otra" />
+      <label for="kanbanNewColumnExpression">Expresión de etiquetas</label>
+      <input id="kanbanNewColumnExpression" class="js-tag-autocomplete" name="expression" type="text" maxlength="200" autocomplete="off" placeholder="@MiEtiqueta AND NOT @Otra" />
     </div>
     <div>
       <label for="kanbanNewColumnPriority">O prioridad</label>
@@ -1031,14 +1031,28 @@
       const payload = { status: targetStatus };
 
       try {
-        const response = await fetch(url, {
+        let response = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'same-origin',
           body: JSON.stringify(payload),
         });
 
-        const data = await response.json().catch(() => ({}));
+        let data = await response.json().catch(() => ({}));
+
+        if (response.status === 409 && data.requires_confirmation) {
+          const matchingCards = (data.matching_cards || []).join(', ');
+          if (!confirm(`Después del movimiento, la tarea aparecerá en varias cards: ${matchingCards}. ¿Quieres moverla igualmente?`)) {
+            return;
+          }
+          response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ ...payload, confirm_multiple: true }),
+          });
+          data = await response.json().catch(() => ({}));
+        }
 
         if (!response.ok || !data.ok) {
           const errorText = (data && data.error) ? data.error : 'Error al actualizar el estado';

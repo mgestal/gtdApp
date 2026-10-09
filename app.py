@@ -3410,14 +3410,57 @@ def _kanban_columns():
     for col in columns:
         key = str(col.get("key") or "").strip()
         tag_name = normalize_name(col.get("tag_name")).lstrip("@")
-        if not key or not tag_name:
+        expression = (col.get("expression") or "").strip()
+        priority_filter = col.get("priority_filter")
+        if priority_filter not in (1, 2, 3, "none"):
+            priority_filter = None
+        if not key or (not tag_name and not expression and priority_filter is None):
             continue
         result.append({
             "key": key,
             "label": normalize_name(col.get("label")) or key,
             "tag_name": tag_name,
+            "expression": expression,
+            "priority_filter": priority_filter,
         })
     return result
+
+
+def _kanban_expression_matches(task_id: int, expression: str) -> bool:
+    try:
+        ast = parse_filter_expression(expression.replace("^", "&"))
+    except FilterParseError:
+        return False
+
+    tag_names = {
+        normalize_tag_key(row["name"])
+        for row in q(
+            "SELECT tg.name FROM task_tags tt JOIN tags tg ON tg.id=tt.tag_id WHERE tt.task_id=%s",
+            (task_id,),
+        )
+    }
+
+    def matches(node: Node) -> bool:
+        if isinstance(node, Term):
+            return node.kind == "TAG" and normalize_tag_key(node.value) in tag_names
+        if isinstance(node, Not):
+            return not matches(node.child)
+        if isinstance(node, And):
+            return matches(node.left) and matches(node.right)
+        if isinstance(node, Or):
+            return matches(node.left) or matches(node.right)
+        return False
+
+    return matches(ast)
+
+
+def _kanban_column_matches_task(column: Dict[str, Any], task: Dict[str, Any]) -> bool:
+    priority_filter = column.get("priority_filter")
+    if priority_filter is not None:
+        return task.get("priority") is None if priority_filter == "none" else task.get("priority") == priority_filter
+    if column.get("expression"):
+        return _kanban_expression_matches(task["id"], column["expression"])
+    return _task_has_tag(task["id"], column.get("tag_name") or "")
 
 
 def _kanban_column_by_key(key: str):
@@ -3461,7 +3504,13 @@ def _task_has_tag(task_id: int, tag_name: str) -> bool:
 
 def _sync_task_kanban_status(task_id: int, new_status: str) -> None:
     columns = _kanban_columns()
-    state_tags = list({col["tag_name"] for col in columns})
+    column = _kanban_column_by_key(new_status)
+    if column and column.get("priority_filter") is not None:
+        priority = None if column["priority_filter"] == "none" else column["priority_filter"]
+        exec_sql("UPDATE tasks SET priority=%s WHERE id=%s", (priority, task_id))
+        return
+
+    state_tags = list({col["tag_name"] for col in columns if col.get("tag_name")})
 
     for tag_name in state_tags:
         exec_sql(
@@ -3484,9 +3533,14 @@ def _sync_task_kanban_status(task_id: int, new_status: str) -> None:
         _project_board_status_for_task(task_id, task.get("project_id") if task else None, "done")
         return
 
-    column = _kanban_column_by_key(new_status)
     if not column:
         return
+
+    if column.get("expression"):
+        simple_tag = re.fullmatch(r"\s*@([A-Za-z0-9_\-áéíóúÁÉÍÓÚñÑ]+)\s*", column["expression"])
+        if not simple_tag:
+            raise ValueError("Las cards con una expresión no se pueden usar como destino de arrastre")
+        column["tag_name"] = simple_tag.group(1)
 
     tag_id = get_or_create_tag(column["tag_name"])
     exec_sql(
@@ -3688,10 +3742,7 @@ def kanban():
             ),
             None,
         )
-        matching_column = next(
-            (col for col in kanban_columns if _task_has_tag(task["id"], col["tag_name"])),
-            None,
-        )
+        matching_column = next((col for col in kanban_columns if _kanban_column_matches_task(col, task)), None)
         matching_status = matching_column["key"] if matching_column else None
 
         if folder_group_definition and matching_status in kanban_folder_groups:
@@ -3761,11 +3812,25 @@ def api_task_kanban_status(task_id: int):
 def _validate_kanban_column_payload(payload):
     label = normalize_name(payload.get("label"))
     tag_name = normalize_name(payload.get("tag_name")).lstrip("@")
+    expression = (payload.get("expression") or "").strip()
+    priority_filter = payload.get("priority_filter")
     if not label:
-        return None, None, "Indica un nombre para la card"
-    if not tag_name or not re.fullmatch(r"[A-Za-z0-9_\-áéíóúÁÉÍÓÚñÑ]+", tag_name):
-        return None, None, "Indica una etiqueta válida"
-    return label, tag_name, None
+        return None, None, None, None, "Indica un nombre para la card"
+    if priority_filter in ("1", "2", "3"):
+        return label, "", "", int(priority_filter), None
+    if priority_filter == "none":
+        return label, "", "", "none", None
+    if expression:
+        try:
+            ast = parse_filter_expression(expression.replace("^", "&"))
+        except FilterParseError as exc:
+            return None, None, None, None, f"Expresión inválida: {exc}"
+        if not expression.startswith("@") and not expression.startswith("!@") and "@" not in expression:
+            return None, None, None, None, "La expresión debe usar etiquetas con @"
+        return label, "", expression, None, None
+    if tag_name and re.fullmatch(r"[A-Za-z0-9_\-áéíóúÁÉÍÓÚñÑ]+", tag_name):
+        return label, tag_name, f"@{tag_name}", None, None
+    return None, None, None, None, "Indica una expresión de etiquetas o una prioridad"
 
 
 def _validate_kanban_panel_name(payload):
@@ -3836,16 +3901,29 @@ def api_kanban_panel_delete(key: str):
 @app.route("/api/kanban/columns", methods=["POST"])
 def api_kanban_column_create():
     payload = request.get_json(silent=True) or {}
-    label, tag_name, error = _validate_kanban_column_payload(payload)
+    label, tag_name, expression, priority_filter, error = _validate_kanban_column_payload(payload)
     if error:
         return jsonify({"ok": False, "error": error}), 400
 
     columns = _kanban_columns()
     existing_keys = {c["key"] for c in columns} | {"inbox", "done"}
     new_key = _kanban_unique_key(label, existing_keys)
-    columns.append({"key": new_key, "label": label, "tag_name": tag_name})
+    columns.append({"key": new_key, "label": label, "tag_name": tag_name, "expression": expression, "priority_filter": priority_filter})
     _save_kanban_columns(columns)
-    return jsonify({"ok": True, "column": {"key": new_key, "label": label, "tag_name": tag_name}})
+    return jsonify({"ok": True, "column": {"key": new_key, "label": label, "tag_name": tag_name, "expression": expression, "priority_filter": priority_filter}})
+
+
+@app.route("/api/kanban/columns/reorder", methods=["POST"])
+def api_kanban_columns_reorder():
+    payload = request.get_json(silent=True) or {}
+    ordered_keys = payload.get("keys") or []
+    columns = _kanban_columns()
+    if set(ordered_keys) != {column["key"] for column in columns}:
+        return jsonify({"ok": False, "error": "Orden de cards inválido"}), 400
+
+    ordered_columns = [next(column for column in columns if column["key"] == key) for key in ordered_keys]
+    _save_kanban_columns(ordered_columns)
+    return jsonify({"ok": True})
 
 
 @app.route("/api/kanban/columns/<key>", methods=["POST"])
@@ -3858,7 +3936,7 @@ def api_kanban_column_update(key: str):
         return jsonify({"ok": False, "error": "Columna no encontrada"}), 404
 
     payload = request.get_json(silent=True) or {}
-    label, tag_name, error = _validate_kanban_column_payload(payload)
+    label, tag_name, expression, priority_filter, error = _validate_kanban_column_payload(payload)
     if error:
         return jsonify({"ok": False, "error": error}), 400
 
@@ -3866,9 +3944,11 @@ def api_kanban_column_update(key: str):
         if c["key"] == key:
             c["label"] = label
             c["tag_name"] = tag_name
+            c["expression"] = expression
+            c["priority_filter"] = priority_filter
             break
     _save_kanban_columns(columns)
-    return jsonify({"ok": True, "column": {"key": key, "label": label, "tag_name": tag_name}})
+    return jsonify({"ok": True, "column": {"key": key, "label": label, "tag_name": tag_name, "expression": expression, "priority_filter": priority_filter}})
 
 
 @app.route("/api/kanban/columns/<key>", methods=["DELETE"])
@@ -8875,7 +8955,7 @@ def admin():
 
             try:
                 # Usar HTTPS para callback automático (Google lo requiere en producción)
-                redirect_uri = "https://raspvinxeira.mooo.com:9999/gtdApp/admin/google_oauth/callback"
+                redirect_uri = "https://raspvinxeira.mooo.com/gtdApp/admin/google_oauth/callback"
                 flow = _build_admin_google_flow(redirect_uri)
                 auth_url, state = flow.authorization_url(
                     access_type="offline",
@@ -9270,7 +9350,7 @@ def admin_google_oauth_callback():
         if not expected_state or not incoming_state or expected_state != incoming_state:
             raise RuntimeError("Estado OAuth inválido o expirado (state mismatch)")
 
-        redirect_uri = "https://raspvinxeira.mooo.com:9999/gtdApp/admin/google_oauth/callback"
+        redirect_uri = "https://raspvinxeira.mooo.com/gtdApp/admin/google_oauth/callback"
         flow = _build_admin_google_flow(redirect_uri)
         if code_verifier:
             flow.code_verifier = str(code_verifier)

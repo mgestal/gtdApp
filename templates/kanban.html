@@ -102,6 +102,29 @@
     gap: 5px;
   }
 
+  .kanban-column-drag-handle {
+    display: grid;
+    grid-template-columns: repeat(2, 4px);
+    gap: 3px;
+    padding: 5px;
+    cursor: grab;
+  }
+
+  .kanban-column-drag-handle:active {
+    cursor: grabbing;
+  }
+
+  .kanban-column-drag-handle-dot {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--muted);
+  }
+
+  .kanban-column.dragging-column {
+    opacity: 0.45;
+  }
+
   .kanban-column-settings {
     width: 26px;
     height: 26px;
@@ -422,11 +445,23 @@
     </div>
 
     {% for column in kanban_columns %}
-      <div class="kanban-column" data-status="{{ column.key }}" data-label="{{ column.label }}">
+      {% if column.priority_filter == 1 %}
+        {% set column_criterion = 'Prioridad: Alta' %}
+      {% elif column.priority_filter == 2 %}
+        {% set column_criterion = 'Prioridad: Media' %}
+      {% elif column.priority_filter == 3 %}
+        {% set column_criterion = 'Prioridad: Baja' %}
+      {% elif column.priority_filter == 'none' %}
+        {% set column_criterion = 'Prioridad: Sin prioridad' %}
+      {% else %}
+        {% set column_criterion = column.expression or ('@' ~ column.tag_name) %}
+      {% endif %}
+      <div class="kanban-column" data-status="{{ column.key }}" data-column-key="{{ column.key }}" data-label="{{ column.label }}">
         <div class="kanban-column-header">
           <span class="kanban-column-heading">
-            <button class="kanban-column-settings" type="button" data-key="{{ column.key }}" data-label="{{ column.label }}" data-tag-name="{{ column.tag_name }}" title="Configurar {{ column.label }}" aria-label="Configurar {{ column.label }}">&#9881;</button>
-            <span class="kanban-column-title">{{ column.label }}</span>
+            <span class="kanban-column-drag-handle" draggable="true" title="Arrastrar para reordenar {{ column.label }}" aria-label="Arrastrar para reordenar {{ column.label }}" role="button"><span class="kanban-column-drag-handle-dot"></span><span class="kanban-column-drag-handle-dot"></span><span class="kanban-column-drag-handle-dot"></span><span class="kanban-column-drag-handle-dot"></span></span>
+            <button class="kanban-column-settings" type="button" data-key="{{ column.key }}" data-label="{{ column.label }}" data-expression="{{ column.expression or ('@' ~ column.tag_name if column.tag_name else '') }}" data-priority-filter="{{ column.priority_filter if column.priority_filter is not none else '' }}" title="Configurar {{ column.label }}" aria-label="Configurar {{ column.label }}">&#9881;</button>
+            <span class="kanban-column-title" title="{{ column_criterion }}">{{ column.label }}</span>
           </span>
           <span class="kanban-counter">{{ kanban_counts.get(column.key, 0) }}</span>
         </div>
@@ -465,15 +500,25 @@
   <form id="kanbanTagForm" method="dialog">
     <div>
       <strong id="kanbanTagDialogTitle">Configurar card</strong>
-      <div class="muted" style="margin-top:6px;">Las tareas con esta etiqueta aparecerán en esta card.</div>
+      <div class="muted" style="margin-top:6px;">Usa etiquetas con ^ (AND), | (OR) y ! (NOT), o una prioridad.</div>
     </div>
     <div>
       <label for="kanbanColumnLabel">Nombre de la card</label>
       <input id="kanbanColumnLabel" name="label" type="text" maxlength="60" required autocomplete="off" />
     </div>
     <div>
-      <label for="kanbanTagName">Etiqueta</label>
-      <input id="kanbanTagName" class="js-tag-autocomplete" name="tag_name" type="text" maxlength="80" required autocomplete="off" />
+      <label for="kanbanExpression">Expresión de etiquetas</label>
+      <input id="kanbanExpression" class="js-tag-autocomplete" name="expression" type="text" maxlength="200" placeholder="@Casa ^ !@EnEspera | @Urgente" autocomplete="off" />
+    </div>
+    <div>
+      <label for="kanbanPriorityFilter">O prioridad</label>
+      <select id="kanbanPriorityFilter" class="kanban-filter-select" name="priority_filter">
+        <option value="">(usar expresión)</option>
+        <option value="1">Alta</option>
+        <option value="2">Media</option>
+        <option value="3">Baja</option>
+        <option value="none">Sin prioridad</option>
+      </select>
     </div>
     <div class="kanban-tag-dialog-actions">
       <button id="kanbanTagDelete" class="btn btn-danger-soft" type="button">Eliminar tarjeta</button>
@@ -495,7 +540,17 @@
     </div>
     <div>
       <label for="kanbanNewColumnTag">Etiqueta</label>
-      <input id="kanbanNewColumnTag" class="js-tag-autocomplete" name="tag_name" type="text" maxlength="80" required autocomplete="off" placeholder="@MiEtiqueta" />
+      <input id="kanbanNewColumnExpression" class="js-tag-autocomplete" name="expression" type="text" maxlength="200" autocomplete="off" placeholder="@MiEtiqueta ^ !@Otra" />
+    </div>
+    <div>
+      <label for="kanbanNewColumnPriority">O prioridad</label>
+      <select id="kanbanNewColumnPriority" class="kanban-filter-select" name="priority_filter">
+        <option value="">(usar expresión)</option>
+        <option value="1">Alta</option>
+        <option value="2">Media</option>
+        <option value="3">Baja</option>
+        <option value="none">Sin prioridad</option>
+      </select>
     </div>
     <div class="kanban-tag-dialog-actions">
       <button id="kanbanAddColumnCancel" class="btn btn-soft" type="button">Cancelar</button>
@@ -545,6 +600,7 @@
   const kanbanStatusUrlTemplate = "{{ url_for('api_task_kanban_status', task_id=0) }}";
   const kanbanColumnsCreateUrl = "{{ url_for('api_kanban_column_create') }}";
   const kanbanColumnUrlTemplate = "{{ url_for('api_kanban_column_update', key='__key__') }}";
+  const kanbanColumnsReorderUrl = "{{ url_for('api_kanban_columns_reorder') }}";
   const kanbanPanelsCreateUrl = "{{ url_for('api_kanban_panel_create') }}";
   const kanbanPanelRenameUrlTemplate = "{{ url_for('api_kanban_panel_rename', key='__key__') }}";
   const kanbanPanelActivateUrlTemplate = "{{ url_for('api_kanban_panel_activate', key='__key__') }}";
@@ -566,12 +622,14 @@
   const kanbanTagForm = document.getElementById('kanbanTagForm');
   const kanbanTagDelete = document.getElementById('kanbanTagDelete');
   const kanbanColumnLabel = document.getElementById('kanbanColumnLabel');
-  const kanbanTagName = document.getElementById('kanbanTagName');
+  const kanbanExpression = document.getElementById('kanbanExpression');
+  const kanbanPriorityFilter = document.getElementById('kanbanPriorityFilter');
   const kanbanTagDialogTitle = document.getElementById('kanbanTagDialogTitle');
   const kanbanAddColumnDialog = document.getElementById('kanbanAddColumnDialog');
   const kanbanAddColumnForm = document.getElementById('kanbanAddColumnForm');
   const kanbanNewColumnLabel = document.getElementById('kanbanNewColumnLabel');
-  const kanbanNewColumnTag = document.getElementById('kanbanNewColumnTag');
+  const kanbanNewColumnExpression = document.getElementById('kanbanNewColumnExpression');
+  const kanbanNewColumnPriority = document.getElementById('kanbanNewColumnPriority');
   let configuredKey = null;
 
   function getTaskStatusUrl(taskId) {
@@ -748,7 +806,8 @@
       configuredKey = button.dataset.key;
       kanbanTagDialogTitle.textContent = `Configurar ${button.dataset.label}`;
       kanbanColumnLabel.value = button.dataset.label;
-      kanbanTagName.value = `@${button.dataset.tagName}`;
+      kanbanExpression.value = button.dataset.expression || '';
+      kanbanPriorityFilter.value = button.dataset.priorityFilter || '';
       kanbanTagDialog.showModal();
       kanbanColumnLabel.focus();
       kanbanColumnLabel.select();
@@ -768,7 +827,7 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ label: kanbanColumnLabel.value, tag_name: kanbanTagName.value }),
+        body: JSON.stringify({ label: kanbanColumnLabel.value, expression: kanbanExpression.value, priority_filter: kanbanPriorityFilter.value }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.ok) {
@@ -801,7 +860,8 @@
 
   function openAddColumnDialog() {
     kanbanNewColumnLabel.value = '';
-    kanbanNewColumnTag.value = '';
+    kanbanNewColumnExpression.value = '';
+    kanbanNewColumnPriority.value = '';
     kanbanAddColumnDialog.showModal();
     kanbanNewColumnLabel.focus();
   }
@@ -820,7 +880,7 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ label: kanbanNewColumnLabel.value, tag_name: kanbanNewColumnTag.value }),
+        body: JSON.stringify({ label: kanbanNewColumnLabel.value, expression: kanbanNewColumnExpression.value, priority_filter: kanbanNewColumnPriority.value }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.ok) {
@@ -833,6 +893,7 @@
   });
 
   let draggedTaskId = null;
+  let draggedKanbanColumn = null;
 
   function updateColumnCounter(column) {
     if (!column) return;
@@ -859,6 +920,7 @@
 
   document.querySelectorAll('.kanban-card').forEach((card) => {
     card.addEventListener('dragstart', (event) => {
+      draggedKanbanColumn = null;
       const taskId = Number(card.dataset.taskId);
       draggedTaskId = Number.isFinite(taskId) ? taskId : null;
       event.dataTransfer.effectAllowed = 'move';
@@ -876,6 +938,22 @@
         cardEl.style.opacity = '1';
         cardEl.classList.remove('dragging');
       });
+    });
+  });
+
+  document.querySelectorAll('.kanban-column-drag-handle').forEach((handle) => {
+    handle.addEventListener('dragstart', (event) => {
+      draggedTaskId = null;
+      draggedKanbanColumn = handle.closest('.kanban-column');
+      if (!draggedKanbanColumn) return;
+      draggedKanbanColumn.classList.add('dragging-column');
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('application/x-gtd-kanban-column', draggedKanbanColumn.dataset.columnKey || '');
+    });
+
+    handle.addEventListener('dragend', () => {
+      if (draggedKanbanColumn) draggedKanbanColumn.classList.remove('dragging-column');
+      draggedKanbanColumn = null;
     });
   });
 
@@ -906,6 +984,33 @@
       event.preventDefault();
       event.stopPropagation();
       column.classList.remove('drag-over');
+
+      if (draggedKanbanColumn) {
+        const sourceColumn = draggedKanbanColumn;
+        draggedKanbanColumn = null;
+        sourceColumn.classList.remove('dragging-column');
+        if (column.dataset.status === 'inbox' || sourceColumn === column) return;
+
+        const grid = column.closest('.kanban-columns');
+        grid.insertBefore(sourceColumn, column);
+        const keys = Array.from(grid.querySelectorAll('.kanban-column:not([data-status="inbox"])'))
+          .map((item) => item.dataset.columnKey);
+        try {
+          const response = await fetch(kanbanColumnsReorderUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ keys }),
+          });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok || !data.ok) throw new Error(data.error || 'No se pudo reordenar las cards');
+          window.location.reload();
+        } catch (error) {
+          alert(error.message || 'No se pudo reordenar las cards');
+          window.location.reload();
+        }
+        return;
+      }
 
       const taskId = getDraggedTaskIdFromEvent(event);
       if (taskId === null || taskId === undefined) {

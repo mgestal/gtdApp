@@ -198,7 +198,7 @@
                 <div class="filter-task-title" style="font-weight:600;">
                   <span class="filter-task-title-text">{{ t.title | linkify_title }}</span>
                   {% if t.notes %}
-                    <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('next_actions')) }}"
+                    <a href="{{ url_for('task_edit', task_id=t.id, next=request.full_path) }}"
                        title="{{ t.notes }}"
                        style="text-decoration:none; font-size:0.9rem; opacity:.75; flex:0 0 auto;">
                       📝
@@ -277,7 +277,7 @@
             </td>
 
             <td class="actions">
-              <a class="btn btn-soft" href="{{ url_for('task_edit', task_id=t.id) }}"> ✎ </a>
+              <a class="btn btn-soft" href="{{ url_for('task_edit', task_id=t.id, next=request.full_path) }}"> ✎ </a>
               <form method="post" action="{{ url_for('task_delete', task_id=t.id) }}" style="display:inline;">
                 <button class="btn btn-soft" onclick="return confirm('¿Borrar esta tarea?');"> 🗑 </button>
               </form>

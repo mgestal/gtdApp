@@ -167,6 +167,7 @@
     .project-kanban-task-title {
       color: var(--text);
       font-weight: 700;
+      font-size: 14px;
       text-decoration: none;
     }
 
@@ -204,6 +205,43 @@
       color: var(--muted);
       font-size: 12px;
       padding: 8px 2px;
+    }
+
+    .project-board-rename-dialog {
+      width: min(92vw, 380px);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0;
+      color: var(--text);
+    }
+
+    .project-board-rename-dialog form {
+      display: grid;
+      gap: 14px;
+      padding: 20px;
+    }
+
+    .project-board-rename-dialog input {
+      width: 100%;
+      min-height: 38px;
+      margin-top: 6px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0 10px;
+      color: var(--text);
+    }
+
+    .project-board-rename-dialog label {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+    }
+
+    .project-board-rename-actions {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 8px;
     }
 
     @media (max-width: 768px) {
@@ -380,6 +418,22 @@
         <div class="empty">Configura cards en Kanban para mostrar el tablero del proyecto.</div>
       {% endif %}
     </div>
+
+    <dialog id="projectBoardRenameDialog" class="project-board-rename-dialog">
+      <form id="projectBoardRenameForm" method="dialog">
+        <div>
+          <strong>Renombrar columna</strong>
+        </div>
+        <div>
+          <label for="projectBoardRenameLabel">Nombre de la columna</label>
+          <input id="projectBoardRenameLabel" name="label" type="text" maxlength="80" required autocomplete="off" />
+        </div>
+        <div class="project-board-rename-actions">
+          <button id="projectBoardRenameCancel" class="btn btn-soft" type="button">Cancelar</button>
+          <button class="btn btn-primary" type="submit">Guardar</button>
+        </div>
+      </form>
+    </dialog>
   {% endif %}
 
 
@@ -674,8 +728,12 @@
       const columnUrl = "{{ url_for('api_project_board_column_update', project_id=project.id, key='__key__') }}";
       const reorderUrl = "{{ url_for('api_project_board_columns_reorder', project_id=project.id) }}";
       const taskUrl = "{{ url_for('api_project_board_task_status', project_id=project.id, task_id=0) }}";
+      const renameDialog = document.getElementById('projectBoardRenameDialog');
+      const renameForm = document.getElementById('projectBoardRenameForm');
+      const renameLabel = document.getElementById('projectBoardRenameLabel');
       let draggedTask = null;
       let draggedColumn = null;
+      let renameColumnKey = null;
 
       const requestJson = async (url, options) => {
         const response = await fetch(url, options);
@@ -701,14 +759,31 @@
       });
 
       document.querySelectorAll('.js-project-board-column-rename').forEach((button) => {
-        button.addEventListener('click', async () => {
-          const label = window.prompt('Nombre de la columna', button.dataset.label);
-          if (!label || label === button.dataset.label) return;
-          try {
-            await requestJson(columnUrl.replace('__key__', button.dataset.key), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ label }) });
-            window.location.reload();
-          } catch (error) { alert(error.message); }
+        button.addEventListener('click', () => {
+          renameColumnKey = button.dataset.key;
+          renameLabel.value = button.dataset.label || '';
+          renameDialog.showModal();
+          renameLabel.focus();
+          renameLabel.select();
         });
+      });
+
+      document.getElementById('projectBoardRenameCancel').addEventListener('click', () => {
+        renameDialog.close();
+      });
+
+      renameForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const label = renameLabel.value.trim();
+        if (!renameColumnKey || !label) return;
+        try {
+          await requestJson(columnUrl.replace('__key__', renameColumnKey), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ label }),
+          });
+          window.location.reload();
+        } catch (error) { alert(error.message); }
       });
 
       document.querySelectorAll('.js-project-board-column-delete').forEach((button) => {

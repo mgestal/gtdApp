@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "partials/postpone_btn.html" import postpone_btn %}
 {% block content %}
 
 <style>
@@ -86,6 +87,7 @@
 
     .week-table th:nth-child(1){ width:52px !important; }
     .week-table th:nth-child(5){ width:70px !important; }
+    .week-table-overdue th:nth-child(5){ width:112px !important; }
 
     .week-table th,
     .week-table td{
@@ -127,14 +129,14 @@
 
   {% if overdue_rows and overdue_rows|length > 0 %}
     <div class="table-wrap-responsive week-table-wrap">
-      <table class="table week-table">
+      <table class="table week-table week-table-overdue">
         <thead>
           <tr>
             <th style="width:58px;"></th>
             <th>Tarea</th>
             <th style="width:110px;">Fecha</th>
             <th style="width:180px;">Ubicación</th>
-            <th style="width:95px;"></th>
+            <th style="width:150px;"></th>
           </tr>
         </thead>
         <tbody>
@@ -256,7 +258,8 @@
                 {% endif %}
               </td>
 
-              <td class="actions" style="text-align:right;">
+              <td class="actions" style="text-align:right; flex-wrap:nowrap; white-space:nowrap;">
+                {{ postpone_btn(t.id, url_for('week')) }}
                 <a class="btn btn-soft" href="{{ url_for('task_edit', task_id=t.id, next=url_for('week')) }}">✎</a>
                 <form method="post" action="{{ url_for('task_delete', task_id=t.id) }}" style="display:inline;">
                   <input type="hidden" name="next" value="{{ url_for('week') }}">

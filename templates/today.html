@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "partials/postpone_btn.html" import postpone_btn %}
 {% block content %}
 
   <style>
@@ -31,7 +32,7 @@
     }
 
     .today-actions-cell {
-      width: 82px;
+      width: 120px;
       padding-left: 6px;
     }
 
@@ -51,7 +52,7 @@
       }
 
       .today-actions-cell {
-        width: 64px;
+        width: 96px;
         padding-left: 2px;
       }
     }
@@ -272,6 +273,7 @@
             </td>
 
             <td class="actions today-actions-cell">
+              {{ postpone_btn(t.id, request.full_path) }}
               <a class="btn btn-soft" href="{{ url_for('task_edit', task_id=t.id, next=request.full_path) }}">✎</a>
               <form method="post" action="{{ url_for('task_delete', task_id=t.id) }}" style="display:inline;">
                 <button class="btn btn-soft" onclick="return confirm('¿Borrar esta tarea?');">🗑</button>

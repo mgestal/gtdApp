@@ -549,6 +549,19 @@ code{
 
 .actions form{ margin:0; }
 
+.postpone-menu{
+  position:fixed; z-index:1000; min-width:160px;
+  background:#fff; border:1px solid var(--border); border-radius:10px;
+  box-shadow:0 6px 18px rgba(0,0,0,.15); padding:4px;
+  flex-direction:column; gap:2px; text-align:left;
+}
+.postpone-menu:not([hidden]){ display:flex; }
+.postpone-menu button{
+  width:100%; text-align:left; background:none; border:0; padding:7px 10px;
+  border-radius:6px; cursor:pointer; font:inherit; color:inherit;
+}
+.postpone-menu button:hover{ background:var(--panel2); }
+
 .task-title-row{
   display:flex;
   align-items:flex-start;

@@ -6505,6 +6505,65 @@ def task_delete(task_id: int):
     return redirect(next_url)
 
 
+def _add_months(d: date, months: int) -> date:
+    m = d.month - 1 + months
+    y = d.year + m // 12
+    m = m % 12 + 1
+    return date(y, m, min(d.day, calendar.monthrange(y, m)[1]))
+
+
+@app.route("/tasks/<int:task_id>/postpone", methods=["POST"])
+def task_postpone(task_id: int):
+    task = q1("SELECT id, due_date FROM tasks WHERE id=%s", (task_id,))
+    if not task:
+        abort(404)
+
+    today = _today_madrid()
+    base = task.get("due_date")
+    if isinstance(base, datetime):
+        base = base.date()
+    if not isinstance(base, date):
+        base = today
+
+    mode = (request.form.get("mode") or "").strip().lower()
+    new_due: Optional[date] = None
+
+    if mode == "tomorrow":
+        new_due = today + timedelta(days=1)
+    elif mode == "monday":
+        new_due = today + timedelta(days=7 - today.weekday())
+    elif mode == "week":
+        new_due = base + timedelta(days=7)
+        while new_due <= today:
+            new_due += timedelta(days=7)
+    elif mode == "month":
+        n = 1
+        new_due = _add_months(base, n)
+        while new_due <= today:
+            n += 1
+            new_due = _add_months(base, n)
+    elif mode == "manual":
+        try:
+            new_due = datetime.strptime((request.form.get("date") or "").strip(), "%Y-%m-%d").date()
+        except ValueError:
+            new_due = None
+
+    if new_due is None:
+        flash("Fecha de aplazamiento no válida.", "error")
+        return redirect(safe_next_url(request.form.get("next"), "home"))
+
+    try:
+        exec_sql("UPDATE tasks SET due_date=%s WHERE id=%s", (new_due, task_id))
+        _mark_task_calendar_dirty(task_id)
+        commit()
+        flash(f"Tarea pospuesta al {new_due.strftime('%d-%m-%Y')}.", "ok")
+    except Exception as e:
+        rollback()
+        app.logger.exception("task_postpone failed for task_id=%s", task_id)
+        flash(f"No se pudo posponer la tarea: {e}", "error")
+
+    return redirect(safe_next_url(request.form.get("next"), "home"))
+
 
 @app.route("/tasks/<int:task_id>/toggle", methods=["POST"])
 def task_toggle(task_id: int):

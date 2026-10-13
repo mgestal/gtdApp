@@ -1,0 +1,4 @@
+{% macro postpone_btn(task_id, next_url) %}
+<button type="button" class="btn btn-soft postpone-btn" title="Posponer" aria-label="Posponer" aria-haspopup="true"
+        data-action="{{ url_for('task_postpone', task_id=task_id) }}" data-next="{{ next_url }}">➜</button>
+{% endmacro %}

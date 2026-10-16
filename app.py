@@ -9189,6 +9189,21 @@ def admin():
                 return redirect(url_for("admin"))
 
 
+        if action in ("move_kanban_subcard_up", "move_kanban_subcard_down"):
+            cfg = load_config()
+            subcards = _kanban_subcard_definitions()
+            key = (request.form.get("subcard_key") or "").strip()
+            index = next((i for i, sc in enumerate(subcards) if sc["key"] == key), None) if key else None
+            if index is None:
+                flash("Selecciona una subcard existente para moverla.", "error")
+                return redirect(url_for("admin"))
+            target = index - 1 if action.endswith("_up") else index + 1
+            if 0 <= target < len(subcards):
+                subcards[index], subcards[target] = subcards[target], subcards[index]
+                cfg.setdefault("kanban", {})["subcards"] = subcards
+                save_config(cfg)
+            return redirect(url_for("admin", subcard=key))
+
         if action in ("save_kanban_subcard", "delete_kanban_subcard"):
             cfg = load_config()
             subcards = _kanban_subcard_definitions()
@@ -9230,7 +9245,7 @@ def admin():
             cfg.setdefault("kanban", {})["subcards"] = subcards
             save_config(cfg)
             flash(f"Subcard «{label}» guardada.", "ok")
-            return redirect(url_for("admin"))
+            return redirect(url_for("admin", subcard=key))
 
         if action == "save_nextaction_behavior":
             cfg = load_config()
@@ -9581,6 +9596,7 @@ def admin():
         "admin.html",
         cfg=cfg,
         kanban_subcards=_kanban_subcard_definitions(),
+        selected_kanban_subcard=request.args.get("subcard", ""),
         is_admin=admin_required(),
         api_tokens=api_tokens,
         env_pwd_set=env_pwd_set,

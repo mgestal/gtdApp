@@ -195,7 +195,7 @@
             <select class="input" id="kanbanSubcardSelect">
               <option value="">&lt;&lt;crear nueva&gt;&gt;</option>
               {% for sc in kanban_subcards %}
-                <option value="{{ sc.key }}" data-label="{{ sc.label }}" data-folder="{{ sc.folder_name }}" data-tag="{{ sc.tag_key }}">{{ sc.label }}</option>
+                <option value="{{ sc.key }}" {% if sc.key == selected_kanban_subcard %}selected{% endif %} data-label="{{ sc.label }}" data-folder="{{ sc.folder_name }}" data-tag="{{ sc.tag_key }}">{{ sc.label }}</option>
               {% endfor %}
             </select>
 
@@ -208,10 +208,12 @@
             <label class="label" for="kanbanSubcardTag" style="margin-top:10px;">Tag key</label>
             <input class="input" id="kanbanSubcardTag" name="subcard_tag_key" placeholder="Ej.: agenda">
 
-            <div class="hint">Se necesita al menos carpeta raíz o tag_key. Las subcards se muestran en el orden de este desplegable; las nuevas se añaden al final.</div>
+            <div class="hint">Se necesita al menos carpeta raíz o tag_key. Las subcards se muestran en el orden de este desplegable (usa Subir/Bajar para cambiarlo); las nuevas se añaden al final.</div>
 
             <div class="row" style="margin-top:10px; gap:8px;">
               <button class="btn btn-primary" type="submit" name="action" value="save_kanban_subcard">Guardar</button>
+              <button class="btn btn-soft" type="submit" name="action" value="move_kanban_subcard_up" id="kanbanSubcardUp" title="Subir">↑ Subir</button>
+              <button class="btn btn-soft" type="submit" name="action" value="move_kanban_subcard_down" id="kanbanSubcardDown" title="Bajar">↓ Bajar</button>
               <button class="btn btn-danger" type="submit" name="action" value="delete_kanban_subcard" id="kanbanSubcardDelete" formnovalidate onclick="return confirm('¿Borrar la subcard seleccionada?');">Borrar</button>
             </div>
           </form>
@@ -230,6 +232,9 @@
                 folder.value = opt.dataset.folder || '';
                 tag.value = opt.dataset.tag || '';
                 del.disabled = !select.value;
+                const idx = select.selectedIndex;
+                document.getElementById('kanbanSubcardUp').disabled = !select.value || idx <= 1;
+                document.getElementById('kanbanSubcardDown').disabled = !select.value || idx >= select.options.length - 1;
               }
               select.addEventListener('change', sync);
               sync();

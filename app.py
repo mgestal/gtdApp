@@ -72,6 +72,14 @@ BASE_DIR = Path(__file__).resolve().parent
 INSTANCE_DIR = BASE_DIR / "instance"
 CONFIG_PATH = INSTANCE_DIR / "config.json"
 
+DEFAULT_KANBAN_SUBCARDS = [
+    {"key": "agenda", "label": "Agenda", "folder_name": "🗃️ Agenda", "tag_key": "agenda"},
+    {"key": "rutinas", "label": "♲ Rutinas", "folder_name": "♲ Rutinas", "tag_key": ""},
+    {"key": "en-espera", "label": "EnEspera", "folder_name": "EnEspera", "tag_key": ""},
+    {"key": "seguimiento", "label": "Seguimiento", "folder_name": "Seguimiento", "tag_key": ""},
+    {"key": "sometime", "label": "Sometime", "folder_name": "Sometime", "tag_key": ""},
+]
+
 DEFAULT_CONFIG = {
     "db": {
         "host": "127.0.0.1",
@@ -94,6 +102,7 @@ DEFAULT_CONFIG = {
             {"key": "doing", "label": "En proceso", "tag_name": "enCurso"},
             {"key": "waiting", "label": "Esperando", "tag_name": "EnEspera"},
         ],
+        "subcards": DEFAULT_KANBAN_SUBCARDS,
     },
 }
 
@@ -3745,6 +3754,33 @@ def _project_board_column_key(label: str, columns: List[Dict[str, str]]) -> str:
     return key
 
 
+def _kanban_subcard_definitions() -> List[Dict[str, str]]:
+    raw = (load_config().get("kanban") or {}).get("subcards")
+    if not isinstance(raw, list):
+        raw = DEFAULT_KANBAN_SUBCARDS
+    definitions: List[Dict[str, str]] = []
+    used_keys: set = set()
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        label = str(item.get("label") or "").strip()
+        if not label:
+            continue
+        base_key = re.sub(r"[^a-z0-9]+", "-", normalize_tag_key(item.get("key") or label)).strip("-") or "subcard"
+        key, suffix = base_key, 2
+        while key in used_keys:
+            key = f"{base_key}-{suffix}"
+            suffix += 1
+        used_keys.add(key)
+        definitions.append({
+            "key": key,
+            "label": label,
+            "folder_name": str(item.get("folder_name") or "").strip(),
+            "tag_key": normalize_tag_key(str(item.get("tag_key") or "")),
+        })
+    return definitions
+
+
 @app.route("/kanban")
 def kanban():
     recurring_due_join, effective_due_expr = recurring_effective_due_sql("t")
@@ -3803,9 +3839,8 @@ def kanban():
         tasks_by_status[col["key"]] = []
 
     folder_group_definitions = [
-        {"key": "en-espera", "label": "EnEspera", "folder_ids": set()},
-        {"key": "seguimiento", "label": "Seguimiento", "folder_ids": set()},
-        {"key": "sometime", "label": "Sometime", "folder_ids": set()},
+        {**definition, "folder_ids": set()}
+        for definition in _kanban_subcard_definitions()
     ]
     kanban_folder_groups = {
         col["key"]: [
@@ -3814,13 +3849,14 @@ def kanban():
         ]
         for col in kanban_columns
     }
+    task_tags_by_id = load_tags_map([int(task["id"]) for task in active_rows])
 
     for group in folder_group_definitions:
-        folder_name = group["label"].lstrip("@")
+        folder_name = (group.get("folder_name") or "").replace("@", "")
         root_folder = q1(
             "SELECT id FROM folders WHERE LOWER(REPLACE(name, '@', ''))=LOWER(%s) LIMIT 1",
             (folder_name,),
-        )
+        ) if folder_name else None
         if root_folder and root_folder.get("id") is not None:
             group["folder_ids"] = get_folder_tree_ids(int(root_folder["id"]))
             for status_groups in kanban_folder_groups.values():
@@ -3829,14 +3865,25 @@ def kanban():
 
     for task in active_rows:
         context_folder_id = task.get("context_folder_id")
+        task_tag_names = {
+            normalize_tag_key(tag["name"])
+            for tag in task_tags_by_id.get(int(task["id"]), [])
+        }
         folder_group_definition = next(
             (
                 group for group in folder_group_definitions
-                if context_folder_id is not None and context_folder_id in group["folder_ids"]
+                if (
+                    context_folder_id is not None and context_folder_id in group["folder_ids"]
+                ) or (
+                    group.get("tag_key") and group["tag_key"] in task_tag_names
+                )
             ),
             None,
         )
-        matching_column = next((col for col in kanban_columns if _kanban_column_matches_task(col, task)), None)
+        matching_column = next(
+            (col for col in kanban_columns if _kanban_column_matches_task(col, task, task_tag_names)),
+            None,
+        )
         matching_status = matching_column["key"] if matching_column else None
 
         if folder_group_definition and matching_status in kanban_folder_groups:
@@ -9142,6 +9189,49 @@ def admin():
                 return redirect(url_for("admin"))
 
 
+        if action in ("save_kanban_subcard", "delete_kanban_subcard"):
+            cfg = load_config()
+            subcards = _kanban_subcard_definitions()
+            key = (request.form.get("subcard_key") or "").strip()
+            index = next((i for i, sc in enumerate(subcards) if sc["key"] == key), None) if key else None
+
+            if action == "delete_kanban_subcard":
+                if index is None:
+                    flash("Selecciona una subcard existente para borrarla.", "error")
+                else:
+                    removed = subcards.pop(index)
+                    cfg.setdefault("kanban", {})["subcards"] = subcards
+                    save_config(cfg)
+                    flash(f"Subcard «{removed['label']}» borrada.", "ok")
+                return redirect(url_for("admin"))
+
+            label = (request.form.get("subcard_label") or "").strip()
+            folder_name = (request.form.get("subcard_folder_name") or "").strip()
+            tag_key = (request.form.get("subcard_tag_key") or "").strip().lstrip("@")
+            if not label:
+                flash("El nombre de la subcard es obligatorio.", "error")
+                return redirect(url_for("admin"))
+            if not folder_name and not tag_key:
+                flash(f"La subcard «{label}» necesita una carpeta raíz o una tag_key.", "error")
+                return redirect(url_for("admin"))
+
+            if index is None:
+                used_keys = {sc["key"] for sc in subcards}
+                base_key = re.sub(r"[^a-z0-9]+", "-", normalize_tag_key(label)).strip("-") or "subcard"
+                new_key, suffix = base_key, 2
+                while new_key in used_keys:
+                    new_key = f"{base_key}-{suffix}"
+                    suffix += 1
+                key = new_key
+                subcards.append({"key": key, "label": label, "folder_name": folder_name, "tag_key": tag_key})
+            else:
+                subcards[index].update({"label": label, "folder_name": folder_name, "tag_key": tag_key})
+
+            cfg.setdefault("kanban", {})["subcards"] = subcards
+            save_config(cfg)
+            flash(f"Subcard «{label}» guardada.", "ok")
+            return redirect(url_for("admin"))
+
         if action == "save_nextaction_behavior":
             cfg = load_config()
             appcfg = cfg.setdefault("app", {})
@@ -9490,6 +9580,7 @@ def admin():
     return render_template(
         "admin.html",
         cfg=cfg,
+        kanban_subcards=_kanban_subcard_definitions(),
         is_admin=admin_required(),
         api_tokens=api_tokens,
         env_pwd_set=env_pwd_set,

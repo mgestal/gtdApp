@@ -183,6 +183,63 @@
         <div class="card" style="margin-bottom:20px;">
           <div class="card-header">
             <div>
+              <div class="card-title">Subcards del Kanban</div>
+              <div class="card-sub">Grupos que se muestran dentro de las cards, en este orden. Una tarea entra en un grupo si está en la carpeta raíz (o sus subcarpetas) o tiene la tag_key como etiqueta.</div>
+            </div>
+          </div>
+
+          <form method="post" class="form" id="kanbanSubcardForm">
+            <input type="hidden" name="subcard_key" id="kanbanSubcardKey" value="">
+
+            <label class="label" for="kanbanSubcardSelect">Subcard</label>
+            <select class="input" id="kanbanSubcardSelect">
+              <option value="">&lt;&lt;crear nueva&gt;&gt;</option>
+              {% for sc in kanban_subcards %}
+                <option value="{{ sc.key }}" data-label="{{ sc.label }}" data-folder="{{ sc.folder_name }}" data-tag="{{ sc.tag_key }}">{{ sc.label }}</option>
+              {% endfor %}
+            </select>
+
+            <label class="label" for="kanbanSubcardLabel" style="margin-top:10px;">Nombre de la subcard</label>
+            <input class="input" id="kanbanSubcardLabel" name="subcard_label" placeholder="Ej.: Agenda">
+
+            <label class="label" for="kanbanSubcardFolder" style="margin-top:10px;">Carpeta raíz</label>
+            <input class="input" id="kanbanSubcardFolder" name="subcard_folder_name" placeholder="Ej.: 🗃️ Agenda">
+
+            <label class="label" for="kanbanSubcardTag" style="margin-top:10px;">Tag key</label>
+            <input class="input" id="kanbanSubcardTag" name="subcard_tag_key" placeholder="Ej.: agenda">
+
+            <div class="hint">Se necesita al menos carpeta raíz o tag_key. Las subcards se muestran en el orden de este desplegable; las nuevas se añaden al final.</div>
+
+            <div class="row" style="margin-top:10px; gap:8px;">
+              <button class="btn btn-primary" type="submit" name="action" value="save_kanban_subcard">Guardar</button>
+              <button class="btn btn-danger" type="submit" name="action" value="delete_kanban_subcard" id="kanbanSubcardDelete" formnovalidate onclick="return confirm('¿Borrar la subcard seleccionada?');">Borrar</button>
+            </div>
+          </form>
+          <script>
+            (function () {
+              const select = document.getElementById('kanbanSubcardSelect');
+              const key = document.getElementById('kanbanSubcardKey');
+              const label = document.getElementById('kanbanSubcardLabel');
+              const folder = document.getElementById('kanbanSubcardFolder');
+              const tag = document.getElementById('kanbanSubcardTag');
+              const del = document.getElementById('kanbanSubcardDelete');
+              function sync() {
+                const opt = select.options[select.selectedIndex];
+                key.value = select.value;
+                label.value = opt.dataset.label || '';
+                folder.value = opt.dataset.folder || '';
+                tag.value = opt.dataset.tag || '';
+                del.disabled = !select.value;
+              }
+              select.addEventListener('change', sync);
+              sync();
+            })();
+          </script>
+        </div>
+
+        <div class="card" style="margin-bottom:20px;">
+          <div class="card-header">
+            <div>
               <div class="card-title">Consola SQL</div>
               <div class="card-sub">Abre la vista dedicada para ejecutar SQL de solo lectura con más ancho de tabla.</div>
             </div>
@@ -443,7 +500,7 @@
               ⚠️ Accede desde <strong>HTTPS</strong> para que funcione la renovación automática.
             </div>
             <div class="hint" style="margin-top:4px;">
-              Al pulsar "Renovar token", serás redirigido a Google para autorizar. La app completará la renovación automáticamente. La dirección de callback fallará por ser ip privada. Basta copiar la dirección y pegar en otra pestaña del navegador.
+              Al pulsar "Renovar token", serás redirigido a Google para autorizar. La app completará la renovación automáticamente. La dirección de callback fallará por ser ip privada. Basta copiar la dirección y pegar en otra pestaña del navegador (cambiando raspvinxeira por lanvinxeira).
             </div>
           </div>
         </div>

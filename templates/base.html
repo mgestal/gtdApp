@@ -73,7 +73,7 @@
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/emoji-icon-192.png') }}?v=3">
   <link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='icons/emoji-icon-192.png') }}?v=3">
   <link rel="shortcut icon" type="image/png" href="{{ url_for('static', filename='icons/emoji-icon-192.png') }}?v=3">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=3) }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=5) }}">
 
   <style>
 
@@ -282,24 +282,32 @@
           <span class="nav-count">{{ sidebar_counts.agenda }}</span>
         </a>
 
-        <a class="nav-item nav-item-count" href="{{ url_for('tags') }}">
-          <span>[T] Etiquetas</span>
-          <span class="nav-count">{{ sidebar_counts.tags }}</span>
-        </a>
+        <details class="nav-group" {% if request.endpoint in ['tags', 'filters_view', 'projects', 'folders'] %}open{% endif %}>
+          <summary class="nav-item nav-group-toggle">
+            <span>Organizar</span>
+            <span class="nav-group-chevron" aria-hidden="true">▸</span>
+          </summary>
+          <div class="nav-group-items">
+            <a class="nav-item nav-item-count nav-subitem" href="{{ url_for('tags') }}">
+              <span>[T] Etiquetas</span>
+              <span class="nav-count">{{ sidebar_counts.tags }}</span>
+            </a>
 
-        <a class="nav-item nav-item-count" href="{{ url_for('filters_view') }}">
-          <span>[F] Filtros</span>
-          <span class="nav-count">{{ sidebar_counts.filters }}</span>
-        </a>
-        
-        <a class="nav-item nav-item-count" href="{{ url_for('projects') }}">
-          <span>[P] Proyectos</span>
-          <span class="nav-count">{{ sidebar_counts.projects }}</span>
-        </a>
+            <a class="nav-item nav-item-count nav-subitem" href="{{ url_for('filters_view') }}">
+              <span>[F] Filtros</span>
+              <span class="nav-count">{{ sidebar_counts.filters }}</span>
+            </a>
 
-        <a class="nav-item" href="{{ url_for('folders') }}">
-          <span>[C] Carpetas</span>
-        </a>
+            <a class="nav-item nav-item-count nav-subitem" href="{{ url_for('projects') }}">
+              <span>[P] Proyectos</span>
+              <span class="nav-count">{{ sidebar_counts.projects }}</span>
+            </a>
+
+            <a class="nav-item nav-subitem" href="{{ url_for('folders') }}">
+              <span>[C] Carpetas</span>
+            </a>
+          </div>
+        </details>
 
         <form method="get" action="{{ url_for('search') }}" style="display:flex; gap:6px; margin:4px 0;">
           <input type="hidden" name="type" value="tasks">
@@ -353,15 +361,28 @@
         </div>
 
         <div class="side-tab-panel" id="sidePanelTags" data-side-panel="tags" hidden>
-          <div class="side-filter-list side-sortable-list" id="sideTagList" data-order-url="{{ url_for('api_sidebar_tags_order') }}">
-            {% for tag in sidebar_tags or [] %}
-              <div class="side-filter-item side-sort-item {% if current_tag_id and tag.id == current_tag_id %}side-filter-item-active{% endif %}" data-tag-id="{{ tag.id }}">
-                <span class="side-filter-handle side-sort-handle" draggable="true" title="Arrastrar para ordenar" aria-label="Arrastrar para ordenar"><i></i><i></i><i></i><i></i></span>
-                <a class="side-filter-link" href="{{ url_for('tag_detail', tag_id=tag.id) }}">
-                  <span class="tree-label">@{{ tag.name }}</span>
-                  <span class="pill">{{ tag.count }}</span>
-                </a>
-              </div>
+          <div class="side-tag-folders" id="sideTagList"
+               data-order-url="{{ url_for('api_sidebar_tags_order') }}"
+               data-type-url="{{ url_for('api_sidebar_tag_type', tag_id=0) }}">
+            {% for group in sidebar_tag_groups or [] %}
+              {% set has_current = current_tag_id and (group.tags | selectattr('id', 'equalto', current_tag_id) | list | length > 0) %}
+              <details class="side-tag-folder" data-tag-type="{{ group.type }}" data-folder-key="{{ group.type|lower if group.type else '__none__' }}" {% if has_current %}open{% endif %}>
+                <summary class="side-tag-folder-head">
+                  <span class="tree-label">📂 {{ group.type if group.type else 'Sin Tipo' }}</span>
+                  <span class="pill side-tag-folder-count">{{ group.tags|length }}</span>
+                </summary>
+                <div class="side-tag-folder-items">
+                  {% for tag in group.tags %}
+                    <div class="side-filter-item side-tag-item {% if current_tag_id and tag.id == current_tag_id %}side-filter-item-active{% endif %}" data-tag-id="{{ tag.id }}">
+                      <span class="side-filter-handle side-tag-handle" draggable="true" title="Arrastrar para ordenar o cambiar de tipo" aria-label="Arrastrar para ordenar o cambiar de tipo"><i></i><i></i><i></i><i></i></span>
+                      <a class="side-filter-link" href="{{ url_for('tag_detail', tag_id=tag.id) }}">
+                        <span class="tree-label">@{{ tag.name }}</span>
+                        <span class="pill">{{ tag.count }}</span>
+                      </a>
+                    </div>
+                  {% endfor %}
+                </div>
+              </details>
             {% else %}
               <div class="hint" style="padding:6px 4px;">No hay etiquetas creadas.</div>
             {% endfor %}
@@ -570,6 +591,17 @@
         try { localStorage.setItem(KEY, t.dataset.sideTab); } catch (e) {}
       }));
 
+      async function postJson(url, body){
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify(body),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.error || 'No se pudo guardar el cambio');
+      }
+
       document.querySelectorAll('.side-sortable-list').forEach(list => {
         let dragged = null;
         list.querySelectorAll('.side-sort-item').forEach(item => {
@@ -593,17 +625,9 @@
             ev.preventDefault();
             const rect = item.getBoundingClientRect();
             list.insertBefore(dragged, ev.clientY > rect.top + rect.height / 2 ? item.nextSibling : item);
-            const attribute = list.id === 'sideTagList' ? 'tagId' : 'filterId';
-            const order = [...list.querySelectorAll('.side-sort-item')].map(el => Number(el.dataset[attribute]));
+            const order = [...list.querySelectorAll('.side-sort-item')].map(el => Number(el.dataset.filterId));
             try {
-              const res = await fetch(list.dataset.orderUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'same-origin',
-                body: JSON.stringify({ order }),
-              });
-              const data = await res.json().catch(() => ({}));
-              if (!res.ok || !data.ok) throw new Error(data.error || 'No se pudo guardar el orden');
+              await postJson(list.dataset.orderUrl, { order });
             } catch (e) {
               alert(e.message || 'No se pudo guardar el orden');
               window.location.reload();
@@ -611,6 +635,79 @@
           });
         });
       });
+
+      // Etiquetas agrupadas por tipo: arrastrar a otra carpeta cambia el tipo
+      const tagRoot = document.getElementById('sideTagList');
+      if (tagRoot) {
+        let dragged = null;
+        const folderOf = el => el.closest('.side-tag-folder');
+        const updateCounts = () => {
+          tagRoot.querySelectorAll('.side-tag-folder').forEach(f => {
+            f.querySelector('.side-tag-folder-count').textContent = f.querySelectorAll('.side-tag-item').length;
+          });
+        };
+        async function finishDrop(sourceFolder, targetFolder){
+          const tagId = Number(dragged.dataset.tagId);
+          const order = [...tagRoot.querySelectorAll('.side-tag-item')].map(el => Number(el.dataset.tagId));
+          updateCounts();
+          try {
+            if (sourceFolder !== targetFolder) {
+              await postJson(tagRoot.dataset.typeUrl.replace(/\/0\/type$/, '/' + tagId + '/type'), { type: targetFolder.dataset.tagType });
+            }
+            await postJson(tagRoot.dataset.orderUrl, { order });
+          } catch (e) {
+            alert(e.message || 'No se pudo guardar el cambio');
+            window.location.reload();
+          }
+        }
+        tagRoot.querySelectorAll('.side-tag-item').forEach(item => {
+          const handle = item.querySelector('.side-tag-handle');
+          handle.addEventListener('dragstart', ev => {
+            dragged = item;
+            item.classList.add('side-filter-dragging');
+            ev.dataTransfer.effectAllowed = 'move';
+            ev.dataTransfer.setData('text/plain', 'sidebar-tag:' + item.dataset.tagId);
+          });
+          handle.addEventListener('dragend', () => {
+            item.classList.remove('side-filter-dragging');
+            tagRoot.querySelectorAll('.side-tag-folder-drop').forEach(f => f.classList.remove('side-tag-folder-drop'));
+            dragged = null;
+          });
+          item.addEventListener('dragover', ev => {
+            if (!dragged || dragged === item) return;
+            ev.preventDefault();
+          });
+          item.addEventListener('drop', ev => {
+            if (!dragged || dragged === item) return;
+            ev.preventDefault();
+            ev.stopPropagation();
+            const sourceFolder = folderOf(dragged);
+            const targetFolder = folderOf(item);
+            const rect = item.getBoundingClientRect();
+            item.parentNode.insertBefore(dragged, ev.clientY > rect.top + rect.height / 2 ? item.nextSibling : item);
+            finishDrop(sourceFolder, targetFolder);
+          });
+        });
+        tagRoot.querySelectorAll('.side-tag-folder').forEach(folder => {
+          const head = folder.querySelector('.side-tag-folder-head');
+          head.addEventListener('dragover', ev => {
+            if (!dragged) return;
+            ev.preventDefault();
+            folder.classList.add('side-tag-folder-drop');
+          });
+          head.addEventListener('dragleave', () => folder.classList.remove('side-tag-folder-drop'));
+          head.addEventListener('drop', ev => {
+            if (!dragged) return;
+            ev.preventDefault();
+            folder.classList.remove('side-tag-folder-drop');
+            const sourceFolder = folderOf(dragged);
+            if (sourceFolder === folder) return;
+            folder.querySelector('.side-tag-folder-items').appendChild(dragged);
+            folder.open = true;
+            finishDrop(sourceFolder, folder);
+          });
+        });
+      }
     })();
 
     (function restoreTreeState(){

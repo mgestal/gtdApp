@@ -1444,6 +1444,35 @@ hr{
   color:#5c4549;
 }
 
+.nav-group-toggle{
+  list-style:none;
+  cursor:pointer;
+}
+
+.nav-group-toggle::-webkit-details-marker{ display:none; }
+.nav-group-toggle::marker{ content:""; }
+
+.nav-group-chevron{
+  color:var(--muted);
+  transition:transform .15s ease;
+}
+
+.nav-group[open] .nav-group-chevron{ transform:rotate(90deg); }
+
+.nav-group-items{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  margin:2px 0 2px 10px;
+  padding-left:8px;
+  border-left:1px solid var(--border);
+}
+
+.nav-subitem{
+  font-size:13px;
+  padding-left:10px !important;
+}
+
 /* ============================
    MODAL CENTRADO + ANIMADO
    ============================ */
@@ -1986,4 +2015,39 @@ hr{
   color:var(--text);
   text-decoration:none;
   font-size:14px;
+}
+
+.side-tag-folders{ display:flex; flex-direction:column; gap:4px; }
+
+.side-tag-folder-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  padding:5px 8px;
+  border-radius:10px;
+  background:#ffffff;
+  border:1px solid var(--border);
+  cursor:pointer;
+  font-size:14px;
+  font-weight:650;
+  list-style:none;
+}
+
+.side-tag-folder-head::-webkit-details-marker{ display:none; }
+
+.side-tag-folder-head:hover{ background:rgba(216,137,145,0.10); }
+
+.side-tag-folder-drop > .side-tag-folder-head{
+  background:rgba(216,137,145,0.25);
+  border-color:var(--accent3);
+}
+
+.side-tag-folder-items{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  margin:2px 0 4px 10px;
+  padding-left:6px;
+  border-left:1px solid var(--border);
 }

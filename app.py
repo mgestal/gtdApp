@@ -10328,13 +10328,13 @@ def _sidebar_filters_ordered() -> List[Dict[str, Any]]:
 
 def _sidebar_tags_ordered() -> List[Dict[str, Any]]:
     rows = q(
-        "SELECT tg.id, tg.name, "
+        "SELECT tg.id, tg.name, tg.type, "
         "COUNT(CASE WHEN t.id IS NOT NULL AND (t.project_id IS NULL OR p.archived=0) THEN 1 END) AS task_count "
         "FROM tags tg "
         "LEFT JOIN task_tags tt ON tt.tag_id=tg.id "
         "LEFT JOIN tasks t ON t.id=tt.task_id AND t.archived=0 AND t.deleted_at IS NULL "
         "LEFT JOIN projects p ON p.id=t.project_id "
-        "GROUP BY tg.id, tg.name "
+        "GROUP BY tg.id, tg.name, tg.type "
         "ORDER BY tg.name"
     ) or []
     saved_order = ((load_config().get("sidebar") or {}).get("tag_order")) or []
@@ -10356,21 +10356,27 @@ def inject_sidebar_filters():
         current_tag_id = None
         if request.endpoint == "tag_detail" and request.view_args:
             current_tag_id = request.view_args.get("tag_id")
-        tags = [
-            {"id": int(r["id"]), "name": r["name"], "count": int(r["task_count"] or 0)}
-            for r in _sidebar_tags_ordered()
-        ]
+        groups_by_type: Dict[str, Dict[str, Any]] = {}
+        for r in _sidebar_tags_ordered():
+            tag_type = (r.get("type") or "").strip()
+            group = groups_by_type.setdefault(tag_type.lower(), {"type": tag_type, "tags": []})
+            group["tags"].append({"id": int(r["id"]), "name": r["name"], "count": int(r["task_count"] or 0)})
+        tag_groups = sorted(
+            (g for k, g in groups_by_type.items() if k),
+            key=lambda g: g["type"].lower(),
+        )
+        tag_groups.append(groups_by_type.get("", {"type": "", "tags": []}))
         return {
             "sidebar_filters": filters,
             "current_filter_id": current_filter_id,
-            "sidebar_tags": tags,
+            "sidebar_tag_groups": tag_groups,
             "current_tag_id": current_tag_id,
         }
     except Exception:
         return {
             "sidebar_filters": [],
             "current_filter_id": None,
-            "sidebar_tags": [],
+            "sidebar_tag_groups": [],
             "current_tag_id": None,
         }
 
@@ -10400,6 +10406,24 @@ def api_sidebar_tags_order():
     cfg = load_config()
     cfg.setdefault("sidebar", {})["tag_order"] = order
     save_config(cfg)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/sidebar/tags/<int:tag_id>/type", methods=["POST"])
+def api_sidebar_tag_type(tag_id: int):
+    payload = request.get_json(silent=True) or {}
+    raw_type = payload.get("type")
+    if raw_type is not None and not isinstance(raw_type, str):
+        return jsonify({"ok": False, "error": "Tipo no válido"}), 400
+    tag_type = normalize_name(raw_type or "") or None
+    if not q1("SELECT id FROM tags WHERE id=%s", (tag_id,)):
+        return jsonify({"ok": False, "error": "Etiqueta no encontrada"}), 404
+    try:
+        exec_sql("UPDATE tags SET type=%s WHERE id=%s", (tag_type, tag_id))
+        commit()
+    except Exception as e:
+        rollback()
+        return jsonify({"ok": False, "error": str(e)}), 500
     return jsonify({"ok": True})
 
 

@@ -73,7 +73,7 @@
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/emoji-icon-192.png') }}?v=3">
   <link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='icons/emoji-icon-192.png') }}?v=3">
   <link rel="shortcut icon" type="image/png" href="{{ url_for('static', filename='icons/emoji-icon-192.png') }}?v=3">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=3) }}">
 
   <style>
 
@@ -311,23 +311,61 @@
       <hr/>
 
       <div class="side-section">
-        <div class="side-title-row">
-          <div class="side-title">Carpetas / Proyectos</div>
+        <div class="side-tabs" role="tablist">
+          <button type="button" class="side-tab" id="sideTabTree" data-side-tab="tree" role="tab">Carpetas / Proyectos</button>
+          <button type="button" class="side-tab" id="sideTabFilters" data-side-tab="filters" role="tab">Filtros</button>
+          <button type="button" class="side-tab" id="sideTabTags" data-side-tab="tags" role="tab">Etiquetas</button>
+        </div>
 
-          <div class="tree-global-actions">
-            <button type="button" class="tree-global-btn" onclick="collapseAllTree()" title="Colapsar todas">
-              ▴
-            </button>
-            <button type="button" class="tree-global-btn" onclick="expandAllTree()" title="Expandir todas">
-              ▾
-            </button>
+        <div class="side-tab-panel" id="sidePanelTree" data-side-panel="tree">
+          <div class="side-title-row">
+            <div class="tree-global-actions">
+              <button type="button" class="tree-global-btn" onclick="collapseAllTree()" title="Colapsar todas">
+                ▴
+              </button>
+              <button type="button" class="tree-global-btn" onclick="expandAllTree()" title="Expandir todas">
+                ▾
+              </button>
+            </div>
+          </div>
+
+          <div class="tree">
+            {% for f in folders_by_parent.get(None, []) %}
+              {{ render_folder_node(f, folders_by_parent, projects_by_folder, open_folder_ids, current_folder_id, current_project_id) }}
+            {% endfor %}
           </div>
         </div>
 
-        <div class="tree">
-          {% for f in folders_by_parent.get(None, []) %}
-            {{ render_folder_node(f, folders_by_parent, projects_by_folder, open_folder_ids, current_folder_id, current_project_id) }}
-          {% endfor %}
+        <div class="side-tab-panel" id="sidePanelFilters" data-side-panel="filters" hidden>
+          <div class="side-filter-list side-sortable-list" id="sideFilterList" data-order-url="{{ url_for('api_sidebar_filters_order') }}">
+            {% for flt in sidebar_filters or [] %}
+              <div class="side-filter-item side-sort-item {% if current_filter_id and flt.id == current_filter_id %}side-filter-item-active{% endif %}" data-filter-id="{{ flt.id }}">
+                <span class="side-filter-handle side-sort-handle" draggable="true" title="Arrastrar para ordenar" aria-label="Arrastrar para ordenar"><i></i><i></i><i></i><i></i></span>
+                <a class="side-filter-link" href="{{ url_for('filter_run', filter_id=flt.id) }}">
+                  <span class="tree-label">🔎 {{ flt.name }}</span>
+                  {% if flt.count is not none %}<span class="pill">{{ flt.count }}</span>{% endif %}
+                </a>
+              </div>
+            {% else %}
+              <div class="hint" style="padding:6px 4px;">No hay filtros creados.</div>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="side-tab-panel" id="sidePanelTags" data-side-panel="tags" hidden>
+          <div class="side-filter-list side-sortable-list" id="sideTagList" data-order-url="{{ url_for('api_sidebar_tags_order') }}">
+            {% for tag in sidebar_tags or [] %}
+              <div class="side-filter-item side-sort-item {% if current_tag_id and tag.id == current_tag_id %}side-filter-item-active{% endif %}" data-tag-id="{{ tag.id }}">
+                <span class="side-filter-handle side-sort-handle" draggable="true" title="Arrastrar para ordenar" aria-label="Arrastrar para ordenar"><i></i><i></i><i></i><i></i></span>
+                <a class="side-filter-link" href="{{ url_for('tag_detail', tag_id=tag.id) }}">
+                  <span class="tree-label">@{{ tag.name }}</span>
+                  <span class="pill">{{ tag.count }}</span>
+                </a>
+              </div>
+            {% else %}
+              <div class="hint" style="padding:6px 4px;">No hay etiquetas creadas.</div>
+            {% endfor %}
+          </div>
         </div>
       </div>
     </aside>
@@ -508,6 +546,72 @@
         } catch(e){}
       }
     }
+
+    (function initSidebarTabs(){
+      const KEY = 'gtd_sidebar_tab';
+      const tabs = document.querySelectorAll('[data-side-tab]');
+      const panels = document.querySelectorAll('[data-side-panel]');
+      if (!tabs.length) return;
+      function show(name){
+        tabs.forEach(t => {
+          const on = t.dataset.sideTab === name;
+          t.classList.toggle('side-tab-active', on);
+          t.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+        panels.forEach(p => { p.hidden = p.dataset.sidePanel !== name; });
+      }
+      const onFilterPage = {{ 'true' if current_filter_id else 'false' }};
+      const onTagPage = {{ 'true' if current_tag_id else 'false' }};
+      let saved = null;
+      try { saved = localStorage.getItem(KEY); } catch (e) {}
+      show(onFilterPage ? 'filters' : (onTagPage ? 'tags' : (['tree', 'filters', 'tags'].includes(saved) ? saved : 'tree')));
+      tabs.forEach(t => t.addEventListener('click', () => {
+        show(t.dataset.sideTab);
+        try { localStorage.setItem(KEY, t.dataset.sideTab); } catch (e) {}
+      }));
+
+      document.querySelectorAll('.side-sortable-list').forEach(list => {
+        let dragged = null;
+        list.querySelectorAll('.side-sort-item').forEach(item => {
+          const handle = item.querySelector('.side-sort-handle');
+          handle.addEventListener('dragstart', ev => {
+            dragged = item;
+            item.classList.add('side-filter-dragging');
+            ev.dataTransfer.effectAllowed = 'move';
+            ev.dataTransfer.setData('text/plain', 'sidebar-item');
+          });
+          handle.addEventListener('dragend', () => {
+            item.classList.remove('side-filter-dragging');
+            dragged = null;
+          });
+          item.addEventListener('dragover', ev => {
+            if (!dragged || dragged === item) return;
+            ev.preventDefault();
+          });
+          item.addEventListener('drop', async ev => {
+            if (!dragged || dragged === item) return;
+            ev.preventDefault();
+            const rect = item.getBoundingClientRect();
+            list.insertBefore(dragged, ev.clientY > rect.top + rect.height / 2 ? item.nextSibling : item);
+            const attribute = list.id === 'sideTagList' ? 'tagId' : 'filterId';
+            const order = [...list.querySelectorAll('.side-sort-item')].map(el => Number(el.dataset[attribute]));
+            try {
+              const res = await fetch(list.dataset.orderUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ order }),
+              });
+              const data = await res.json().catch(() => ({}));
+              if (!res.ok || !data.ok) throw new Error(data.error || 'No se pudo guardar el orden');
+            } catch (e) {
+              alert(e.message || 'No se pudo guardar el orden');
+              window.location.reload();
+            }
+          });
+        });
+      });
+    })();
 
     (function restoreTreeState(){
       const nodes = document.querySelectorAll('.tree-node[data-tree-folder]');

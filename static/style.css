@@ -1905,3 +1905,85 @@ hr{
     flex-wrap: wrap;
   }
 }
+/* Pestañas de la barra lateral: Carpetas / Proyectos y Filtros */
+.side-tabs{
+  display:flex;
+  gap:6px;
+  margin-bottom:10px;
+}
+
+.side-tabs .side-tab{
+  flex:1;
+  min-width:0;
+  padding:8px 6px;
+  border-radius:14px;
+  border:1px solid var(--border);
+  background:#ffffff;
+  color:var(--text);
+  font:inherit;
+  font-weight:650;
+  font-size:12px;
+  line-height:1.25;
+  text-align:center;
+  cursor:pointer;
+  opacity:.5;
+  filter:saturate(.6);
+  transition:opacity .15s, transform .15s;
+}
+
+.side-tabs .side-tab:hover{ opacity:.8; transform:translateY(-1px); }
+
+.side-tabs .side-tab.side-tab-active{
+  opacity:1;
+  filter:none;
+  background:linear-gradient(180deg, var(--accent2), var(--accent));
+  border-color:#e8b2b7;
+}
+
+.side-tab-panel[hidden]{ display:none; }
+
+.side-filter-list{ display:flex; flex-direction:column; gap:2px; }
+
+.side-filter-item{
+  display:flex;
+  align-items:center;
+  gap:4px;
+  border-radius:8px;
+}
+
+.side-filter-item:hover{ background:rgba(216,137,145,0.10); }
+
+.side-filter-item-active{ background:rgba(216,137,145,0.18); }
+
+.side-filter-item.side-filter-dragging{ opacity:.45; }
+
+.side-filter-handle{
+  display:grid;
+  grid-template-columns:repeat(2,3px);
+  gap:2px;
+  padding:6px 4px;
+  cursor:grab;
+  flex:0 0 auto;
+}
+
+.side-filter-handle:active{ cursor:grabbing; }
+
+.side-filter-handle i{
+  width:3px;
+  height:3px;
+  border-radius:50%;
+  background:var(--muted);
+}
+
+.side-filter-link{
+  flex:1;
+  min-width:0;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  padding:5px 6px 5px 0;
+  color:var(--text);
+  text-decoration:none;
+  font-size:14px;
+}

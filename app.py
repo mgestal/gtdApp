@@ -10295,6 +10295,114 @@ def project_import(project_id: int):
 
 from flask import request
 
+def _sidebar_filter_count(expression: str) -> Optional[int]:
+    try:
+        recurring_due_join, effective_due_expr = recurring_effective_due_sql("t")
+        ast = parse_filter_expression(expression)
+        if not ast_contains_done(ast):
+            ast = And(ast, Not(Term("IDENT", "done")))
+        where_sql, params = compile_filter_to_sql(ast)
+        where_sql = where_sql.replace("t.due_date", effective_due_expr)
+        row = q1(
+            "SELECT COUNT(*) AS c "
+            "FROM tasks t "
+            "LEFT JOIN projects p ON p.id=t.project_id "
+            "LEFT JOIN folders fd ON fd.id=t.folder_id "
+            "LEFT JOIN folders pf ON pf.id=p.folder_id "
+            f"{recurring_due_join}"
+            f"WHERE {where_sql} AND t.archived=0 AND t.deleted_at IS NULL AND (t.project_id IS NULL OR p.archived = 0)",
+            tuple(params),
+        )
+        return int(row["c"]) if row else 0
+    except Exception:
+        return None
+
+
+def _sidebar_filters_ordered() -> List[Dict[str, Any]]:
+    rows = q("SELECT id, name, expression FROM filters ORDER BY name") or []
+    saved_order = ((load_config().get("sidebar") or {}).get("filter_order")) or []
+    position = {fid: i for i, fid in enumerate(saved_order) if isinstance(fid, int)}
+    rows.sort(key=lambda r: (position.get(int(r["id"]), len(position)), (r["name"] or "").lower()))
+    return rows
+
+
+def _sidebar_tags_ordered() -> List[Dict[str, Any]]:
+    rows = q(
+        "SELECT tg.id, tg.name, "
+        "COUNT(CASE WHEN t.id IS NOT NULL AND (t.project_id IS NULL OR p.archived=0) THEN 1 END) AS task_count "
+        "FROM tags tg "
+        "LEFT JOIN task_tags tt ON tt.tag_id=tg.id "
+        "LEFT JOIN tasks t ON t.id=tt.task_id AND t.archived=0 AND t.deleted_at IS NULL "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+        "GROUP BY tg.id, tg.name "
+        "ORDER BY tg.name"
+    ) or []
+    saved_order = ((load_config().get("sidebar") or {}).get("tag_order")) or []
+    position = {tag_id: i for i, tag_id in enumerate(saved_order) if isinstance(tag_id, int)}
+    rows.sort(key=lambda r: (position.get(int(r["id"]), len(position)), (r["name"] or "").lower()))
+    return rows
+
+
+@app.context_processor
+def inject_sidebar_filters():
+    try:
+        current_filter_id = None
+        if request.endpoint == "filter_run" and request.view_args:
+            current_filter_id = request.view_args.get("filter_id")
+        filters = [
+            {"id": int(r["id"]), "name": r["name"], "count": _sidebar_filter_count(r["expression"])}
+            for r in _sidebar_filters_ordered()
+        ]
+        current_tag_id = None
+        if request.endpoint == "tag_detail" and request.view_args:
+            current_tag_id = request.view_args.get("tag_id")
+        tags = [
+            {"id": int(r["id"]), "name": r["name"], "count": int(r["task_count"] or 0)}
+            for r in _sidebar_tags_ordered()
+        ]
+        return {
+            "sidebar_filters": filters,
+            "current_filter_id": current_filter_id,
+            "sidebar_tags": tags,
+            "current_tag_id": current_tag_id,
+        }
+    except Exception:
+        return {
+            "sidebar_filters": [],
+            "current_filter_id": None,
+            "sidebar_tags": [],
+            "current_tag_id": None,
+        }
+
+
+@app.route("/api/sidebar/filters/order", methods=["POST"])
+def api_sidebar_filters_order():
+    payload = request.get_json(silent=True) or {}
+    order = payload.get("order")
+    if not isinstance(order, list) or any(not isinstance(i, int) for i in order):
+        return jsonify({"ok": False, "error": "Orden no válido"}), 400
+    valid_ids = {int(r["id"]) for r in (q("SELECT id FROM filters") or [])}
+    order = [i for i in dict.fromkeys(order) if i in valid_ids]
+    cfg = load_config()
+    cfg.setdefault("sidebar", {})["filter_order"] = order
+    save_config(cfg)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/sidebar/tags/order", methods=["POST"])
+def api_sidebar_tags_order():
+    payload = request.get_json(silent=True) or {}
+    order = payload.get("order")
+    if not isinstance(order, list) or any(not isinstance(i, int) for i in order):
+        return jsonify({"ok": False, "error": "Orden no válido"}), 400
+    valid_ids = {int(r["id"]) for r in (q("SELECT id FROM tags") or [])}
+    order = [i for i in dict.fromkeys(order) if i in valid_ids]
+    cfg = load_config()
+    cfg.setdefault("sidebar", {})["tag_order"] = order
+    save_config(cfg)
+    return jsonify({"ok": True})
+
+
 @app.context_processor
 def inject_sidebar_tree():
     try:

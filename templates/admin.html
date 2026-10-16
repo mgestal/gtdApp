@@ -24,11 +24,9 @@
     </div>
   {% else %}
 
-    <div class="grid2">
-      
-      <div class="admin-col-left">
+    <div class="admin-panels-grid" id="adminPanelsGrid">
         
-        <div class="card">
+        <div class="card admin-panel-card" data-admin-panel="database">
           <div class="card-header">
             <div class="card-title">Conexión MariaDB</div>
           </div>
@@ -62,7 +60,7 @@
           </form>
         </div>
 
-        <div class="card" style="margin-top:20px;">
+        <div class="card admin-panel-card" data-admin-panel="trash" style="margin-top:20px;">
           <div class="card-header">
             <div>
               <div class="card-title">Papelera</div>
@@ -80,7 +78,7 @@
           </div>
         </div>
 
-        <div class="card" style="margin-top:20px;">
+        <div class="card admin-panel-card" data-admin-panel="archive" style="margin-top:20px;">
           <div class="card-header">
             <div>
               <div class="card-title">Archivo</div>
@@ -98,7 +96,7 @@
           </div>
         </div>
 
-        <div class="card" style="margin-top:20px;">
+        <div class="card admin-panel-card" data-admin-panel="backups" style="margin-top:20px;">
           <div class="card-header">
             <div class="card-title">Copias de seguridad</div>
           </div>
@@ -131,7 +129,7 @@
           {% endif %}
         </div>
 
-        <div class="card" style="margin-top:20px;">
+        <div class="card admin-panel-card" data-admin-panel="initialize" style="margin-top:20px;">
           <div class="card-header">
             <div class="card-title">Inicializar GTD</div>
             <div class="card-sub">Crea las etiquetas/carpetas requeridas para review completo.</div>
@@ -151,7 +149,7 @@
           </form>
         </div>
 
-        <div class="card" style="margin-top:20px;">
+        <div class="card admin-panel-card" data-admin-panel="nextaction" style="margin-top:20px;">
           <div class="card-header">
             <div>
               <div class="card-title">Flujo NextAction</div>
@@ -175,12 +173,8 @@
             </div>
           </form>
         </div>
-      </div>
-        
 
-      <div class="admin-col-right">
-
-        <div class="card" style="margin-bottom:20px;">
+        <div class="card admin-panel-card" data-admin-panel="kanban-subcards" style="margin-bottom:20px;">
           <div class="card-header">
             <div>
               <div class="card-title">Subcards del Kanban</div>
@@ -242,7 +236,7 @@
           </script>
         </div>
 
-        <div class="card" style="margin-bottom:20px;">
+        <div class="card admin-panel-card" data-admin-panel="sql" style="margin-bottom:20px;">
           <div class="card-header">
             <div>
               <div class="card-title">Consola SQL</div>
@@ -254,7 +248,7 @@
           </div>
         </div>
 
-        <div class="card">
+        <div class="card admin-panel-card" data-admin-panel="pagination">
           <div class="card-header">
             <div class="card-title">Paginación</div>
           </div>
@@ -313,7 +307,7 @@
           </form>
         </div>
 
-        <div class="card">
+        <div class="card admin-panel-card" data-admin-panel="maintenance">
           <div class="card-header">
             <div>
               <div class="card-title">Mantenimiento</div>
@@ -439,7 +433,7 @@
           </div>
         </div>
 
-        <div class="card" style="margin-top:20px;">
+        <div class="card admin-panel-card" data-admin-panel="calendar" style="margin-top:20px;">
           <div class="card-header">
             <div>
               <div class="card-title">Sincronización Google Calendar</div>
@@ -472,7 +466,7 @@
           </div>
         </div>
 
-        <div class="card" style="margin-top:20px;">
+        <div class="card admin-panel-card" data-admin-panel="google-tokens" style="margin-top:20px;">
           <div class="card-header">
             <div class="card-title">Renovación tokens Google</div>
             <div class="card-sub">Estado y renovación de credenciales OAuth para Gmail/Calendar</div>
@@ -511,7 +505,7 @@
         </div>
 
         <!-- Card de gestión de tokens API para extensiones -->
-        <div class="card" style="margin-top:20px;">
+        <div class="card admin-panel-card" data-admin-panel="browser-extension" style="margin-top:20px;">
           <div class="card-header">
             <div class="card-title">Extensión de navegador (Chrome)</div>
             <div class="card-sub">Crea un token para conectar la extensión de Chrome con tu backend. El token solo se muestra una vez.</div>
@@ -556,7 +550,110 @@
             </tbody>
           </table>
         </div>
-      </div>
     </div>
+    <script>
+      (() => {
+        const grid = document.getElementById('adminPanelsGrid');
+        if (!grid) return;
+        const configuredOrder = {{ admin_panel_order | tojson }};
+        const panels = [...grid.querySelectorAll('[data-admin-panel]')];
+        const byKey = new Map(panels.map(panel => [panel.dataset.adminPanel, panel]));
+        const orderedKeys = new Set();
+        configuredOrder.forEach(key => {
+          const panel = byKey.get(key);
+          if (panel) {
+            grid.appendChild(panel);
+            orderedKeys.add(key);
+          }
+        });
+        panels.forEach(panel => {
+          if (!orderedKeys.has(panel.dataset.adminPanel)) grid.appendChild(panel);
+        });
+
+        const style = document.createElement('style');
+        style.textContent = `
+          .admin-panels-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; align-items:start; }
+          .admin-panels-grid > .admin-panel-card { min-width:0; overflow:hidden; margin:0 !important; }
+          .admin-panel-card .card-header { align-items:center; }
+          .admin-panel-drag-handle { display:grid; grid-template-columns:repeat(2,4px); gap:3px; padding:6px; border:0; border-radius:6px; background:transparent; cursor:grab; flex:0 0 auto; }
+          .admin-panel-drag-handle:active { cursor:grabbing; }
+          .admin-panel-drag-handle span { width:4px; height:4px; border-radius:50%; background:var(--muted); }
+          .admin-panel-card.admin-panel-dragging { opacity:.45; }
+          .admin-panel-card.admin-panel-drop-target { outline:2px solid rgba(209,112,128,.45); }
+          @media (max-width:720px) { .admin-panels-grid { grid-template-columns:1fr; } }
+        `;
+        document.head.appendChild(style);
+
+        let draggedPanel = null;
+        panels.forEach(panel => {
+          const header = panel.querySelector('.card-header');
+          if (!header) return;
+          const handle = document.createElement('button');
+          handle.type = 'button';
+          handle.className = 'admin-panel-drag-handle';
+          handle.draggable = true;
+          handle.title = 'Arrastrar para ordenar';
+          handle.setAttribute('aria-label', 'Arrastrar para ordenar esta sección');
+          handle.innerHTML = '<span></span><span></span><span></span><span></span>';
+          header.appendChild(handle);
+
+          handle.addEventListener('dragstart', event => {
+            draggedPanel = panel;
+            panel.classList.add('admin-panel-dragging');
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', panel.dataset.adminPanel);
+          });
+          handle.addEventListener('dragend', () => {
+            panel.classList.remove('admin-panel-dragging');
+            grid.querySelectorAll('.admin-panel-drop-target').forEach(item => item.classList.remove('admin-panel-drop-target'));
+            draggedPanel = null;
+          });
+          panel.addEventListener('dragover', event => {
+            if (!draggedPanel || draggedPanel === panel) return;
+            event.preventDefault();
+            panel.classList.add('admin-panel-drop-target');
+          });
+          panel.addEventListener('dragleave', event => {
+            if (!panel.contains(event.relatedTarget)) panel.classList.remove('admin-panel-drop-target');
+          });
+          panel.addEventListener('drop', event => {
+            if (!draggedPanel || draggedPanel === panel) return;
+            event.preventDefault();
+            const rect = panel.getBoundingClientRect();
+            const after = event.clientY > rect.top + rect.height / 2;
+            grid.insertBefore(draggedPanel, after ? panel.nextSibling : panel);
+            panel.classList.remove('admin-panel-drop-target');
+            savePanelOrder();
+          });
+        });
+
+        grid.addEventListener('dragover', event => {
+          if (draggedPanel && event.target === grid) event.preventDefault();
+        });
+        grid.addEventListener('drop', event => {
+          if (!draggedPanel || event.target !== grid) return;
+          event.preventDefault();
+          grid.appendChild(draggedPanel);
+          savePanelOrder();
+        });
+
+        async function savePanelOrder() {
+          const order = [...grid.querySelectorAll('[data-admin-panel]')].map(panel => panel.dataset.adminPanel);
+          try {
+            const response = await fetch('{{ url_for("admin_panel_order") }}', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'same-origin',
+              body: JSON.stringify({ order }),
+            });
+            const data = await response.json();
+            if (!response.ok || !data.ok) throw new Error(data.error || 'No se pudo guardar el orden.');
+          } catch (error) {
+            alert(error.message || 'No se pudo guardar el orden de las secciones.');
+            window.location.reload();
+          }
+        }
+      })();
+    </script>
   {% endif %}
 {% endblock %}

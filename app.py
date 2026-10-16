@@ -9595,6 +9595,7 @@ def admin():
     return render_template(
         "admin.html",
         cfg=cfg,
+        admin_panel_order=_admin_panel_order(cfg),
         kanban_subcards=_kanban_subcard_definitions(),
         selected_kanban_subcard=request.args.get("subcard", ""),
         is_admin=admin_required(),
@@ -9611,6 +9612,57 @@ def admin():
         google_token_status=google_token_status,
         google_token_expiry=google_token_expiry,
     )
+
+
+ADMIN_PANEL_KEYS = (
+    "database",
+    "trash",
+    "archive",
+    "backups",
+    "initialize",
+    "nextaction",
+    "kanban-subcards",
+    "sql",
+    "pagination",
+    "maintenance",
+    "calendar",
+    "google-tokens",
+    "browser-extension",
+)
+
+
+def _admin_panel_order(cfg: Optional[Dict[str, Any]] = None) -> List[str]:
+    cfg = cfg or load_config()
+    admin_cfg = cfg.get("admin") or {}
+    configured_order = admin_cfg.get("panel_order", [])
+    if not isinstance(configured_order, list):
+        configured_order = []
+    valid_order = []
+    for key in configured_order:
+        if key in ADMIN_PANEL_KEYS and key not in valid_order:
+            valid_order.append(key)
+    return valid_order + [key for key in ADMIN_PANEL_KEYS if key not in valid_order]
+
+
+@app.route("/admin/panel_order", methods=["POST"])
+def admin_panel_order():
+    if not admin_required():
+        return jsonify({"ok": False, "error": "No autorizado"}), 403
+
+    payload = request.get_json(silent=True)
+    order = payload.get("order") if isinstance(payload, dict) else None
+    if (
+        not isinstance(order, list)
+        or len(order) != len(ADMIN_PANEL_KEYS)
+        or any(not isinstance(key, str) for key in order)
+        or set(order) != set(ADMIN_PANEL_KEYS)
+    ):
+        return jsonify({"ok": False, "error": "El orden de las secciones no es válido"}), 400
+
+    cfg = load_config()
+    cfg.setdefault("admin", {})["panel_order"] = order
+    save_config(cfg)
+    return jsonify({"ok": True})
 
 
 @app.route("/admin/google_oauth/callback")

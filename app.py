@@ -1458,10 +1458,39 @@ def ensure_schema_updates() -> None:
     if _schema_bootstrapped:
         return
 
+    # Normalize tag types while preserving values from installations that still
+    # have the original free-text `tags.type` column.
     exec_sql(
-        "ALTER TABLE tags "
-        "ADD COLUMN IF NOT EXISTS type VARCHAR(80) NULL AFTER name"
+        "CREATE TABLE IF NOT EXISTS TagsType ("
+        "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, "
+        "name VARCHAR(80) NOT NULL, UNIQUE KEY uq_tags_type_name (name)"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
     )
+    exec_sql("ALTER TABLE tags ADD COLUMN IF NOT EXISTS type_id INT NULL AFTER name")
+    tag_columns = q("SHOW COLUMNS FROM tags") or []
+    tag_column_names = {row.get("Field") for row in tag_columns}
+    if "type" in tag_column_names:
+        exec_sql(
+            "INSERT IGNORE INTO TagsType(name) "
+            "SELECT DISTINCT TRIM(type) FROM tags "
+            "WHERE type IS NOT NULL AND TRIM(type) <> ''"
+        )
+        exec_sql(
+            "UPDATE tags tg JOIN TagsType tt ON tt.name=TRIM(tg.type) "
+            "SET tg.type_id=tt.id WHERE tg.type_id IS NULL"
+        )
+        exec_sql("ALTER TABLE tags DROP COLUMN type")
+    type_fk = q1(
+        "SELECT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE "
+        "WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='tags' "
+        "AND COLUMN_NAME='type_id' AND REFERENCED_TABLE_NAME='TagsType' LIMIT 1"
+    )
+    if not type_fk:
+        exec_sql(
+            "ALTER TABLE tags ADD CONSTRAINT fk_tags_type "
+            "FOREIGN KEY (type_id) REFERENCES TagsType(id) "
+            "ON DELETE SET NULL ON UPDATE CASCADE"
+        )
     exec_sql(
         "ALTER TABLE tasks "
         "ADD COLUMN IF NOT EXISTS due_time TIME NULL AFTER due_date"
@@ -1877,6 +1906,14 @@ def get_or_create_tag(tag_name: str) -> int:
     if row:
         return int(row["id"])
     return exec_sql("INSERT INTO tags(name) VALUES(%s)", (tag_name,))
+
+
+def get_or_create_tag_type(type_name: str) -> int:
+    type_name = normalize_name(type_name)
+    row = q1("SELECT id FROM TagsType WHERE name=%s", (type_name,))
+    if row:
+        return int(row["id"])
+    return exec_sql("INSERT INTO TagsType(name) VALUES(%s)", (type_name,))
 
 def find_project_by_name_active(project_name: str) -> Optional[int]:
     project_name = normalize_name(project_name)
@@ -2890,9 +2927,9 @@ def search():
             page = min(page, pages)
             offset = (page - 1) * per_page
             rows = q(
-                "SELECT tg.id, tg.name, tg.type, "
-                "(SELECT COUNT(*) FROM task_tags tt JOIN tasks t ON t.id=tt.task_id WHERE tt.tag_id=tg.id AND t.archived=0 AND t.deleted_at IS NULL) AS task_count "
-                "FROM tags tg "
+                "SELECT tg.id, tg.name, ttype.name AS type, "
+                "(SELECT COUNT(*) FROM task_tags tasktag JOIN tasks t ON t.id=tasktag.task_id WHERE tasktag.tag_id=tg.id AND t.archived=0 AND t.deleted_at IS NULL) AS task_count "
+                "FROM tags tg LEFT JOIN TagsType ttype ON ttype.id=tg.type_id "
                 "WHERE LOWER(tg.name) LIKE %s "
                 "ORDER BY tg.name ASC "
                 "LIMIT %s OFFSET %s",
@@ -4882,15 +4919,12 @@ def project_delete(project_id: int):
 
 @app.route("/tags/<int:tag_id>/edit", methods=["GET", "POST"])
 def tag_edit(tag_id: int):
-    tag = q1("SELECT id, name, type FROM tags WHERE id=%s", (tag_id,))
+    tag = q1("SELECT tg.id, tg.name, tt.name AS type FROM tags tg LEFT JOIN TagsType tt ON tt.id=tg.type_id WHERE tg.id=%s", (tag_id,))
     if not tag:
         abort(404)
 
     type_rows = q(
-        "SELECT DISTINCT tg.type "
-        "FROM tags tg "
-        "WHERE tg.type IS NOT NULL AND TRIM(tg.type) <> '' "
-        "ORDER BY tg.type ASC"
+        "SELECT name AS type FROM TagsType ORDER BY name ASC"
     )
     existing_tag_types = [r["type"] for r in type_rows]
 
@@ -4916,7 +4950,8 @@ def tag_edit(tag_id: int):
             return redirect(url_for("tag_edit", tag_id=tag_id, next=next_url))
 
         try:
-            exec_sql("UPDATE tags SET name=%s, type=%s WHERE id=%s", (name, tag_type, tag_id))
+            type_id = get_or_create_tag_type(tag_type) if tag_type else None
+            exec_sql("UPDATE tags SET name=%s, type_id=%s WHERE id=%s", (name, type_id, tag_id))
             commit()
             flash("Etiqueta actualizada.", "ok")
             return redirect(next_url)
@@ -4956,6 +4991,36 @@ def tag_delete(tag_id: int):
     return redirect(next_url)
     
 
+@app.route("/tags/create", methods=["POST"])
+def tag_create():
+    name = normalize_name(request.form.get("name", ""))
+    selected_type = normalize_name(request.form.get("type_select", ""))
+    new_type = normalize_name(request.form.get("type_new", ""))
+    tag_type = new_type or selected_type or None
+    next_url = safe_next_url(request.form.get("next"), "tags")
+
+    if not name:
+        flash("El nombre de la etiqueta es obligatorio.", "error")
+        return redirect(next_url)
+
+    try:
+        type_id = get_or_create_tag_type(tag_type) if tag_type else None
+        tag_id = exec_sql(
+            "INSERT INTO tags(name, type_id) VALUES(%s, %s)",
+            (name, type_id),
+        )
+        commit()
+        flash(f"Etiqueta @{name} creada.", "ok")
+    except Exception as e:
+        rollback()
+        if "Duplicate" in str(e) or "duplicate" in str(e).lower():
+            flash(f"La etiqueta @{name} ya existe.", "error")
+        else:
+            flash(f"No se pudo crear la etiqueta: {e}", "error")
+
+    return redirect(next_url)
+
+
 @app.route("/tags")
 def tags():
     qtxt = (request.args.get("q") or "").strip()
@@ -4978,14 +5043,17 @@ def tags():
         params.append(f"%{qtxt.lower()}%")
     if type_filter:
         if type_filter == type_filter_none_token:
-            where_parts.append("(tg.type IS NULL OR TRIM(tg.type) = '')")
+            where_parts.append("tg.type_id IS NULL")
         else:
-            where_parts.append("LOWER(COALESCE(tg.type, '')) = %s")
+            where_parts.append("LOWER(COALESCE(ttype.name, '')) = %s")
             params.append(type_filter.lower())
 
     where = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
 
-    total_row = q1(f"SELECT COUNT(*) AS c FROM tags tg {where}", tuple(params))
+    total_row = q1(
+        f"SELECT COUNT(*) AS c FROM tags tg LEFT JOIN TagsType ttype ON ttype.id=tg.type_id {where}",
+        tuple(params),
+    )
     total = int(total_row["c"]) if total_row else 0
     pages = max(1, (total + per_page - 1) // per_page)
 
@@ -4995,22 +5063,19 @@ def tags():
 
     # (opcional pero útil) contador de tareas por etiqueta
     rows = q(
-        "SELECT tg.id, tg.name, tg.type, COUNT(t.id) AS task_count "
-        "FROM tags tg "
-        "LEFT JOIN task_tags tt ON tt.tag_id=tg.id "
-        "LEFT JOIN tasks t ON t.id=tt.task_id AND t.archived=0 AND t.deleted_at IS NULL "
+        "SELECT tg.id, tg.name, ttype.name AS type, COUNT(t.id) AS task_count "
+        "FROM tags tg LEFT JOIN TagsType ttype ON ttype.id=tg.type_id "
+        "LEFT JOIN task_tags tasktag ON tasktag.tag_id=tg.id "
+        "LEFT JOIN tasks t ON t.id=tasktag.task_id AND t.archived=0 AND t.deleted_at IS NULL "
         f"{where} "
-        "GROUP BY tg.id, tg.name, tg.type "
-        "ORDER BY tg.name ASC, (tg.type IS NULL) ASC, tg.type ASC  "
+        "GROUP BY tg.id, tg.name, ttype.name "
+        "ORDER BY tg.name ASC, (ttype.name IS NULL) ASC, ttype.name ASC  "
         "LIMIT %s OFFSET %s",
         tuple(params + [per_page, offset]),
     )
 
     type_rows = q(
-        "SELECT DISTINCT tg.type "
-        "FROM tags tg "
-        "WHERE tg.type IS NOT NULL AND TRIM(tg.type) <> '' "
-        "ORDER BY tg.name asc, tg.type"
+        "SELECT name AS type FROM TagsType ORDER BY name ASC"
     )
     tag_types = [r["type"] for r in type_rows]
 
@@ -5027,6 +5092,69 @@ def tags():
         per_page=per_page,
     )
     
+
+@app.route("/tags/type")
+def tag_type_tasks():
+    type_filter = normalize_name(request.args.get("type", ""))
+    if not type_filter:
+        return redirect(url_for("tags"))
+    is_none = type_filter == "__none__"
+    type_label = "Sin tipo" if is_none else type_filter
+    type_cond = "tg.type_id IS NULL" if is_none else "LOWER(COALESCE(tagtype.name, '')) = %s"
+    type_params = () if is_none else (type_filter.lower(),)
+
+    per_page = cfg_int(["app", "pagination", "tag_detail_per_page"], default=25, min_v=5, max_v=500)
+    try:
+        page = int(request.args.get("page", "1"))
+    except ValueError:
+        page = 1
+    page = max(page, 1)
+    recurring_due_join, effective_due_expr = recurring_effective_due_sql("t")
+
+    base_where = (
+        "WHERE t.archived=0 AND t.deleted_at IS NULL "
+        "AND (t.project_id IS NULL OR p.archived=0) "
+        "AND EXISTS (SELECT 1 FROM task_tags tasktag JOIN tags tg ON tg.id=tasktag.tag_id "
+        "LEFT JOIN TagsType tagtype ON tagtype.id=tg.type_id "
+        f"WHERE tasktag.task_id=t.id AND {type_cond}) "
+    )
+    total_row = q1(
+        "SELECT COUNT(*) AS c FROM tasks t LEFT JOIN projects p ON p.id=t.project_id " + base_where,
+        type_params,
+    )
+    total = int(total_row["c"]) if total_row else 0
+    pages = max(1, (total + per_page - 1) // per_page)
+    page = min(page, pages)
+    offset = (page - 1) * per_page
+
+    rows = q(
+        f"SELECT t.id, t.title, t.location, t.notes, {effective_due_expr} AS due_date, t.completed_at, t.recurrence_rule, t.priority, "
+        "p.name AS project_name, p.id AS project_id, "
+        "fd.id AS folder_id, fd.name AS folder_name "
+        "FROM tasks t "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+        f"{recurring_due_join}"
+        "LEFT JOIN folders fd ON fd.id=t.folder_id "
+        f"{base_where}"
+        f"ORDER BY (t.completed_at IS NOT NULL) ASC, ({effective_due_expr} IS NULL) ASC, {effective_due_expr} ASC, t.id DESC "
+        "LIMIT %s OFFSET %s",
+        type_params + (per_page, offset),
+    )
+    task_ids = [r["id"] for r in rows]
+    tags_map = load_tags_map(task_ids) if task_ids else {}
+
+    return render_template(
+        "tag_type_tasks.html",
+        rows=rows,
+        tags_map=tags_map,
+        type_filter=type_filter,
+        type_label=type_label,
+        page=page,
+        pages=pages,
+        total=total,
+        per_page=per_page,
+    )
+
 
 @app.route("/tags/<int:tag_id>")
 def tag_detail(tag_id: int):
@@ -6330,8 +6458,8 @@ def task_edit(task_id: int):
 
     current_tags = q(
         "SELECT tg.id, tg.name "
-        "FROM task_tags tt JOIN tags tg ON tg.id=tt.tag_id "
-        "WHERE tt.task_id=%s ORDER BY tg.name",
+        "FROM task_tags ttag JOIN tags tg ON tg.id=ttag.tag_id "
+        "WHERE ttag.task_id=%s ORDER BY tg.name",
         (task_id,),
     )
     tags_csv = ", ".join(["@" + t["name"] for t in current_tags])
@@ -10337,13 +10465,13 @@ def _sidebar_filters_ordered() -> List[Dict[str, Any]]:
 
 def _sidebar_tags_ordered() -> List[Dict[str, Any]]:
     rows = q(
-        "SELECT tg.id, tg.name, tg.type, "
+        "SELECT tg.id, tg.name, ttype.name AS type, "
         "COUNT(CASE WHEN t.id IS NOT NULL AND (t.project_id IS NULL OR p.archived=0) THEN 1 END) AS task_count "
-        "FROM tags tg "
-        "LEFT JOIN task_tags tt ON tt.tag_id=tg.id "
-        "LEFT JOIN tasks t ON t.id=tt.task_id AND t.archived=0 AND t.deleted_at IS NULL "
+        "FROM tags tg LEFT JOIN TagsType ttype ON ttype.id=tg.type_id "
+        "LEFT JOIN task_tags tasktag ON tasktag.tag_id=tg.id "
+        "LEFT JOIN tasks t ON t.id=tasktag.task_id AND t.archived=0 AND t.deleted_at IS NULL "
         "LEFT JOIN projects p ON p.id=t.project_id "
-        "GROUP BY tg.id, tg.name, tg.type "
+        "GROUP BY tg.id, tg.name, ttype.name "
         "ORDER BY tg.name"
     ) or []
     saved_order = ((load_config().get("sidebar") or {}).get("tag_order")) or []
@@ -10428,7 +10556,8 @@ def api_sidebar_tag_type(tag_id: int):
     if not q1("SELECT id FROM tags WHERE id=%s", (tag_id,)):
         return jsonify({"ok": False, "error": "Etiqueta no encontrada"}), 404
     try:
-        exec_sql("UPDATE tags SET type=%s WHERE id=%s", (tag_type, tag_id))
+        type_id = get_or_create_tag_type(tag_type) if tag_type else None
+        exec_sql("UPDATE tags SET type_id=%s WHERE id=%s", (type_id, tag_id))
         commit()
     except Exception as e:
         rollback()
@@ -11493,10 +11622,10 @@ def api_tags_search():
     qtxt = qtxt[:50]
 
     rows = q(
-        "SELECT id, name "
-        "FROM tags "
-        "WHERE LOWER(name) LIKE %s "
-        "ORDER BY name "
+        "SELECT tg.id, tg.name, tg.type_id, tt.name AS type "
+        "FROM tags tg LEFT JOIN TagsType tt ON tt.id=tg.type_id "
+        "WHERE LOWER(tg.name) LIKE %s "
+        "ORDER BY tg.name "
         "LIMIT 8",
         (f"%{qtxt}%",),
     )

@@ -4,6 +4,32 @@
     <h1>Etiquetas 🏷️</h1>
     <p class="subtitle">{{ total }} etiquetas · página {{ page }} de {{ pages }}</p>
   </div>
+
+  <div class="card" style="margin-bottom:12px;">
+    <form method="post" action="{{ url_for('tag_create') }}" class="form">
+      <input type="hidden" name="next" value="{{ url_for('tags', q=qtxt, type=type_filter) }}">
+      <div style="display:flex; gap:10px; align-items:end; flex-wrap:wrap;">
+        <div style="flex:1; min-width:200px;">
+          <label class="label" for="new-tag-name">Nueva etiqueta</label>
+          <input class="input" id="new-tag-name" name="name" placeholder="Nombre de la etiqueta" required>
+        </div>
+        <div style="flex:1; min-width:180px;">
+          <label class="label" for="new-tag-type">Tipo (opcional)</label>
+          <select class="input" id="new-tag-type" name="type_select">
+            <option value="">(sin tipo)</option>
+            {% for tp in tag_types %}
+              <option value="{{ tp }}">{{ tp }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div style="flex:1; min-width:180px;">
+          <label class="label" for="new-tag-type-custom">O crear un tipo</label>
+          <input class="input" id="new-tag-type-custom" name="type_new" placeholder="persona, lugar...">
+        </div>
+        <button class="btn btn-primary" type="submit">Crear etiqueta</button>
+      </div>
+    </form>
+  </div>
   
   <form method="get" class="form" style="margin-bottom:12px;">
   <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">

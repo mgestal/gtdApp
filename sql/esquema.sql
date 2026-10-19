@@ -212,15 +212,25 @@ CREATE TABLE `subtasks` (
 --
 
 DROP TABLE IF EXISTS `tags`;
+DROP TABLE IF EXISTS `TagsType`;
+CREATE TABLE `TagsType` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `name` varchar(80) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_tags_type_name` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
+
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `tags` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `name` varchar(100) NOT NULL,
-  `type` varchar(80) DEFAULT NULL,
+  `type_id` int(11) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uq_tag_name` (`name`)
+  UNIQUE KEY `uq_tag_name` (`name`),
+  KEY `idx_tags_type_id` (`type_id`),
+  CONSTRAINT `fk_tags_type` FOREIGN KEY (`type_id`) REFERENCES `TagsType` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB AUTO_INCREMENT=45 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 

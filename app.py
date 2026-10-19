@@ -9311,7 +9311,7 @@ def admin():
 
             try:
                 # Usar HTTPS para callback automático (Google lo requiere en producción)
-                redirect_uri = "https://raspvinxeira.mooo.com/gtdApp/admin/google_oauth/callback"
+                redirect_uri = "https://lanvinxeira.mooo.com/gtdApp/admin/google_oauth/callback"
                 flow = _build_admin_google_flow(redirect_uri)
                 auth_url, state = flow.authorization_url(
                     access_type="offline",
@@ -9818,7 +9818,7 @@ def admin_google_oauth_callback():
         if not expected_state or not incoming_state or expected_state != incoming_state:
             raise RuntimeError("Estado OAuth inválido o expirado (state mismatch)")
 
-        redirect_uri = "https://raspvinxeira.mooo.com/gtdApp/admin/google_oauth/callback"
+        redirect_uri = "https://lanvinxeira.mooo.com/gtdApp/admin/google_oauth/callback"
         flow = _build_admin_google_flow(redirect_uri)
         if code_verifier:
             flow.code_verifier = str(code_verifier)

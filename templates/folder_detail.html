@@ -263,6 +263,9 @@
         <form method="post" action="{{ url_for('task_quick_add') }}" class="form" style="gap:8px;">
           <input type="hidden" name="folder_id" value="{{ folder.id }}">
           <input type="hidden" name="next" value="{{ url_for('folder_detail', folder_id=folder.id) }}">
+          <div class="hint">
+            Sintaxis: nombre + [@etiquetas] + [ [*]dd-mm-[aaaa] | *hoy | *mañana | *+nDias ] [h:HH:MM] [#proyecto] [cada {día|semana|mes|año|laboral}] ^{alta|media|baja}
+          </div>
           <div class="folder-inline-form">
             <input class="input" name="quick" placeholder="Ej: Tarea ^alta @tag #proy *hoy h:hh:mm" required>
             <button class="btn btn-primary" type="submit">Añadir</button>

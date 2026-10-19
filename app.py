@@ -198,12 +198,25 @@ def safe_next_url(next_url: Optional[str], fallback_endpoint: str = "home", **fa
 
 
 RECURRENCE_PATTERNS = {
-    r"\bcada\s+dia\b": "FREQ=DAILY;INTERVAL=1",
+    r"\bcada\s+d[ií]a\b": "FREQ=DAILY;INTERVAL=1",
     r"\bcada\s+semana\b": "FREQ=WEEKLY;INTERVAL=1",
     r"\bcada\s+mes\b": "FREQ=MONTHLY;INTERVAL=1",
     r"\bcada\s+año\b": "FREQ=YEARLY;INTERVAL=1",
     r"\bcada\s+laboral\b": "FREQ=WORKDAY;INTERVAL=1",
 }
+
+
+def extract_recurrence_from_quick(raw_text: str, recurrence: Optional[str] = None) -> Tuple[Optional[str], str]:
+    """Extract a supported `cada ...` recurrence token and remove it from the title."""
+    cleaned = raw_text or ""
+    if not recurrence:
+        for pattern, rule in RECURRENCE_PATTERNS.items():
+            if re.search(pattern, cleaned, flags=re.IGNORECASE):
+                recurrence = rule
+                break
+    for pattern in RECURRENCE_PATTERNS:
+        cleaned = re.sub(pattern, " ", cleaned, flags=re.IGNORECASE)
+    return recurrence, re.sub(r"\s+", " ", cleaned).strip()
 
 
 def safe_backup_filename(name: str) -> Optional[str]:
@@ -6168,12 +6181,8 @@ def task_create():
         flash(str(e), "error")
         return redirect(request.referrer or url_for("home"))
 
-    # 3) Extraer recurrencia desde texto natural
-    if not recurrence:
-        for pattern, rule in RECURRENCE_PATTERNS.items():
-            if re.search(pattern, raw_work, flags=re.IGNORECASE):
-                recurrence = rule
-                break
+    # 3) Extraer recurrencia desde texto natural y quitarla del título.
+    recurrence, raw_work = extract_recurrence_from_quick(raw_work, recurrence)
 
     # 4) Extraer posible proyecto desde #texto o #"texto con espacios"
     project_name = None
@@ -6193,11 +6202,6 @@ def task_create():
     title = raw_work
     title = re.sub(r'@([^\s@#]+)', '', title)
     # title = re.sub(r'#\d{2}-\d{2}-\d{4}\b', '', title)
-    title = re.sub(r'\bcada\s+dia\b', '', title, flags=re.IGNORECASE)
-    title = re.sub(r'\bcada\s+semana\b', '', title, flags=re.IGNORECASE)
-    title = re.sub(r'\bcada\s+mes\b', '', title, flags=re.IGNORECASE)
-    title = re.sub(r'\bcada\s+año\b', '', title, flags=re.IGNORECASE)
-    title = re.sub(r'\bcada\s+laboral\b', '', title, flags=re.IGNORECASE)
     title = PROJ_RE.sub('', title)
     title = FOLDER_RE.sub('', title)
     title = re.sub(r'\s+', ' ', title).strip(" -_,.;:")
@@ -6349,6 +6353,8 @@ def task_quick_add():
     if detected_priority is not None:
         priority = detected_priority
 
+    recurrence, raw = extract_recurrence_from_quick(raw)
+
     title, tags, quick_project_name, quick_folder_name = parse_task_quick_entry(raw)
     
     if not title:
@@ -6400,13 +6406,14 @@ def task_quick_add():
         #    - si hay project_id => la tarea va al proyecto
         #    - si no hay project_id => va a la carpeta (si existe)
         task_id = exec_sql(
-            "INSERT INTO tasks(title, project_id, folder_id, due_date, due_time, priority, sort_order) VALUES(%s,%s,%s,%s,%s,%s,%s)",
+            "INSERT INTO tasks(title, project_id, folder_id, due_date, due_time, recurrence_rule, priority, sort_order) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)",
             (
                 title,
                 project_id,
                 folder_id,
                 due_date,
                 due_time,
+                recurrence,
                 priority,
                 next_project_task_sort_order(project_id) if project_id else None,
             ),

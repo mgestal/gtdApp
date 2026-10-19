@@ -86,7 +86,7 @@
                 </div>
                 <div class="task-tags" style="font-size:0.8rem; opacity:0.8; margin-top:2px;">
                   {% for tag in tags_map.get(t.id, []) %}
-                    <a class="taglink" href="{{ url_for('tag_detail', tag_id=tag.id) }}" style="margin-right:5px;">@{{ tag.name }}</a>
+                    <a class="tagchip taglink" href="{{ url_for('tag_detail', tag_id=tag.id) }}" style="margin-right:5px;">@{{ tag.name }}</a>
                   {% endfor %}
                 </div>
               </td>

@@ -10427,6 +10427,44 @@ def api_sidebar_tag_type(tag_id: int):
     return jsonify({"ok": True})
 
 
+@app.route("/api/tasks/<int:task_id>/add_tag", methods=["POST"])
+def api_task_add_tag(task_id: int):
+    payload = request.get_json(silent=True) or {}
+    try:
+        tag_id = int(payload.get("tag_id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Etiqueta no válida"}), 400
+    if not q1("SELECT id FROM tasks WHERE id=%s AND deleted_at IS NULL", (task_id,)):
+        return jsonify({"ok": False, "error": "Tarea no encontrada"}), 404
+    if not q1("SELECT id FROM tags WHERE id=%s", (tag_id,)):
+        return jsonify({"ok": False, "error": "Etiqueta no encontrada"}), 404
+    try:
+        exec_sql("INSERT IGNORE INTO task_tags(task_id, tag_id) VALUES(%s,%s)", (task_id, tag_id))
+        commit()
+    except Exception as e:
+        rollback()
+        return jsonify({"ok": False, "error": str(e)}), 500
+    return jsonify({"ok": True})
+
+
+@app.route("/api/tasks/<int:task_id>/remove_tag", methods=["POST"])
+def api_task_remove_tag(task_id: int):
+    payload = request.get_json(silent=True) or {}
+    try:
+        tag_id = int(payload.get("tag_id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Etiqueta no válida"}), 400
+    if not q1("SELECT id FROM tasks WHERE id=%s AND deleted_at IS NULL", (task_id,)):
+        return jsonify({"ok": False, "error": "Tarea no encontrada"}), 404
+    try:
+        exec_sql("DELETE FROM task_tags WHERE task_id=%s AND tag_id=%s", (task_id, tag_id))
+        commit()
+    except Exception as e:
+        rollback()
+        return jsonify({"ok": False, "error": str(e)}), 500
+    return jsonify({"ok": True})
+
+
 @app.context_processor
 def inject_sidebar_tree():
     try:

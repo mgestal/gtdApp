@@ -211,6 +211,18 @@
       border-radius:8px;
       background:rgba(76,110,245,.08);
     }
+
+    .tag-remove-btn{
+      cursor:pointer; margin-left:6px; font-size:14px; font-weight:700;
+      opacity:.6; line-height:1; vertical-align:middle;
+    }
+    .tag-remove-btn:hover{ opacity:1; color:#e03131; }
+
+    .tag-drop-active{
+      outline:2px dashed #2f9e44;
+      outline-offset:-2px;
+      background:rgba(47,158,68,.10);
+    }
   </style>
 </head>
 <body>
@@ -361,6 +373,16 @@
         </div>
 
         <div class="side-tab-panel" id="sidePanelTags" data-side-panel="tags" hidden>
+          <div class="side-title-row">
+            <div class="tree-global-actions">
+              <button type="button" class="tree-global-btn" onclick="setAllTagFolders(false)" title="Colapsar todos">
+                ▴
+              </button>
+              <button type="button" class="tree-global-btn" onclick="setAllTagFolders(true)" title="Expandir todos">
+                ▾
+              </button>
+            </div>
+          </div>
           <div class="side-tag-folders" id="sideTagList"
                data-order-url="{{ url_for('api_sidebar_tags_order') }}"
                data-type-url="{{ url_for('api_sidebar_tag_type', tag_id=0) }}">
@@ -540,6 +562,10 @@
       } catch(e){}
     }
 
+    function setAllTagFolders(open){
+      document.querySelectorAll('.side-tag-folder').forEach(d => { d.open = open; });
+    }
+
     function collapseAllTree(){
       const nodes = document.querySelectorAll('.tree-node[data-tree-folder]');
       for (const n of nodes){
@@ -665,10 +691,12 @@
           handle.addEventListener('dragstart', ev => {
             dragged = item;
             item.classList.add('side-filter-dragging');
-            ev.dataTransfer.effectAllowed = 'move';
+            ev.dataTransfer.effectAllowed = 'copyMove';
             ev.dataTransfer.setData('text/plain', 'sidebar-tag:' + item.dataset.tagId);
+            window.gtdDraggedTagId = Number(item.dataset.tagId);
           });
           handle.addEventListener('dragend', () => {
+            window.gtdDraggedTagId = null;
             item.classList.remove('side-filter-dragging');
             tagRoot.querySelectorAll('.side-tag-folder-drop').forEach(f => f.classList.remove('side-tag-folder-drop'));
             dragged = null;
@@ -708,6 +736,110 @@
           });
         });
       }
+    })();
+
+    // Arrastrar una etiqueta de la barra lateral sobre una tarea para añadírsela
+    (function initTagDropOnTasks(){
+      const addTagUrlBase = "{{ url_for('api_task_add_tag', task_id=0) }}";
+      const taskIdOf = (el) => {
+        const row = el && el.closest ? el.closest('tr, .kanban-card, .project-kanban-task') : null;
+        if (!row || row.closest('aside')) return null;
+        let id = Number(row.getAttribute('data-task-id'));
+        if (!Number.isFinite(id) || !id) {
+          const a = row.querySelector('a[href*="/tasks/"][href*="/edit"]');
+          const m = a && a.getAttribute('href').match(/\/tasks\/(\d+)\/edit/);
+          id = m ? Number(m[1]) : null;
+        }
+        return id ? { row, id } : null;
+      };
+      const clear = () => document.querySelectorAll('.tag-drop-active').forEach(e => e.classList.remove('tag-drop-active'));
+
+      document.addEventListener('dragover', (ev) => {
+        if (!window.gtdDraggedTagId) return;
+        const t = taskIdOf(ev.target);
+        if (!t) return;
+        ev.preventDefault();
+        ev.dataTransfer.dropEffect = 'copy';
+        clear();
+        t.row.classList.add('tag-drop-active');
+      });
+      document.addEventListener('dragleave', (ev) => {
+        if (!ev.relatedTarget) clear();
+      });
+      document.addEventListener('drop', async (ev) => {
+        const tagId = window.gtdDraggedTagId;
+        if (!tagId) return;
+        const t = taskIdOf(ev.target);
+        clear();
+        if (!t) return;
+        ev.preventDefault();
+        try {
+          const res = await fetch(addTagUrlBase.replace('/0/', '/' + t.id + '/'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ tag_id: tagId }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data.ok) throw new Error(data.error || 'No se pudo añadir la etiqueta');
+          window.location.reload();
+        } catch (e) {
+          alert(e.message || 'No se pudo añadir la etiqueta');
+        }
+      });
+    })();
+
+    (function initTagRemoveButtons(){
+      const removeUrlBase = "{{ url_for('api_task_remove_tag', task_id=0) }}";
+      document.querySelectorAll('main a.taglink[href*="/tags/"]').forEach((a) => {
+        const row = a.closest('tr, .kanban-card, .project-kanban-task');
+        if (!row) return;
+        let taskId = Number(row.getAttribute('data-task-id'));
+        if (!taskId) {
+          const e = row.querySelector('a[href*="/tasks/"][href*="/edit"]');
+          const m = e && e.getAttribute('href').match(/\/tasks\/(\d+)\/edit/);
+          taskId = m ? Number(m[1]) : 0;
+        }
+        const tm = a.getAttribute('href').match(/\/tags\/(\d+)(?:[/?#]|$)/);
+        if (!taskId || !tm) return;
+        const btn = document.createElement('span');
+        btn.className = 'tag-remove-btn';
+        btn.textContent = '×';
+        btn.title = 'Quitar etiqueta de la tarea';
+        btn.addEventListener('click', async (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          try {
+            const res = await fetch(removeUrlBase.replace('/0/', '/' + taskId + '/'), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'same-origin',
+              body: JSON.stringify({ tag_id: Number(tm[1]) }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.ok) throw new Error(data.error || 'No se pudo quitar la etiqueta');
+            window.location.reload();
+          } catch (e) {
+            alert(e.message || 'No se pudo quitar la etiqueta');
+          }
+        });
+        a.appendChild(btn);
+      });
+    })();
+
+    (function persistTagFolders(){
+      const PREFIX = 'gtd_tagfolder_';
+      const folders = document.querySelectorAll('.side-tag-folder[data-folder-key]');
+      folders.forEach(d => {
+        const key = PREFIX + d.dataset.folderKey;
+        let saved = null;
+        try { saved = localStorage.getItem(key); } catch (e) {}
+        if (!d.open && saved === '1') d.open = true;
+        else if (d.open && saved === '0' && !d.querySelector('.side-filter-item-active')) d.open = false;
+        d.addEventListener('toggle', () => {
+          try { localStorage.setItem(key, d.open ? '1' : '0'); } catch (e) {}
+        });
+      });
     })();
 
     (function restoreTreeState(){

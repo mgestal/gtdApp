@@ -4703,11 +4703,20 @@ def api_project_board_task_status(project_id: int, task_id: int):
     if status not in valid_statuses:
         return jsonify({"ok": False, "error": "Estado inválido"}), 400
     try:
+        previous = q1("SELECT project_board_status FROM tasks WHERE id=%s", (task_id,))
+        was_in_progress = (previous or {}).get("project_board_status") == "in-progress"
         completed_at = "NOW()" if status == "done" else "NULL"
         exec_sql(
             f"UPDATE tasks SET completed_at={completed_at}, project_board_status=%s, project_board_order=id WHERE id=%s",
             (status, task_id),
         )
+        if status == "in-progress":
+            exec_sql(
+                "INSERT IGNORE INTO task_tags(task_id, tag_id) VALUES(%s,%s)",
+                (task_id, get_or_create_tag("EnCurso")),
+            )
+        elif was_in_progress:
+            _remove_task_tag(task_id, "EnCurso")
         commit()
         return jsonify({"ok": True, "status": status})
     except Exception as exc:

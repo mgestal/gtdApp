@@ -18,6 +18,7 @@
       outline-offset: 2px;
       background: #eef8ff;
     }
+
   </style>
 
   <div class="page-title">
@@ -36,19 +37,24 @@
       Sintaxis: nombre + [@etiquetas] + [titulo](https:, http:, www.) + [ [*]dd-mm-[aaaa] | *hoy | *mañana | *+nDias ] [h:HH:MM] [#proyecto | #"proyecto con espacios"] [f:carpeta | f:"carpeta con espacios"] [cada {día|semana|mes|año|laboral}] ^{alta|media|baja} 
     </div>
 
-    <div class="quick-input-wrap">
+    <div class="quick-input-wrap inbox-voice-row">
       <input
         class="input"
         name="quick"
+        id="inboxQuickInput"
         placeholder=""
         autocomplete="off"
         required
       >
+      <button type="button" class="btn btn-soft" id="inboxVoiceButton" aria-label="Dictar tarea" title="Dictar tarea">🎙️ Dictar</button>
     </div>
+    <div class="hint inbox-voice-status" id="inboxVoiceStatus" aria-live="polite"></div>
     
     <button class="btn btn-primary">Añadir a inbox</button>
   </form>
 </div>
+
+<script src="{{ url_for('static', filename='audio.js', v=2) }}"></script>
 
   <!-- TAREAS EN BANDEJA -->
   <div class="card" style="margin-top:0;">

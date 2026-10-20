@@ -1690,6 +1690,10 @@ hr{
   position: relative;
 }
 
+.inbox-voice-row{ display:flex; gap:8px; align-items:center; }
+.inbox-voice-row .input{ flex:1; min-width:0; }
+.inbox-voice-status{ min-height:1.2em; }
+
 .tag-autocomplete{
   position: absolute;
   left: 0;

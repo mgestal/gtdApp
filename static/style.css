@@ -1327,6 +1327,23 @@ hr {
   gap:6px;
 }
 
+.tag-task-visibility{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  margin-left:auto;
+  font-size:10px;
+  white-space:nowrap;
+}
+.tag-task-visibility label{
+  display:flex;
+  align-items:center;
+  gap:3px;
+  cursor:pointer;
+}
+.tag-task-visibility input{ margin:0; }
+
 .tree-global-btn{
   display:inline-flex;
   align-items:center;

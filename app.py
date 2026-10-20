@@ -3134,7 +3134,7 @@ def inject_sidebar_counts():
                 "FROM tasks t "
                 "JOIN task_tags tt ON tt.task_id=t.id "
                 "LEFT JOIN projects p ON p.id=t.project_id "
-                "WHERE t.completed_at IS NULL "
+                "WHERE t.completed_at IS NULL AND t.archived=0 AND t.deleted_at IS NULL "
                 "AND tt.tag_id=%s "
                 "AND (t.project_id IS NULL OR p.archived = 0)",
                 (next_tag["id"],)
@@ -3148,7 +3148,8 @@ def inject_sidebar_counts():
             "inbox": int((q1(
                 "SELECT COUNT(*) AS c "
                 "FROM tasks "
-                "WHERE completed_at IS NULL AND project_id IS NULL AND folder_id IS NULL"
+                "WHERE completed_at IS NULL AND archived=0 AND deleted_at IS NULL "
+                "AND project_id IS NULL AND folder_id IS NULL"
             ) or {}).get("c", 0)),
 
             "today": int((q1(
@@ -3156,7 +3157,7 @@ def inject_sidebar_counts():
                 "FROM tasks t "
                 "LEFT JOIN projects p ON p.id=t.project_id "
                 f"{recurring_due_join}"
-                f"WHERE t.completed_at IS NULL AND {effective_due_expr}=%s "
+                f"WHERE t.completed_at IS NULL AND t.archived=0 AND t.deleted_at IS NULL AND {effective_due_expr}=%s "
                 "AND (t.project_id IS NULL OR p.archived = 0)",
                 (today_d,)
             ) or {}).get("c", 0)),
@@ -3166,7 +3167,7 @@ def inject_sidebar_counts():
                 "FROM tasks t "
                 "LEFT JOIN projects p ON p.id=t.project_id "
                 f"{recurring_due_join}"
-                "WHERE t.completed_at IS NULL "
+                "WHERE t.completed_at IS NULL AND t.archived=0 AND t.deleted_at IS NULL "
                 f"AND {effective_due_expr} IS NOT NULL "
                 f"AND {effective_due_expr} >= %s "
                 f"AND {effective_due_expr} <= %s "
@@ -3181,7 +3182,7 @@ def inject_sidebar_counts():
                 "FROM tasks t "
                 "LEFT JOIN projects p ON p.id=t.project_id "
                 f"{recurring_due_join}"
-                f"WHERE t.completed_at IS NULL AND {effective_due_expr} IS NOT NULL "
+                f"WHERE t.completed_at IS NULL AND t.archived=0 AND t.deleted_at IS NULL AND {effective_due_expr} IS NOT NULL "
                 "AND (t.project_id IS NULL OR p.archived = 0)"
             ) or {}).get("c", 0)),
 
@@ -3930,26 +3931,29 @@ def kanban():
             ),
             None,
         )
-        matching_column = next(
-            (col for col in kanban_columns if _kanban_column_matches_task(col, task, task_tag_names)),
-            None,
-        )
-        matching_status = matching_column["key"] if matching_column else None
+        matching_columns = [
+            col for col in kanban_columns
+            if _kanban_column_matches_task(col, task, task_tag_names)
+        ]
 
-        if folder_group_definition and matching_status in kanban_folder_groups:
-            matching_group = next(
-                group for group in kanban_folder_groups[matching_status]
-                if group["key"] == folder_group_definition["key"]
-            )
-            matching_group["tasks"].append(task)
-            continue
+        # Cada columna es una lista independiente: una tarea puede cumplir
+        # varios criterios y aparecer en todas las cards correspondientes.
+        for matching_column in matching_columns:
+            matching_status = matching_column["key"]
+            if folder_group_definition and matching_status in kanban_folder_groups:
+                matching_group = next(
+                    group for group in kanban_folder_groups[matching_status]
+                    if group["key"] == folder_group_definition["key"]
+                )
+                matching_group["tasks"].append(task)
+            else:
+                tasks_by_status[matching_status].append(task)
 
-        if matching_status:
-            tasks_by_status[matching_status].append(task)
-        else:
-            is_real_inbox = task.get("project_id") is None and task.get("folder_id") is None
-            if is_real_inbox:
-                tasks_by_status["inbox"].append(task)
+        # Inbox es además una vista propia de tareas sin proyecto/carpeta,
+        # aunque alguna de ellas también coincida con una card etiquetada.
+        is_real_inbox = task.get("project_id") is None and task.get("folder_id") is None
+        if is_real_inbox:
+            tasks_by_status["inbox"].append(task)
 
     kanban_counts = {
         status: len(tasks)
@@ -4001,13 +4005,6 @@ def api_task_kanban_status(task_id: int):
     except Exception as exc:
         rollback()
         return jsonify({"ok": False, "error": str(exc)}), 500
-    if len(matching_columns) > 1 and payload.get("confirm_multiple") is not True:
-        return jsonify({
-            "ok": False,
-            "requires_confirmation": True,
-            "matching_cards": [column["label"] for column in matching_columns],
-        }), 409
-
     try:
         _sync_task_kanban_status(task_id, new_status)
         commit()
@@ -5183,6 +5180,12 @@ def tag_detail(tag_id: int):
     page = max(page, 1)
     offset = (page - 1) * per_page
     recurring_due_join, effective_due_expr = recurring_effective_due_sql("t")
+    tag_sidebar_cfg = (load_config().get("sidebar") or {}).get("tag_task_visibility") or {}
+    include_completed = bool(tag_sidebar_cfg.get("completed", False))
+    include_archived = bool(tag_sidebar_cfg.get("archived", False))
+    completed_clause = "" if include_completed else "AND t.completed_at IS NULL "
+    archived_clause = "" if include_archived else "AND t.archived=0 "
+    project_archived_clause = "" if include_archived else "AND (t.project_id IS NULL OR p.archived=0) "
 
     # total de tareas con esa etiqueta
     total_row = q1(
@@ -5191,9 +5194,10 @@ def tag_detail(tag_id: int):
         "JOIN tasks t ON t.id=tt.task_id "
         "LEFT JOIN projects p ON p.id=t.project_id "
         "WHERE tt.tag_id=%s "
-        "AND t.archived=0 "
+        f"{archived_clause}"
         "AND t.deleted_at IS NULL "
-        "AND (t.project_id IS NULL OR p.archived=0)",
+        f"{project_archived_clause}"
+        f"{completed_clause}",
         (tag_id,),
     )
     total = int(total_row["c"]) if total_row else 0
@@ -5210,9 +5214,10 @@ def tag_detail(tag_id: int):
         f"{recurring_due_join}"
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "WHERE tt.tag_id=%s "
-        "AND t.archived=0 "
+        f"{archived_clause}"
         "AND t.deleted_at IS NULL "
-        "AND (t.project_id IS NULL OR p.archived=0) "
+        f"{project_archived_clause}"
+        f"{completed_clause}"
         f"ORDER BY (t.completed_at IS NOT NULL) ASC, ({effective_due_expr} IS NULL) ASC, {effective_due_expr} ASC, t.id DESC "
         "LIMIT %s OFFSET %s",
         (tag_id, per_page, offset),
@@ -10471,12 +10476,19 @@ def _sidebar_filters_ordered() -> List[Dict[str, Any]]:
 
 
 def _sidebar_tags_ordered() -> List[Dict[str, Any]]:
+    tag_sidebar_cfg = (load_config().get("sidebar") or {}).get("tag_task_visibility") or {}
+    include_completed = bool(tag_sidebar_cfg.get("completed", False))
+    include_archived = bool(tag_sidebar_cfg.get("archived", False))
+    completed_clause = "" if include_completed else "AND t.completed_at IS NULL "
+    archived_clause = "" if include_archived else "AND t.archived=0 "
+    project_archived_clause = "" if include_archived else "AND (t.project_id IS NULL OR p.archived=0) "
     rows = q(
         "SELECT tg.id, tg.name, ttype.name AS type, "
-        "COUNT(CASE WHEN t.id IS NOT NULL AND (t.project_id IS NULL OR p.archived=0) THEN 1 END) AS task_count "
+        "COUNT(CASE WHEN t.id IS NOT NULL "
+        f"{completed_clause}{archived_clause}{project_archived_clause}THEN 1 END) AS task_count "
         "FROM tags tg LEFT JOIN TagsType ttype ON ttype.id=tg.type_id "
         "LEFT JOIN task_tags tasktag ON tasktag.tag_id=tg.id "
-        "LEFT JOIN tasks t ON t.id=tasktag.task_id AND t.archived=0 AND t.deleted_at IS NULL "
+        "LEFT JOIN tasks t ON t.id=tasktag.task_id AND t.deleted_at IS NULL "
         "LEFT JOIN projects p ON p.id=t.project_id "
         "GROUP BY tg.id, tg.name, ttype.name "
         "ORDER BY tg.name"
@@ -10498,6 +10510,7 @@ def inject_sidebar_filters():
             for r in _sidebar_filters_ordered()
         ]
         current_tag_id = None
+        tag_sidebar_cfg = (load_config().get("sidebar") or {}).get("tag_task_visibility") or {}
         if request.endpoint == "tag_detail" and request.view_args:
             current_tag_id = request.view_args.get("tag_id")
         groups_by_type: Dict[str, Dict[str, Any]] = {}
@@ -10515,6 +10528,8 @@ def inject_sidebar_filters():
             "current_filter_id": current_filter_id,
             "sidebar_tag_groups": tag_groups,
             "current_tag_id": current_tag_id,
+            "tag_count_completed": bool(tag_sidebar_cfg.get("completed", False)),
+            "tag_count_archived": bool(tag_sidebar_cfg.get("archived", False)),
         }
     except Exception:
         return {
@@ -10522,6 +10537,8 @@ def inject_sidebar_filters():
             "current_filter_id": None,
             "sidebar_tag_groups": [],
             "current_tag_id": None,
+            "tag_count_completed": False,
+            "tag_count_archived": False,
         }
 
 
@@ -10549,6 +10566,20 @@ def api_sidebar_tags_order():
     order = [i for i in dict.fromkeys(order) if i in valid_ids]
     cfg = load_config()
     cfg.setdefault("sidebar", {})["tag_order"] = order
+    save_config(cfg)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/sidebar/tags/task-visibility", methods=["POST"])
+def api_sidebar_tags_task_visibility():
+    payload = request.get_json(silent=True) or {}
+    if not isinstance(payload.get("completed"), bool) or not isinstance(payload.get("archived"), bool):
+        return jsonify({"ok": False, "error": "Opciones no válidas"}), 400
+    cfg = load_config()
+    cfg.setdefault("sidebar", {})["tag_task_visibility"] = {
+        "completed": payload["completed"],
+        "archived": payload["archived"],
+    }
     save_config(cfg)
     return jsonify({"ok": True})
 

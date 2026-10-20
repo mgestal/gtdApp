@@ -22,7 +22,8 @@
       <div class="list-row">
         <div>
           <div style="font-weight:600;">Cards de estado</div>
-          <div class="hint">Una tarea aparece en las cards cuyos criterios cumple. Las expresiones admiten etiquetas con AND, OR y NOT, sin paréntesis. El contador del encabezado indica cuántas tareas contiene.</div>
+          <div class="hint">Una tarea aparece en todas las cards cuyos criterios cumple; no se limita a la primera coincidencia. Las expresiones admiten etiquetas con AND, OR y NOT, sin paréntesis. El contador del encabezado indica cuántas tareas contiene.</div>
+          <div class="hint">La card fija Inbox es una vista adicional: las tareas sin proyecto ni carpeta aparecen en ella aunque también coincidan con otras cards.</div>
           <div class="hint">Dentro de cada card se agrupan en subcards las tareas que están en ciertas carpetas (y sus subcarpetas) o que llevan una etiqueta concreta. Por defecto: Agenda (carpeta 🗃️ Agenda o etiqueta @agenda), ♲ Rutinas, EnEspera, Seguimiento y Sometime. Se configuran en Admin → «Subcards del Kanban» (nombre, carpeta raíz y tag_key) y se muestran en ese orden.</div>
         </div>
       </div>
@@ -44,7 +45,7 @@
     </div>
     <div class="list">
       <div class="list-row">
-        <div class="hint">Arrastra una tarea hasta otra card para aplicar su criterio. El movimiento admite expresiones que solo usen AND y NOT. En esas cards, se añaden las etiquetas positivas y se quitan las negadas; las demás etiquetas se conservan. Si tras el movimiento la tarea aparece en varias cards, podrás confirmarlo o cancelarlo.</div>
+        <div class="hint">Arrastra una tarea hasta otra card para aplicar su criterio. El movimiento admite expresiones que solo usen AND y NOT. En esas cards, se añaden las etiquetas positivas y se quitan las negadas; las demás etiquetas se conservan. Después la tarea se muestra en todas las cards que coincidan con sus etiquetas.</div>
       </div>
       <div class="list-row">
         <div class="hint">Al moverla a Inbox, se eliminan de la tarea las etiquetas de estado Kanban.</div>

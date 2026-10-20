@@ -28,6 +28,8 @@ Aplicación personal de **Getting Things Done (GTD)** desarrollada en **Python +
 - En el detalle de proyecto, las tareas activas se pueden reordenar por arrastre; ese orden se usa para la promoción automática de NextAction
 - Creación rápida desde cualquier vista con sintaxis natural
 - Vistas: Inbox, Hoy, Esta semana, NextActions, Próximo, Calendario
+- Tablero Kanban: una tarea puede aparecer simultáneamente en todas las cards cuyos criterios cumpla, además de Inbox cuando no tiene proyecto ni carpeta
+- Visibilidad configurable de tareas realizadas y archivadas en los contadores del menú lateral y en las listas de etiquetas
 
 ### Sintaxis rápida para crear tareas
 
@@ -104,6 +106,18 @@ prioridad:alta & !done
   - Restaurar tareas o proyectos individualmente.
   - Borrar definitivamente tareas eliminadas hace más de 7 días.
   - Vaciar toda la papelera.
+
+### Etiquetas y contadores del menú lateral
+
+- En la cabecera del grupo de etiquetas del menú lateral, activa **Realizadas** para incluir tareas completadas en las listas y contadores de etiquetas, o **Archivo** para incluir tareas archivadas y tareas de proyectos archivados.
+- Estas opciones se guardan en la configuración de la aplicación y afectan tanto a la página de detalle de cada etiqueta como al número de tareas mostrado junto a cada etiqueta.
+- Por defecto ambas opciones están desactivadas. Las tareas eliminadas siguen excluidas.
+
+### Tablero Kanban
+
+- Cada card muestra todas las tareas activas que cumplen su criterio; una misma tarea puede aparecer en varias cards a la vez.
+- Las tareas sin proyecto ni carpeta aparecen también en la card fija Inbox, incluso si coinciden con otras cards.
+- Al arrastrar una tarea a una card, se actualizan las etiquetas de estado según el criterio de destino. Las cards coincidentes se actualizan automáticamente.
 
 ### Importación Gmail
 

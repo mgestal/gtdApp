@@ -382,6 +382,11 @@
                 ▾
               </button>
             </div>
+
+            <div class="tag-task-visibility" aria-label="Tareas incluidas en etiquetas">
+              <label><input type="checkbox" class="js-tag-task-visibility" data-option="completed" {% if tag_count_completed %}checked{% endif %}> Realizadas</label>
+              <label><input type="checkbox" class="js-tag-task-visibility" data-option="archived" {% if tag_count_archived %}checked{% endif %}> Archivo</label>
+            </div>
           </div>
           <div class="side-tag-folders" id="sideTagList"
                data-order-url="{{ url_for('api_sidebar_tags_order') }}"
@@ -1152,6 +1157,29 @@ window.addEventListener("beforeinstallprompt", function () {
     </ul>
   </footer>
 </body>
+
+<script>
+document.querySelectorAll(".js-tag-task-visibility").forEach(function (checkbox) {
+  checkbox.addEventListener("change", async function () {
+    const options = { completed: false, archived: false };
+    document.querySelectorAll(".js-tag-task-visibility").forEach(function (input) {
+      options[input.dataset.option] = input.checked;
+    });
+    try {
+      const response = await fetch("{{ url_for('api_sidebar_tags_task_visibility') }}", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(options)
+      });
+      if (!response.ok) throw new Error("No se pudieron guardar las opciones");
+      window.location.reload();
+    } catch (error) {
+      checkbox.checked = !checkbox.checked;
+      alert(error.message);
+    }
+  });
+});
+</script>
 
 <script>
 document.addEventListener("keydown", function(e){

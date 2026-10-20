@@ -592,7 +592,7 @@
       <input type="hidden" name="project_id" value="{{ project.id }}">
       <input id="projectBoardStatus" type="hidden" name="project_board_status" value="">
 <div class="project-quick-add" style="display:flex; gap:10px; align-items:flex-start;">
-  <div class="quick-input-wrap" style="flex:1;">
+  <div class="quick-input-wrap audio-dictation-row" style="flex:1;">
     <input
       class="input"
       id="projectQuickAddInput"
@@ -601,9 +601,11 @@
       autocomplete="off"
       required
     >
+    <button type="button" class="btn btn-soft js-audio-dictation-button" data-input-id="projectQuickAddInput" data-status-id="projectVoiceStatus" aria-label="Dictar tarea" title="Atajos: «siguiente» = @NextAction; «hoy» y «mañana» = fechas; «etiqueta…», «proyecto…», «carpeta…», «prioridad alta/media/baja» y «a las nueve y media». Di «FIN» para parar.">🎙️ Dictar</button>
   </div>
   <button class="btn btn-primary">Añadir</button>
 </div>
+      <div class="hint inbox-voice-status" id="projectVoiceStatus" aria-live="polite"></div>
       <div class="hint" style="margin-top:8px;">
         Sintaxis: nombre + [@etiquetas] + [ [*]dd-mm-[aaaa] | *hoy | *mañana | *+nDias ] [h:HH:MM] [#proyecto]  [cada {día|semana|mes|año|laboral}]
       </div>

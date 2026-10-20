@@ -1,14 +1,15 @@
 (function () {
-  const input = document.getElementById("inboxQuickInput");
-  const button = document.getElementById("inboxVoiceButton");
-  const status = document.getElementById("inboxVoiceStatus");
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SpeechRecognition) {
-    button.disabled = true;
-    button.title = "El reconocimiento de voz no está disponible en este navegador";
-    status.textContent = "El dictado no está disponible en este navegador.";
-    return;
-  }
+  document.querySelectorAll(".js-audio-dictation-button").forEach(function (button) {
+    const input = document.getElementById(button.dataset.inputId);
+    const status = document.getElementById(button.dataset.statusId);
+    if (!input || !status) return;
+    if (!SpeechRecognition) {
+      button.disabled = true;
+      button.title = "El reconocimiento de voz no está disponible en este navegador";
+      status.textContent = "El dictado no está disponible en este navegador.";
+      return;
+    }
 
   const recognition = new SpeechRecognition();
   recognition.lang = "es-ES";
@@ -18,6 +19,7 @@
   let baseText = "";
   let finalText = "";
   let stopAfterResult = false;
+  let noResultTimer = null;
 
   function spokenToQuick(text) {
     let value = text.replace(/\bfin\b[.!?]*\s*$/i, "").trim();
@@ -69,6 +71,7 @@
       recognition.stop();
       return;
     }
+    if (button.dataset.resetForm === "true" && input.form) input.form.reset();
     baseText = input.value.trim();
     finalText = "";
     stopAfterResult = false;
@@ -81,8 +84,14 @@
     listening = true;
     button.textContent = "⏹ Detener";
     button.setAttribute("aria-label", "Detener dictado");
+    clearTimeout(noResultTimer);
+    noResultTimer = setTimeout(function () {
+      status.textContent = "No llegaron resultados del reconocimiento de voz. Comprueba la conexión y los permisos del micrófono e inténtalo de nuevo.";
+      recognition.stop();
+    }, 20000);
   };
   recognition.onresult = function (event) {
+    clearTimeout(noResultTimer);
     let interimText = "";
     for (let i = event.resultIndex; i < event.results.length; i++) {
       const transcript = event.results[i][0].transcript.trim();
@@ -97,23 +106,34 @@
       }
       else interimText += (interimText ? " " : "") + transcript;
     }
-    updateInput(interimText);
+    try {
+      updateInput(interimText);
+    } catch (error) {
+      status.textContent = "No se pudo procesar la transcripción: " + error.message;
+      recognition.stop();
+      return;
+    }
     if (stopAfterResult) {
-      status.textContent = "Se detectó «FIN»; dictado detenido. Revisa el texto antes de añadirlo.";
+      if (!/(?:^|\s)@inbox\.audio(?:\s|$)/i.test(input.value)) {
+        input.value = (input.value.trim() + " @inbox.audio").trim();
+      }
+      status.textContent = "Se detectó «FIN»; dictado detenido y se añadió @inbox.audio. Revisa el texto antes de añadirlo.";
       recognition.stop();
     }
   };
   recognition.onerror = function (event) {
+    clearTimeout(noResultTimer);
     const messages = {
       "not-allowed": "No hay permiso para usar el micrófono.",
       "no-speech": "No se detectó voz. Puedes volver a intentarlo.",
       "audio-capture": "No se encontró un micrófono disponible.",
-      "network": "El servicio de reconocimiento del navegador no está disponible. Comprueba la conexión e inténtalo de nuevo.",
-      "service-not-allowed": "El navegador no permite usar su servicio de reconocimiento de voz."
+      "network": "No está disponible el servicio de reconocimiento de voz del navegador. Comprueba la conexión e inténtalo de nuevo.",
+      "service-not-allowed": "No se permite usar el servicio de reconocimiento de voz del navegador."
     };
     status.textContent = messages[event.error] || "Hubo un problema con el reconocimiento de voz.";
   };
   recognition.onend = function () {
+    clearTimeout(noResultTimer);
     listening = false;
     button.textContent = "🎙️ Dictar";
     button.setAttribute("aria-label", "Dictar tarea");
@@ -121,4 +141,5 @@
       status.textContent = input.value.trim() ? "Dictado listo; revisa el texto y pulsa «Añadir a inbox»." : "Dictado detenido.";
     }
   };
+  });
 })();

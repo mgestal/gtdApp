@@ -1714,7 +1714,7 @@ register_subtask_routes(app, subdb)
 # ---------------- Parsing quick entry ----------------
 # -----------------------------------------------
 
-TAG_RE = re.compile(r"@([A-Za-z0-9_\-áéíóúÁÉÍÓÚñÑ]+)")
+TAG_RE = re.compile(r"@([A-Za-z0-9_.\-áéíóúÁÉÍÓÚñÑ]+)")
 # Grupo 1 = nombre entrecomillado (con espacios), grupo 2 = nombre sin comillas (sin espacios)
 PROJ_RE = re.compile(r'#(?:"([^"]+)"|([A-Za-z0-9_\-áéíóúÁÉÍÓÚñÑ][A-Za-z0-9_\-áéíóúÁÉÍÓÚñÑ]*))')
 FOLDER_RE = re.compile(r'(?<![a-zA-Z])f:(?:"([^"]+)"|([A-Za-z0-9_\-áéíóúÁÉÍÓÚñÑ][A-Za-z0-9_\-áéíóúÁÉÍÓÚñÑ]*))')
@@ -6171,7 +6171,6 @@ def task_create():
 
     # 1) Extraer etiquetas tipo @etiqueta
     tags = re.findall(r'@([^\s@#]+)', raw_work)
-
     # 2) Extraer fecha desde texto rápido
     detected_due_date = None
     detected_due_time = None

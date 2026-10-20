@@ -1690,9 +1690,20 @@ hr{
   position: relative;
 }
 
-.inbox-voice-row{ display:flex; gap:8px; align-items:center; }
-.inbox-voice-row .input{ flex:1; min-width:0; }
+.audio-dictation-row{ display:flex; gap:8px; align-items:center; }
+.audio-dictation-row .input{ flex:1; min-width:0; }
 .inbox-voice-status{ min-height:1.2em; }
+.sidebar-add-actions{ display:flex; gap:6px; align-items:stretch; }
+.sidebar-add-actions #openAddTask{ flex:1; min-width:0; }
+.sidebar-add-actions #openAddTaskVoice{ flex:0 0 42px; justify-content:center; padding-left:6px; padding-right:6px; }
+.project-quick-add .audio-dictation-row .btn{ width:auto; }
+.folder-inline-form .audio-dictation-row{ display:flex; gap:8px; align-items:center; flex:1; min-width:0; }
+.folder-inline-form .audio-dictation-row .input{ flex:1; min-width:0; width:auto; }
+.folder-inline-form .audio-dictation-row .btn{ width:auto; flex:0 0 auto; }
+
+@media (max-width:640px){
+  .folder-inline-form .audio-dictation-row{ flex:1 1 100%; }
+}
 
 .tag-autocomplete{
   position: absolute;

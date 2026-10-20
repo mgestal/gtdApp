@@ -37,7 +37,7 @@
       Sintaxis: nombre + [@etiquetas] + [titulo](https:, http:, www.) + [ [*]dd-mm-[aaaa] | *hoy | *mañana | *+nDias ] [h:HH:MM] [#proyecto | #"proyecto con espacios"] [f:carpeta | f:"carpeta con espacios"] [cada {día|semana|mes|año|laboral}] ^{alta|media|baja} 
     </div>
 
-    <div class="quick-input-wrap inbox-voice-row">
+    <div class="quick-input-wrap audio-dictation-row">
       <input
         class="input"
         name="quick"
@@ -46,15 +46,13 @@
         autocomplete="off"
         required
       >
-      <button type="button" class="btn btn-soft" id="inboxVoiceButton" aria-label="Dictar tarea" title="Dictar tarea">🎙️ Dictar</button>
+      <button type="button" class="btn btn-soft js-audio-dictation-button" data-input-id="inboxQuickInput" data-status-id="inboxVoiceStatus" aria-label="Dictar tarea" title="Atajos: «siguiente» = @NextAction; «hoy» y «mañana» = fechas; «etiqueta…», «proyecto…», «carpeta…», «prioridad alta/media/baja» y «a las nueve y media». Di «FIN» para parar.">🎙️ Dictar</button>
     </div>
     <div class="hint inbox-voice-status" id="inboxVoiceStatus" aria-live="polite"></div>
     
     <button class="btn btn-primary">Añadir a inbox</button>
   </form>
 </div>
-
-<script src="{{ url_for('static', filename='audio.js', v=2) }}"></script>
 
   <!-- TAREAS EN BANDEJA -->
   <div class="card" style="margin-top:0;">

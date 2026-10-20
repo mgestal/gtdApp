@@ -73,7 +73,7 @@
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/emoji-icon-192.png') }}?v=3">
   <link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='icons/emoji-icon-192.png') }}?v=3">
   <link rel="shortcut icon" type="image/png" href="{{ url_for('static', filename='icons/emoji-icon-192.png') }}?v=3">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=6) }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=9) }}">
 
   <style>
 
@@ -255,7 +255,10 @@
     </div>
 
       <div class="sidebar-block">
-        <button class="btn btn-primary w100" id="openAddTask">+ Añadir tarea</button>
+        <div class="sidebar-add-actions">
+          <button class="btn btn-primary w100" id="openAddTask">+ Añadir tarea</button>
+          <button type="button" class="btn btn-soft js-open-add-task js-audio-dictation-button" id="openAddTaskVoice" data-input-id="modalQuickTaskInput" data-status-id="modalVoiceStatus" data-reset-form="true" aria-label="Dictar tarea nueva en Inbox" title="Atajos: «siguiente» = @NextAction; «hoy» y «mañana» = fechas; «etiqueta…», «proyecto…», «carpeta…», «prioridad alta/media/baja» y «a las nueve y media». Di «FIN» para parar.">🎙️</button>
+        </div>
       </div>
 
       <nav class="nav">
@@ -452,10 +455,14 @@
       </div>
 
       <div class="modal-body">
-		<div class="quick-input-wrap">
+        <div class="quick-input-wrap">
 		  <label class="label">Tarea</label>
-		  <input name="quick" class="input" placeholder="" autocomplete="off" required>
+          <div class="audio-dictation-row">
+		    <input id="modalQuickTaskInput" name="quick" class="input" placeholder="" autocomplete="off" required>
+            <button type="button" class="btn btn-soft js-audio-dictation-button" data-input-id="modalQuickTaskInput" data-status-id="modalVoiceStatus" aria-label="Dictar tarea" title="Atajos: «siguiente» = @NextAction; «hoy» y «mañana» = fechas; «etiqueta…», «proyecto…», «carpeta…», «prioridad alta/media/baja» y «a las nueve y media». Di «FIN» para parar.">🎙️ Dictar</button>
+          </div>
 		</div>
+        <div class="hint inbox-voice-status" id="modalVoiceStatus" aria-live="polite"></div>
         <div class="grid2">
           <div>
             <label class="label">Asignar a carpeta (opcional)</label>
@@ -551,6 +558,7 @@
       }
     })();
   </script>
+  <script src="{{ url_for('static', filename='audio.js', v=9) }}"></script>
   
   <script>
     function toggleTreeNode(nodeId, iconId, storageKey){

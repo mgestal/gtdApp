@@ -16,7 +16,7 @@
         <input class="input" name="name" required>
 
         <label class="label">Expresión</label>
-        <input class="input" name="expression" placeholder='Ej: @muchoTiempo & inbox' required>
+        <input class="input js-tag-autocomplete" name="expression" autocomplete="off" placeholder='Ej: @muchoTiempo & inbox' required>
 
         <div class="hint">
           Tokens: <code>inbox</code>,
@@ -61,8 +61,9 @@
 
         <form method="get" action="{{ url_for('filter_run_expression') }}" class="form">
           <input
-            class="input"
+            class="input js-tag-autocomplete"
             name="expr"
+            autocomplete="off"
             placeholder='Ej: @NextAction & fecha < hoy'
             required
           >

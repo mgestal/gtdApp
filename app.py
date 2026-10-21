@@ -3601,9 +3601,25 @@ def _task_has_tag(task_id: int, tag_name: str) -> bool:
     return bool(row)
 
 
-def _sync_task_kanban_status(task_id: int, new_status: str) -> None:
+def _remove_kanban_column_tags(task_id: int, column) -> None:
+    """Remove the positive tags that identify a task's source column."""
+    if not column or column.get("priority_filter") is not None:
+        return
+    if column.get("expression"):
+        terms = _parse_kanban_tag_expression(column["expression"])
+        tag_names = {name for name, negated in terms if not negated}
+    else:
+        tag_names = {column.get("tag_name")} if column.get("tag_name") else set()
+    for tag_name in tag_names:
+        _remove_task_tag(task_id, tag_name)
+
+
+def _sync_task_kanban_status(task_id: int, new_status: str, source_status: str = None) -> None:
     columns = _kanban_columns()
     column = _kanban_column_by_key(new_status)
+    source_column = _kanban_column_by_key(source_status) if source_status else None
+    _remove_kanban_column_tags(task_id, source_column)
+
     if column and column.get("priority_filter") is not None:
         priority = None if column["priority_filter"] == "none" else column["priority_filter"]
         exec_sql("UPDATE tasks SET priority=%s WHERE id=%s", (priority, task_id))
@@ -3666,7 +3682,7 @@ def _remove_kanban_state_tags(task_id: int, columns) -> None:
         _remove_task_tag(task_id, tag_name)
 
 
-def _kanban_matching_columns_after_move(task: Dict[str, Any], new_status: str):
+def _kanban_matching_columns_after_move(task: Dict[str, Any], new_status: str, source_status: str = None):
     columns = _kanban_columns()
     tags = {
         normalize_tag_key(row["name"])
@@ -3677,6 +3693,15 @@ def _kanban_matching_columns_after_move(task: Dict[str, Any], new_status: str):
     }
     resulting_task = dict(task)
     column = next((col for col in columns if col["key"] == new_status), None)
+    source_column = next((col for col in columns if col["key"] == source_status), None) if source_status else None
+    if source_column:
+        if source_column.get("expression"):
+            source_terms = _parse_kanban_tag_expression(source_column["expression"])
+            for tag_name, negated in source_terms:
+                if not negated:
+                    tags.discard(normalize_tag_key(tag_name))
+        elif source_column.get("tag_name"):
+            tags.discard(normalize_tag_key(source_column["tag_name"]))
 
     if new_status == "done":
         return []
@@ -3986,6 +4011,7 @@ def kanban():
 def api_task_kanban_status(task_id: int):
     payload = request.get_json(silent=True) or {}
     new_status = (payload.get("status") or "").strip().lower()
+    source_status = (payload.get("source_status") or "").strip().lower() or None
     valid_statuses = {"inbox", "done"} | {col["key"] for col in _kanban_columns()}
 
     if new_status not in valid_statuses:
@@ -3999,14 +4025,14 @@ def api_task_kanban_status(task_id: int):
         return jsonify({"ok": False, "error": "Tarea no encontrada"}), 404
 
     try:
-        matching_columns = _kanban_matching_columns_after_move(task, new_status)
+        matching_columns = _kanban_matching_columns_after_move(task, new_status, source_status)
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     except Exception as exc:
         rollback()
         return jsonify({"ok": False, "error": str(exc)}), 500
     try:
-        _sync_task_kanban_status(task_id, new_status)
+        _sync_task_kanban_status(task_id, new_status, source_status)
         commit()
         return jsonify({"ok": True, "status": new_status})
     except Exception as exc:

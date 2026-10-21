@@ -254,6 +254,21 @@
     flex: 1;
   }
 
+  .kanban-task-edit {
+    flex: 0 0 auto;
+    color: var(--muted);
+    text-decoration: none;
+    line-height: 1;
+    padding: 2px 4px;
+    border-radius: 5px;
+  }
+
+  .kanban-task-edit:hover,
+  .kanban-task-edit:focus-visible {
+    color: var(--text);
+    background: rgba(0,0,0,0.06);
+  }
+
   .kanban-card-meta {
     font-size: 10px;
     color: var(--muted);
@@ -350,6 +365,7 @@
           <button type="submit" class="radio" title="Marcar / desmarcar" aria-label="toggle"></button>
         </form>
         <div class="kanban-card-title">{{ task.title }}</div>
+        <a class="kanban-task-edit" draggable="false" href="{{ url_for('task_edit', task_id=task.id, next=request.full_path) }}" title="Editar tarea" aria-label="Editar tarea: {{ task.title }}" onclick="event.stopPropagation();">✎</a>
       </div>
       <div class="kanban-card-meta">
         {% if task.priority in [1,2,3] %}
@@ -427,7 +443,7 @@
     <div class="kanban-column" data-status="inbox" data-label="Inbox">
       <div class="kanban-column-header">
         <span class="kanban-column-heading">
-          <span class="kanban-column-title">Inbox</span>
+          <span class="kanban-column-title" title="Sin etiqueta Kanban asignada" aria-label="Inbox: sin etiqueta Kanban asignada">Inbox</span>
         </span>
         <button class="btn btn-primary js-open-add-task" type="button">+ Nueva tarea</button>
         <span class="kanban-counter">{{ kanban_counts.get('inbox', 0) }}</span>
@@ -461,7 +477,7 @@
           <span class="kanban-column-heading">
             <span class="kanban-column-drag-handle" draggable="true" title="Arrastrar para reordenar {{ column.label }}" aria-label="Arrastrar para reordenar {{ column.label }}" role="button"><span class="kanban-column-drag-handle-dot"></span><span class="kanban-column-drag-handle-dot"></span><span class="kanban-column-drag-handle-dot"></span><span class="kanban-column-drag-handle-dot"></span></span>
             <button class="kanban-column-settings" type="button" data-key="{{ column.key }}" data-label="{{ column.label }}" data-expression="{{ column.expression or ('@' ~ column.tag_name if column.tag_name else '') }}" data-priority-filter="{{ column.priority_filter if column.priority_filter is not none else '' }}" title="Configurar {{ column.label }}" aria-label="Configurar {{ column.label }}">&#9881;</button>
-            <span class="kanban-column-title" title="{{ column_criterion }}">{{ column.label }}</span>
+            <span class="kanban-column-title" title="{{ column_criterion }}" aria-label="{{ column.label }}: {{ column_criterion }}">{{ column.label }}</span>
           </span>
           <span class="kanban-counter">{{ kanban_counts.get(column.key, 0) }}</span>
         </div>
@@ -920,6 +936,10 @@
 
   document.querySelectorAll('.kanban-card').forEach((card) => {
     card.addEventListener('dragstart', (event) => {
+      if (event.target.closest('.kanban-task-edit')) {
+        event.preventDefault();
+        return;
+      }
       draggedKanbanColumn = null;
       const taskId = Number(card.dataset.taskId);
       draggedTaskId = Number.isFinite(taskId) ? taskId : null;
@@ -1028,7 +1048,7 @@
       }
 
       const url = getTaskStatusUrl(taskId);
-      const payload = { status: targetStatus };
+      const payload = { status: targetStatus, source_status: sourceStatus };
 
       try {
         let response = await fetch(url, {

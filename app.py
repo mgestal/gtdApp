@@ -620,7 +620,7 @@ def _task_calendar_row(task_id: int) -> Optional[Dict[str, Any]]:
     return q1(
         "SELECT id, title, notes, due_date, due_time, recurrence_rule, completed_at, archived, "
         "google_event_id, google_calendar_id, google_event_etag, "
-        "calendar_sync_state, calendar_sync_error, calendar_last_synced_hash, "
+        "calendar_sync_state, calendar_sync_ignored, calendar_sync_error, calendar_last_synced_hash, "
         "calendar_last_synced_at, calendar_local_changed_at, calendar_remote_updated_at "
         "FROM tasks WHERE id=%s",
         (task_id,),
@@ -734,6 +734,14 @@ def _mark_task_calendar_dirty(task_id: int, force_push_if_empty: bool = False) -
     has_when = _task_has_calendar_datetime(row)
     has_remote = bool(row.get("google_event_id"))
     archived = int(row.get("archived") or 0) == 1
+
+    if int(row.get("calendar_sync_ignored") or 0) == 1 and not has_remote:
+        exec_sql(
+            "UPDATE tasks SET calendar_sync_state='none', calendar_sync_error=NULL, "
+            "calendar_local_changed_at=NULL WHERE id=%s",
+            (task_id,),
+        )
+        return
 
     if archived:
         state = "pending_delete" if has_remote else "none"
@@ -1055,7 +1063,7 @@ def _stage_calendar_event_for_review(ev: Dict[str, Any], calendar_id: str) -> bo
         "ON DUPLICATE KEY UPDATE "
         "title=VALUES(title), due_date=VALUES(due_date), due_time=VALUES(due_time), "
         "notes=VALUES(notes), event_data=VALUES(event_data), "
-        "state=IF(state='imported','imported','pending')",
+        "state=IF(state IN ('imported','ignored'),state,'pending')",
         (
             event_id,
             calendar_id,
@@ -1605,6 +1613,10 @@ def ensure_schema_updates() -> None:
     exec_sql(
         "ALTER TABLE tasks "
         "ADD COLUMN IF NOT EXISTS calendar_sync_state VARCHAR(40) NOT NULL DEFAULT 'none' AFTER google_event_etag"
+    )
+    exec_sql(
+        "ALTER TABLE tasks "
+        "ADD COLUMN IF NOT EXISTS calendar_sync_ignored TINYINT(1) NOT NULL DEFAULT 0 AFTER calendar_sync_state"
     )
     exec_sql(
         "ALTER TABLE tasks "
@@ -8082,17 +8094,19 @@ def _load_calendar_sync_view_data(
     page: int,
     only_conflicts: bool = False,
     hide_overdue: bool = False,
+    show_hidden: bool = False,
 ) -> Dict[str, Any]:
     per_page = cfg_int(["app", "pagination", "calendar_conflicts_per_page"], default=25, min_v=5, max_v=500)
     today_d = _today_madrid()
 
     where_clauses = [
-        "calendar_sync_state IN ('pending_push','pending_delete','conflict','error')",
-        "(due_date IS NOT NULL OR google_event_id IS NOT NULL)",
+        "(calendar_sync_state IN ('pending_push','pending_delete','conflict','error') OR (calendar_sync_ignored=1 AND %s=1))",
+        "(due_date IS NOT NULL OR google_event_id IS NOT NULL OR calendar_sync_ignored=1)",
     ]
+    where_params: List[Any] = [1 if show_hidden else 0]
     if only_conflicts:
         where_clauses[0] = "calendar_sync_state='conflict'"
-    where_params: List[Any] = []
+        where_params = []
     if hide_overdue:
         where_clauses.append("(due_date IS NULL OR due_date >= %s)")
         where_params.append(today_d)
@@ -8155,7 +8169,7 @@ def _load_calendar_sync_view_data(
     rows = q(
         f"SELECT id, title, notes, due_date, due_time, TIME_FORMAT(due_time, '%%H:%%i') AS due_time_text, "
         "google_event_id, "
-        "calendar_sync_state, calendar_sync_error, calendar_conflict_at, calendar_conflict_payload "
+        "calendar_sync_state, calendar_sync_ignored, calendar_sync_error, calendar_conflict_at, calendar_conflict_payload "
         "FROM tasks "
         f"WHERE {base_where} "
         "ORDER BY "
@@ -8173,7 +8187,15 @@ def _load_calendar_sync_view_data(
     calendar_sync_items: List[Dict[str, Any]] = []
     for r in rows:
         state = (r.get("calendar_sync_state") or "").strip().lower()
-        if state == "conflict":
+        ignored = int(r.get("calendar_sync_ignored") or 0) == 1
+        if ignored:
+            origin = "GTD"
+            state_label = "Oculto · Solo GTD"
+            action_defs = [{"key": "ask_again", "label": "Volver a preguntar"}]
+            actionable = True
+            reason = "Se conserva solo en GTD; no se volverá a proponer su envío"
+            default_action_key = "ask_again"
+        elif state == "conflict":
             origin = "Ambos"
             state_label = "Con diferencias"
             action_defs = [
@@ -8189,6 +8211,7 @@ def _load_calendar_sync_view_data(
             action_defs = [
                 {"key": "create_gcal", "label": "Crear en GCal"},
                 {"key": "solo_gtd", "label": "Solo GTD"},
+                {"key": "no_ask", "label": "No volver a preguntar"},
             ]
             actionable = False
             reason = "Pendiente de envio a Calendar"
@@ -8246,7 +8269,9 @@ def _load_calendar_sync_view_data(
     pending_gcal_total = 0
     try:
         ensure_calendar_pending_events_table()
-        pending_where = "state='pending' AND due_date IS NOT NULL"
+        pending_where = "state IN ('pending','ignored') AND due_date IS NOT NULL"
+        if not show_hidden:
+            pending_where += " AND state='pending'"
         pending_params: List[Any] = []
         if hide_overdue:
             pending_where += " AND due_date >= %s"
@@ -8258,7 +8283,7 @@ def _load_calendar_sync_view_data(
         )
         pending_gcal_total = int((pending_count_row or {}).get("c") or 0)
         pending_rows = q(
-            "SELECT id, google_event_id, title, due_date, due_time, "
+            "SELECT id, google_event_id, title, due_date, due_time, state, "
             "TIME_FORMAT(due_time, '%%H:%%i') AS due_time_text, notes, discovered_at "
             "FROM calendar_pending_events "
             f"WHERE {pending_where} "
@@ -8279,14 +8304,15 @@ def _load_calendar_sync_view_data(
                 "calendar_conflict_at": None,
                 "calendar_conflict_payload": None,
                 "origin": "GCalendar",
-                "state_label": "Sin importar",
-                "action_defs": [
+                "state_label": "Oculto · Solo GCal" if pr.get("state") == "ignored" else "Sin importar",
+                "action_defs": ([{"key": "ask_again", "label": "Volver a preguntar"}] if pr.get("state") == "ignored" else [
                     {"key": "import_gtd", "label": "Crear en GTD"},
                     {"key": "solo_gcal", "label": "Solo GCal"},
-                ],
+                    {"key": "no_ask", "label": "No volver a preguntar"},
+                ]),
                 "actionable": True,
                 "reason": "Evento de Google Calendar sin tarea GTD asociada",
-                "default_action_key": "import_gtd",
+                "default_action_key": "ask_again" if pr.get("state") == "ignored" else "import_gtd",
             }
             pending_gcal_items.append(pitem)
     except Exception:
@@ -8303,6 +8329,7 @@ def _load_calendar_sync_view_data(
         "per_page": per_page,
         "only_conflicts": only_conflicts,
         "hide_overdue": hide_overdue,
+        "show_hidden": show_hidden,
     }
 
 
@@ -8416,13 +8443,14 @@ def _handle_calendar_conflicts_action(action: str, default_endpoint: str):
         if task_ids:
             placeholders = ",".join(["%s"] * len(task_ids))
             rows = q(
-                "SELECT id, calendar_sync_state, calendar_conflict_payload "
+                "SELECT id, calendar_sync_state, calendar_sync_ignored, calendar_conflict_payload "
                 "FROM tasks "
                 f"WHERE id IN ({placeholders})",
                 tuple(task_ids),
             )
 
         state_by_id: Dict[int, str] = {int(r["id"]): (r.get("calendar_sync_state") or "") for r in rows}
+        ignored_by_id: Dict[int, bool] = {int(r["id"]): bool(int(r.get("calendar_sync_ignored") or 0)) for r in rows}
         payload_by_id: Dict[int, Any] = {int(r["id"]): r.get("calendar_conflict_payload") for r in rows}
 
         applied = 0
@@ -8439,6 +8467,19 @@ def _handle_calendar_conflicts_action(action: str, default_endpoint: str):
 
                 if not chosen:
                     skipped += 1
+                    continue
+
+                if chosen == "ask_again" and ignored_by_id.get(task_id, False):
+                    try:
+                        exec_sql(
+                            "UPDATE tasks SET calendar_sync_ignored=0, calendar_sync_state='pending_push' WHERE id=%s",
+                            (task_id,),
+                        )
+                        applied += 1
+                    except Exception as e:
+                        failed += 1
+                        if first_error is None:
+                            first_error = str(e)
                     continue
 
                 try:
@@ -8476,6 +8517,15 @@ def _handle_calendar_conflicts_action(action: str, default_endpoint: str):
                         continue
 
                     if st in ("pending_push", "pending_delete", "error"):
+                        if chosen == "no_ask" and st == "pending_push":
+                            exec_sql(
+                                "UPDATE tasks SET calendar_sync_ignored=1, calendar_sync_state='none', "
+                                "calendar_sync_error=NULL, calendar_local_changed_at=NULL WHERE id=%s",
+                                (task_id,),
+                            )
+                            applied += 1
+                            continue
+
                         if chosen in ("create_gcal", "delete_gcal", "retry_sync"):
                             if _sync_task_push(task_id, service=service, force_remote_update=True):
                                 applied += 1
@@ -8514,7 +8564,7 @@ def _handle_calendar_conflicts_action(action: str, default_endpoint: str):
                 try:
                     pending_row = q1(
                         "SELECT id, google_event_id, google_calendar_id, event_data "
-                        "FROM calendar_pending_events WHERE id=%s AND state='pending'",
+                        "FROM calendar_pending_events WHERE id=%s AND state IN ('pending','ignored')",
                         (pid,),
                     )
                     if not pending_row:
@@ -8532,9 +8582,15 @@ def _handle_calendar_conflicts_action(action: str, default_endpoint: str):
                             applied += 1
                         else:
                             skipped += 1
-                    elif chosen == "solo_gcal":
+                    elif chosen in ("solo_gcal", "no_ask"):
                         exec_sql(
                             "UPDATE calendar_pending_events SET state='ignored' WHERE id=%s",
+                            (pid,),
+                        )
+                        applied += 1
+                    elif chosen == "ask_again":
+                        exec_sql(
+                            "UPDATE calendar_pending_events SET state='pending' WHERE id=%s AND state='ignored'",
                             (pid,),
                         )
                         applied += 1
@@ -9159,11 +9215,13 @@ def calendar_sync_view():
 
     only_conflicts = str(request.args.get("only_conflicts", "0")).strip().lower() in ("1", "true", "on", "yes")
     hide_overdue = str(request.args.get("hide_overdue", "0")).strip().lower() in ("1", "true", "on", "yes")
+    show_hidden = str(request.args.get("show_hidden", "0")).strip().lower() in ("1", "true", "on", "yes")
 
     context = _load_calendar_sync_view_data(
         page=page,
         only_conflicts=only_conflicts,
         hide_overdue=hide_overdue,
+        show_hidden=show_hidden,
     )
     calendar_sync_last_info = session.pop("calendar_sync_last_info", None)
     calendar_sync_last_level = session.pop("calendar_sync_last_level", "ok")

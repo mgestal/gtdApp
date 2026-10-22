@@ -16,6 +16,22 @@
     gap: 12px;
   }
 
+  .kanban-panel-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    width: 100%;
+  }
+
+  .kanban-panel-collapse-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+  }
+
   .kanban-filters {
     display: flex;
     align-items: center;
@@ -439,24 +455,30 @@
 
   <div class="card">
     <div class="kanban-toolbar">
-      <div class="kanban-filters">
-        <label for="kanbanPanelSelect" class="muted">Panel</label>
-        <select id="kanbanPanelSelect" class="kanban-filter-select" aria-label="Panel Kanban">
-          {% for key, panel in kanban_panels.items() %}
-            <option value="{{ key }}" {% if key == active_kanban_panel %}selected{% endif %}>{{ panel.name }}</option>
-          {% endfor %}
-        </select>
-        <div class="dropdown kanban-panel-actions" id="kanbanPanelActions">
-          <button id="kanbanPanelActionsToggle" class="btn btn-soft" type="button" title="Configurar panel" aria-label="Configurar panel" aria-haspopup="true" aria-expanded="false">&#9881;</button>
-          <div class="dropdown-menu" id="kanbanPanelActionsMenu" style="display:none; left:0; right:auto;">
-            <button id="kanbanNewEmptyPanel" class="dropdown-item" type="button">Nuevo panel vacío</button>
-            <button id="kanbanSavePanel" class="dropdown-item" type="button">Guardar como panel</button>
-            <button id="kanbanRenamePanel" class="dropdown-item" type="button">Renombrar panel</button>
-            {% if kanban_panels|length > 1 %}
-              <div class="dropdown-sep"></div>
-              <button id="kanbanDeletePanel" class="dropdown-item danger" type="button">Eliminar panel</button>
-            {% endif %}
+      <div class="kanban-panel-toolbar">
+        <div class="kanban-filters">
+          <label for="kanbanPanelSelect" class="muted">Panel</label>
+          <select id="kanbanPanelSelect" class="kanban-filter-select" aria-label="Panel Kanban">
+            {% for key, panel in kanban_panels.items() %}
+              <option value="{{ key }}" {% if key == active_kanban_panel %}selected{% endif %}>{{ panel.name }}</option>
+            {% endfor %}
+          </select>
+          <div class="dropdown kanban-panel-actions" id="kanbanPanelActions">
+            <button id="kanbanPanelActionsToggle" class="btn btn-soft" type="button" title="Configurar panel" aria-label="Configurar panel" aria-haspopup="true" aria-expanded="false">&#9881;</button>
+            <div class="dropdown-menu" id="kanbanPanelActionsMenu" style="display:none; left:0; right:auto;">
+              <button id="kanbanNewEmptyPanel" class="dropdown-item" type="button">Nuevo panel vacío</button>
+              <button id="kanbanSavePanel" class="dropdown-item" type="button">Guardar como panel</button>
+              <button id="kanbanRenamePanel" class="dropdown-item" type="button">Renombrar panel</button>
+              {% if kanban_panels|length > 1 %}
+                <div class="dropdown-sep"></div>
+                <button id="kanbanDeletePanel" class="dropdown-item danger" type="button">Eliminar panel</button>
+              {% endif %}
+            </div>
           </div>
+        </div>
+        <div class="kanban-panel-collapse-actions" aria-label="Acciones para todas las cards">
+          <button id="kanbanCollapseAllColumns" type="button" class="tree-global-btn" title="Colapsar todas las cards" aria-label="Colapsar todas las cards">▴</button>
+          <button id="kanbanExpandAllColumns" type="button" class="tree-global-btn" title="Expandir todas las cards" aria-label="Expandir todas las cards">▾</button>
         </div>
       </div>
       <form class="kanban-filters" method="get">
@@ -715,6 +737,24 @@
         localStorage.setItem(kanbanCollapseStorageKey, JSON.stringify(collapsedKanbanColumns));
       } catch (_) {}
     });
+  });
+
+  function setAllKanbanColumnsCollapsed(collapsed) {
+    kanbanColumns.forEach((column) => {
+      const key = column.dataset.columnKey || column.dataset.status;
+      collapsedKanbanColumns[key] = collapsed;
+      setKanbanColumnCollapsed(column, collapsed);
+    });
+    try {
+      localStorage.setItem(kanbanCollapseStorageKey, JSON.stringify(collapsedKanbanColumns));
+    } catch (_) {}
+  }
+
+  document.getElementById('kanbanCollapseAllColumns').addEventListener('click', () => {
+    setAllKanbanColumnsCollapsed(true);
+  });
+  document.getElementById('kanbanExpandAllColumns').addEventListener('click', () => {
+    setAllKanbanColumnsCollapsed(false);
   });
 
   const filterInput = document.getElementById('kanbanFilterInput');

@@ -142,6 +142,44 @@
     color: var(--text);
   }
 
+  .kanban-column-collapse {
+    width: 26px;
+    height: 26px;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 15px;
+    line-height: 1;
+  }
+
+  .kanban-column-collapse:hover {
+    background: rgba(0, 0, 0, 0.07);
+    color: var(--text);
+  }
+
+  .kanban-column-header-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .kanban-column.is-collapsed {
+    min-height: 0;
+  }
+
+  .kanban-column.is-collapsed .kanban-column-header {
+    border-bottom: 0;
+    margin-bottom: 0;
+    padding-bottom: 6px;
+  }
+
+  .kanban-column.is-collapsed .kanban-cards,
+  .kanban-column.is-collapsed .js-open-add-task {
+    display: none;
+  }
+
   .kanban-tag-dialog {
     width: min(92vw, 380px);
     border: 1px solid var(--border);
@@ -449,14 +487,17 @@
     </div>
   </div>
 
-  <div class="kanban-columns" data-per-row="3">
+  <div class="kanban-columns" data-per-row="3" data-panel-key="{{ active_kanban_panel }}">
     <div class="kanban-column" data-status="inbox" data-label="Inbox">
       <div class="kanban-column-header">
         <span class="kanban-column-heading">
           <span class="kanban-column-title" title="Sin etiqueta Kanban asignada" aria-label="Inbox: sin etiqueta Kanban asignada">Inbox</span>
         </span>
         <button class="btn btn-primary js-open-add-task" type="button">+ Nueva tarea</button>
-        <span class="kanban-counter">{{ kanban_counts.get('inbox', 0) }}</span>
+        <span class="kanban-column-header-actions">
+          <span class="kanban-counter">{{ kanban_counts.get('inbox', 0) }}</span>
+          <button class="kanban-column-collapse" type="button" aria-expanded="true" aria-label="Colapsar Inbox" title="Colapsar Inbox">▾</button>
+        </span>
       </div>
       <div class="kanban-cards">
         {% set column_tasks = tasks_by_status.get('inbox', []) %}
@@ -489,7 +530,10 @@
             <button class="kanban-column-settings" type="button" data-key="{{ column.key }}" data-label="{{ column.label }}" data-expression="{{ column.expression or ('@' ~ column.tag_name if column.tag_name else '') }}" data-priority-filter="{{ column.priority_filter if column.priority_filter is not none else '' }}" data-width="{{ column.width }}" title="Configurar {{ column.label }}" aria-label="Configurar {{ column.label }}">&#9881;</button>
             <span class="kanban-column-title" title="{{ column_criterion }}" aria-label="{{ column.label }}: {{ column_criterion }}">{{ column.label }}</span>
           </span>
-          <span class="kanban-counter">{{ kanban_counts.get(column.key, 0) }}</span>
+          <span class="kanban-column-header-actions">
+            <span class="kanban-counter">{{ kanban_counts.get(column.key, 0) }}</span>
+            <button class="kanban-column-collapse" type="button" aria-expanded="true" aria-label="Colapsar {{ column.label }}" title="Colapsar {{ column.label }}">▾</button>
+          </span>
         </div>
         <div class="kanban-cards">
           {% set column_tasks = tasks_by_status.get(column.key, []) %}
@@ -636,6 +680,43 @@
 
 <script>
   const kanbanColumns = document.querySelectorAll('.kanban-column');
+  const kanbanGrid = document.querySelector('.kanban-columns');
+  const kanbanCollapseStorageKey = `gtd-kanban-collapsed:${kanbanGrid?.dataset.panelKey || 'principal'}`;
+  let collapsedKanbanColumns = {};
+  try {
+    collapsedKanbanColumns = JSON.parse(localStorage.getItem(kanbanCollapseStorageKey) || '{}') || {};
+  } catch (_) {
+    collapsedKanbanColumns = {};
+  }
+
+  function setKanbanColumnCollapsed(column, collapsed) {
+    if (!column) return;
+    const label = column.dataset.label || 'card';
+    const button = column.querySelector('.kanban-column-collapse');
+    column.classList.toggle('is-collapsed', collapsed);
+    if (button) {
+      button.setAttribute('aria-expanded', String(!collapsed));
+      button.setAttribute('aria-label', `${collapsed ? 'Expandir' : 'Colapsar'} ${label}`);
+      button.title = `${collapsed ? 'Expandir' : 'Colapsar'} ${label}`;
+      button.textContent = collapsed ? '▼' : '▲';
+    }
+  }
+
+  kanbanColumns.forEach((column) => {
+    const key = column.dataset.columnKey || column.dataset.status;
+    setKanbanColumnCollapsed(column, Boolean(collapsedKanbanColumns[key]));
+    const button = column.querySelector('.kanban-column-collapse');
+    if (!button) return;
+    button.addEventListener('click', () => {
+      const collapsed = !column.classList.contains('is-collapsed');
+      setKanbanColumnCollapsed(column, collapsed);
+      collapsedKanbanColumns[key] = collapsed;
+      try {
+        localStorage.setItem(kanbanCollapseStorageKey, JSON.stringify(collapsedKanbanColumns));
+      } catch (_) {}
+    });
+  });
+
   const filterInput = document.getElementById('kanbanFilterInput');
   const filterStatus = document.getElementById('kanbanFilterStatus');
   const applyFilter = document.getElementById('kanbanApplyFilter');

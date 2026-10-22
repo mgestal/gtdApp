@@ -3474,6 +3474,12 @@ def _kanban_columns():
         priority_filter = col.get("priority_filter")
         if priority_filter not in (1, 2, 3, "none"):
             priority_filter = None
+        try:
+            column_width = int(col.get("width", 1))
+        except (TypeError, ValueError):
+            column_width = 1
+        if column_width not in (1, 2, 3):
+            column_width = 1
         if not key or (not tag_name and not expression and priority_filter is None):
             continue
         result.append({
@@ -3482,6 +3488,7 @@ def _kanban_columns():
             "tag_name": tag_name,
             "expression": expression,
             "priority_filter": priority_filter,
+            "width": column_width,
         })
     return result
 
@@ -4045,25 +4052,31 @@ def _validate_kanban_column_payload(payload):
     tag_name = normalize_name(payload.get("tag_name")).lstrip("@")
     expression = (payload.get("expression") or "").strip()
     priority_filter = payload.get("priority_filter")
+    try:
+        width = int(payload.get("width", 1))
+    except (TypeError, ValueError):
+        width = 0
+    if width not in (1, 2, 3):
+        return None, None, None, None, None, "El ancho debe ser de 1, 2 o 3 columnas"
     if not label:
-        return None, None, None, None, "Indica un nombre para la card"
+        return None, None, None, None, None, "Indica un nombre para la card"
     if priority_filter in ("1", "2", "3"):
-        return label, "", "", int(priority_filter), None
+        return label, "", "", int(priority_filter), width, None
     if priority_filter == "none":
-        return label, "", "", "none", None
+        return label, "", "", "none", width, None
     if expression:
         if "(" in expression or ")" in expression:
-            return None, None, None, None, "Las expresiones de las cards no admiten paréntesis"
+            return None, None, None, None, None, "Las expresiones de las cards no admiten paréntesis"
         try:
             parse_filter_expression(_kanban_filter_parser_expression(expression))
         except FilterParseError as exc:
-            return None, None, None, None, f"Expresión inválida: {exc}"
+            return None, None, None, None, None, f"Expresión inválida: {exc}"
         if "@" not in expression:
-            return None, None, None, None, "La expresión debe usar etiquetas con @"
-        return label, "", expression, None, None
+            return None, None, None, None, None, "La expresión debe usar etiquetas con @"
+        return label, "", expression, None, width, None
     if tag_name and re.fullmatch(r"[A-Za-z0-9_\-áéíóúÁÉÍÓÚñÑ]+", tag_name):
-        return label, tag_name, f"@{tag_name}", None, None
-    return None, None, None, None, "Indica una expresión de etiquetas o una prioridad"
+        return label, tag_name, f"@{tag_name}", None, width, None
+    return None, None, None, None, None, "Indica una expresión de etiquetas o una prioridad"
 
 
 def _validate_kanban_panel_name(payload):
@@ -4134,16 +4147,16 @@ def api_kanban_panel_delete(key: str):
 @app.route("/api/kanban/columns", methods=["POST"])
 def api_kanban_column_create():
     payload = request.get_json(silent=True) or {}
-    label, tag_name, expression, priority_filter, error = _validate_kanban_column_payload(payload)
+    label, tag_name, expression, priority_filter, width, error = _validate_kanban_column_payload(payload)
     if error:
         return jsonify({"ok": False, "error": error}), 400
 
     columns = _kanban_columns()
     existing_keys = {c["key"] for c in columns} | {"inbox", "done"}
     new_key = _kanban_unique_key(label, existing_keys)
-    columns.append({"key": new_key, "label": label, "tag_name": tag_name, "expression": expression, "priority_filter": priority_filter})
+    columns.append({"key": new_key, "label": label, "tag_name": tag_name, "expression": expression, "priority_filter": priority_filter, "width": width})
     _save_kanban_columns(columns)
-    return jsonify({"ok": True, "column": {"key": new_key, "label": label, "tag_name": tag_name, "expression": expression, "priority_filter": priority_filter}})
+    return jsonify({"ok": True, "column": {"key": new_key, "label": label, "tag_name": tag_name, "expression": expression, "priority_filter": priority_filter, "width": width}})
 
 
 @app.route("/api/kanban/columns/reorder", methods=["POST"])
@@ -4169,7 +4182,7 @@ def api_kanban_column_update(key: str):
         return jsonify({"ok": False, "error": "Columna no encontrada"}), 404
 
     payload = request.get_json(silent=True) or {}
-    label, tag_name, expression, priority_filter, error = _validate_kanban_column_payload(payload)
+    label, tag_name, expression, priority_filter, width, error = _validate_kanban_column_payload(payload)
     if error:
         return jsonify({"ok": False, "error": error}), 400
 
@@ -4179,9 +4192,10 @@ def api_kanban_column_update(key: str):
             c["tag_name"] = tag_name
             c["expression"] = expression
             c["priority_filter"] = priority_filter
+            c["width"] = width
             break
     _save_kanban_columns(columns)
-    return jsonify({"ok": True, "column": {"key": key, "label": label, "tag_name": tag_name, "expression": expression, "priority_filter": priority_filter}})
+    return jsonify({"ok": True, "column": {"key": key, "label": label, "tag_name": tag_name, "expression": expression, "priority_filter": priority_filter, "width": width}})
 
 
 @app.route("/api/kanban/columns/<key>", methods=["DELETE"])

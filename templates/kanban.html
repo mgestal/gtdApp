@@ -212,7 +212,11 @@
   }
 
   .kanban-column:not([data-status="inbox"]) .kanban-cards {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(var(--kanban-task-columns, 1), minmax(0, 1fr));
+  }
+
+  .kanban-column:not([data-status="inbox"]) .kanban-cards > .kanban-waiting-group {
+    grid-column: 1 / -1;
   }
 
   .kanban-card {
@@ -327,6 +331,7 @@
 
   .kanban-waiting-group-cards {
     display: grid;
+    grid-template-columns: repeat(var(--kanban-task-columns, 1), minmax(0, 1fr));
     gap: 8px;
     padding: 0 8px 8px;
   }
@@ -348,6 +353,11 @@
     .kanban-column[data-status="inbox"] {
       grid-column: 1 / -1;
     }
+
+  .kanban-column[data-status]:not([data-status="inbox"]) {
+    grid-column: span 1 !important;
+    --kanban-task-columns: 1 !important;
+  }
   }
 
   @media (max-width: 720px) {
@@ -472,11 +482,11 @@
       {% else %}
         {% set column_criterion = column.expression or ('@' ~ column.tag_name) %}
       {% endif %}
-      <div class="kanban-column" data-status="{{ column.key }}" data-column-key="{{ column.key }}" data-label="{{ column.label }}">
+      <div class="kanban-column" data-status="{{ column.key }}" data-column-key="{{ column.key }}" data-column-width="{{ column.width }}" data-label="{{ column.label }}" style="--kanban-task-columns: {{ column.width }}; grid-column: span {{ column.width }}">
         <div class="kanban-column-header">
           <span class="kanban-column-heading">
             <span class="kanban-column-drag-handle" draggable="true" title="Arrastrar para reordenar {{ column.label }}" aria-label="Arrastrar para reordenar {{ column.label }}" role="button"><span class="kanban-column-drag-handle-dot"></span><span class="kanban-column-drag-handle-dot"></span><span class="kanban-column-drag-handle-dot"></span><span class="kanban-column-drag-handle-dot"></span></span>
-            <button class="kanban-column-settings" type="button" data-key="{{ column.key }}" data-label="{{ column.label }}" data-expression="{{ column.expression or ('@' ~ column.tag_name if column.tag_name else '') }}" data-priority-filter="{{ column.priority_filter if column.priority_filter is not none else '' }}" title="Configurar {{ column.label }}" aria-label="Configurar {{ column.label }}">&#9881;</button>
+            <button class="kanban-column-settings" type="button" data-key="{{ column.key }}" data-label="{{ column.label }}" data-expression="{{ column.expression or ('@' ~ column.tag_name if column.tag_name else '') }}" data-priority-filter="{{ column.priority_filter if column.priority_filter is not none else '' }}" data-width="{{ column.width }}" title="Configurar {{ column.label }}" aria-label="Configurar {{ column.label }}">&#9881;</button>
             <span class="kanban-column-title" title="{{ column_criterion }}" aria-label="{{ column.label }}: {{ column_criterion }}">{{ column.label }}</span>
           </span>
           <span class="kanban-counter">{{ kanban_counts.get(column.key, 0) }}</span>
@@ -536,6 +546,14 @@
         <option value="none">Sin prioridad</option>
       </select>
     </div>
+    <div>
+      <label for="kanbanColumnWidth">Ancho en columnas</label>
+      <select id="kanbanColumnWidth" class="kanban-filter-select" name="width">
+        <option value="1">1 columna</option>
+        <option value="2">2 columnas</option>
+        <option value="3">3 columnas</option>
+      </select>
+    </div>
     <div class="kanban-tag-dialog-actions">
       <button id="kanbanTagDelete" class="btn btn-danger-soft" type="button">Eliminar tarjeta</button>
       <button id="kanbanTagCancel" class="btn btn-soft" type="button">Cancelar</button>
@@ -566,6 +584,14 @@
         <option value="2">Media</option>
         <option value="3">Baja</option>
         <option value="none">Sin prioridad</option>
+      </select>
+    </div>
+    <div>
+      <label for="kanbanNewColumnWidth">Ancho en columnas</label>
+      <select id="kanbanNewColumnWidth" class="kanban-filter-select" name="width">
+        <option value="1">1 columna</option>
+        <option value="2">2 columnas</option>
+        <option value="3">3 columnas</option>
       </select>
     </div>
     <div class="kanban-tag-dialog-actions">
@@ -638,12 +664,14 @@
   const kanbanTagForm = document.getElementById('kanbanTagForm');
   const kanbanTagDelete = document.getElementById('kanbanTagDelete');
   const kanbanColumnLabel = document.getElementById('kanbanColumnLabel');
+  const kanbanColumnWidth = document.getElementById('kanbanColumnWidth');
   const kanbanExpression = document.getElementById('kanbanExpression');
   const kanbanPriorityFilter = document.getElementById('kanbanPriorityFilter');
   const kanbanTagDialogTitle = document.getElementById('kanbanTagDialogTitle');
   const kanbanAddColumnDialog = document.getElementById('kanbanAddColumnDialog');
   const kanbanAddColumnForm = document.getElementById('kanbanAddColumnForm');
   const kanbanNewColumnLabel = document.getElementById('kanbanNewColumnLabel');
+  const kanbanNewColumnWidth = document.getElementById('kanbanNewColumnWidth');
   const kanbanNewColumnExpression = document.getElementById('kanbanNewColumnExpression');
   const kanbanNewColumnPriority = document.getElementById('kanbanNewColumnPriority');
   let configuredKey = null;
@@ -824,6 +852,7 @@
       kanbanColumnLabel.value = button.dataset.label;
       kanbanExpression.value = button.dataset.expression || '';
       kanbanPriorityFilter.value = button.dataset.priorityFilter || '';
+      kanbanColumnWidth.value = button.dataset.width || '1';
       kanbanTagDialog.showModal();
       kanbanColumnLabel.focus();
       kanbanColumnLabel.select();
@@ -843,7 +872,7 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ label: kanbanColumnLabel.value, expression: kanbanExpression.value, priority_filter: kanbanPriorityFilter.value }),
+        body: JSON.stringify({ label: kanbanColumnLabel.value, expression: kanbanExpression.value, priority_filter: kanbanPriorityFilter.value, width: kanbanColumnWidth.value }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.ok) {
@@ -878,6 +907,7 @@
     kanbanNewColumnLabel.value = '';
     kanbanNewColumnExpression.value = '';
     kanbanNewColumnPriority.value = '';
+    kanbanNewColumnWidth.value = '1';
     kanbanAddColumnDialog.showModal();
     kanbanNewColumnLabel.focus();
   }
@@ -896,7 +926,7 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ label: kanbanNewColumnLabel.value, expression: kanbanNewColumnExpression.value, priority_filter: kanbanNewColumnPriority.value }),
+        body: JSON.stringify({ label: kanbanNewColumnLabel.value, expression: kanbanNewColumnExpression.value, priority_filter: kanbanNewColumnPriority.value, width: kanbanNewColumnWidth.value }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.ok) {
@@ -1001,6 +1031,10 @@
     });
 
     column.addEventListener('drop', async (event) => {
+      // Las etiquetas de la barra lateral se asignan en el listener global de base.html.
+      // Deja que el evento suba para que ese listener encuentre la tarea bajo el puntero.
+      if (window.gtdDraggedTagId) return;
+
       event.preventDefault();
       event.stopPropagation();
       column.classList.remove('drag-over');

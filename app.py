@@ -73,7 +73,7 @@ INSTANCE_DIR = BASE_DIR / "instance"
 CONFIG_PATH = INSTANCE_DIR / "config.json"
 
 DEFAULT_KANBAN_SUBCARDS = [
-    {"key": "agenda", "label": "Agenda", "folder_name": "🗃️ Agenda", "tag_key": "agenda"},
+    {"key": "agenda", "label": "Agenda", "folder_name": "Agenda 🗃️", "tag_key": "agenda"},
     {"key": "rutinas", "label": "♲ Rutinas", "folder_name": "♲ Rutinas", "tag_key": ""},
     {"key": "en-espera", "label": "EnEspera", "folder_name": "EnEspera", "tag_key": ""},
     {"key": "seguimiento", "label": "Seguimiento", "folder_name": "Seguimiento", "tag_key": ""},
@@ -1677,7 +1677,18 @@ def ensure_schema_updates() -> None:
 def ensure_review_defaults() -> None:
     """Inserta etiquetas/carpetas necesarias para que review funcione con todos los bloques."""
     required_tags = ["NextAction","EnSeguimiento","agenda","EnEspera"]
-    required_folders = ["✅ Checklists","ADTV","🔜 EstaSemanaNo"]
+    required_folders = ["✅ Checklists","ADTV","🔜 EstaSemanaNo","Agenda 🗃️"]
+
+    legacy_agenda = q1(
+        "SELECT id FROM folders WHERE name=%s AND parent_id IS NULL",
+        ("🗃️ Agenda",),
+    )
+    renamed_agenda = q1(
+        "SELECT id FROM folders WHERE name=%s AND parent_id IS NULL",
+        ("Agenda 🗃️",),
+    )
+    if legacy_agenda and not renamed_agenda:
+        exec_sql("UPDATE folders SET name=%s WHERE id=%s", ("Agenda 🗃️", legacy_agenda["id"]))
 
     for t in required_tags:
         exec_sql("INSERT IGNORE INTO tags(name) VALUES(%s)", (t,))
@@ -3888,10 +3899,13 @@ def _kanban_subcard_definitions() -> List[Dict[str, str]]:
             key = f"{base_key}-{suffix}"
             suffix += 1
         used_keys.add(key)
+        folder_name = str(item.get("folder_name") or "").strip()
+        if folder_name == "🗃️ Agenda":
+            folder_name = "Agenda 🗃️"
         definitions.append({
             "key": key,
             "label": label,
-            "folder_name": str(item.get("folder_name") or "").strip(),
+            "folder_name": folder_name,
             "tag_key": normalize_tag_key(str(item.get("tag_key") or "")),
         })
     return definitions
@@ -3969,9 +3983,14 @@ def kanban():
 
     for group in folder_group_definitions:
         folder_name = (group.get("folder_name") or "").replace("@", "")
+        folder_names = [folder_name]
+        if folder_name == "Agenda 🗃️":
+            folder_names.append("🗃️ Agenda")
         root_folder = q1(
-            "SELECT id FROM folders WHERE LOWER(REPLACE(name, '@', ''))=LOWER(%s) LIMIT 1",
-            (folder_name,),
+            "SELECT id FROM folders WHERE LOWER(REPLACE(name, '@', '')) IN "
+            "(" + ",".join(["LOWER(%s)"] * len(folder_names)) + ") "
+            "ORDER BY (name=%s) DESC LIMIT 1",
+            tuple(folder_names + [folder_name]),
         ) if folder_name else None
         if root_folder and root_folder.get("id") is not None:
             group["folder_ids"] = get_folder_tree_ids(int(root_folder["id"]))
@@ -4582,7 +4601,7 @@ def projects():
 
     # Scope opcional usado por el KPI del dashboard: excluye ciertos árboles de carpetas.
     if status == "active" and scope == "dashboard_active":
-        excluded_root_names = {"rutinas", "agenda", "sometime", "adtv", "seguimiento"}
+        excluded_root_names = {"rutinas", "agenda", normalize_tag_key("🗃️ Agenda"), normalize_tag_key("Agenda 🗃️"), "sometime", "adtv", "seguimiento"}
         folder_rows = q("SELECT id, parent_id, name FROM folders")
         children_by_parent: Dict[Optional[int], List[int]] = {}
         excluded_folder_ids: set[int] = set()
@@ -5587,7 +5606,7 @@ def dashboard():
     archived_tasks_cnt = q1("SELECT COUNT(*) AS c FROM tasks WHERE archived=1 AND deleted_at IS NULL")["c"]
 
     # Proyectos activos excluyendo las carpetas Rutinas/Agenda/Sometime/ADTV/Seguimiento y sus subdirectorios.
-    excluded_root_names = {"rutinas", "agenda", "sometime", "adtv", "seguimiento"}
+    excluded_root_names = {"rutinas", "agenda", normalize_tag_key("🗃️ Agenda"), normalize_tag_key("Agenda 🗃️"), "sometime", "adtv", "seguimiento"}
     folder_rows = q("SELECT id, parent_id, name FROM folders")
     children_by_parent: Dict[Optional[int], List[int]] = {}
     excluded_folder_ids: set[int] = set()
@@ -6100,7 +6119,7 @@ def dashboard_pending_active():
         page = 1
     page = max(page, 1)
 
-    excluded_root_names = {"rutinas", "agenda", "sometime", "adtv", "seguimiento"}
+    excluded_root_names = {"rutinas", "agenda", normalize_tag_key("🗃️ Agenda"), normalize_tag_key("Agenda 🗃️"), "sometime", "adtv", "seguimiento"}
     folder_rows = q("SELECT id, parent_id, name FROM folders")
     children_by_parent: Dict[Optional[int], List[int]] = {}
     excluded_folder_ids: set[int] = set()
@@ -11209,9 +11228,12 @@ def review():
     if sometime_folder:
         excluded_folder_ids.update(get_folder_tree_ids(sometime_folder['id']))
 
-    agenda_folder = q1("SELECT id FROM folders WHERE name='🗃️ Agenda'")
-    if agenda_folder:
-        excluded_folder_ids.update(get_folder_tree_ids(agenda_folder['id']))
+    agenda_folders = q(
+        "SELECT id FROM folders WHERE name IN (%s, %s)",
+        ("Agenda 🗃️", "🗃️ Agenda"),
+    ) or []
+    for agenda_folder in agenda_folders:
+        excluded_folder_ids.update(get_folder_tree_ids(agenda_folder["id"]))
 
 
     en_espera_folder = q1("SELECT id FROM folders WHERE name='EnEspera'")

@@ -206,16 +206,50 @@ RECURRENCE_PATTERNS = {
 }
 
 
+def _mask_quoted_text(raw_text: str) -> str:
+    chars = list(raw_text or "")
+    in_quotes = False
+    for index, char in enumerate(chars):
+        if char == '"':
+            in_quotes = not in_quotes
+            chars[index] = " "
+        elif in_quotes:
+            chars[index] = " "
+    return "".join(chars)
+
+
+def _unquoted_matches(pattern, raw_text: str):
+    text = raw_text or ""
+    visible = _mask_quoted_text(text)
+    return [match for match in pattern.finditer(text) if not visible[match.start()].isspace()]
+
+
+def _first_unquoted_match(pattern, raw_text: str):
+    matches = _unquoted_matches(pattern, raw_text)
+    return matches[0] if matches else None
+
+
+def _remove_unquoted_matches(raw_text: str, pattern) -> str:
+    text = raw_text or ""
+    for match in reversed(_unquoted_matches(pattern, text)):
+        text = text[:match.start()] + " " + text[match.end():]
+    return text
+
+
+def _unquote_title(raw_text: str) -> str:
+    return re.sub(r'"([^"]*)"', r"\1", raw_text or "")
+
+
 def extract_recurrence_from_quick(raw_text: str, recurrence: Optional[str] = None) -> Tuple[Optional[str], str]:
     """Extract a supported `cada ...` recurrence token and remove it from the title."""
     cleaned = raw_text or ""
     if not recurrence:
         for pattern, rule in RECURRENCE_PATTERNS.items():
-            if re.search(pattern, cleaned, flags=re.IGNORECASE):
+            if _first_unquoted_match(re.compile(pattern, flags=re.IGNORECASE), cleaned):
                 recurrence = rule
                 break
     for pattern in RECURRENCE_PATTERNS:
-        cleaned = re.sub(pattern, " ", cleaned, flags=re.IGNORECASE)
+        cleaned = _remove_unquoted_matches(cleaned, re.compile(pattern, flags=re.IGNORECASE))
     return recurrence, re.sub(r"\s+", " ", cleaned).strip()
 
 
@@ -1738,6 +1772,7 @@ register_subtask_routes(app, subdb)
 # -----------------------------------------------
 
 TAG_RE = re.compile(r"@([A-Za-z0-9_.\-áéíóúÁÉÍÓÚñÑ]+)")
+QUICK_TAG_RE = re.compile(r'@([^\s@#]+)')
 # Grupo 1 = nombre entrecomillado (con espacios), grupo 2 = nombre sin comillas (sin espacios)
 PROJ_RE = re.compile(r'#(?:"([^"]+)"|([A-Za-z0-9_\-áéíóúÁÉÍÓÚñÑ][A-Za-z0-9_\-áéíóúÁÉÍÓÚñÑ]*))')
 FOLDER_RE = re.compile(r'(?<![a-zA-Z])f:(?:"([^"]+)"|([A-Za-z0-9_\-áéíóúÁÉÍÓÚñÑ][A-Za-z0-9_\-áéíóúÁÉÍÓÚñÑ]*))')
@@ -1774,7 +1809,7 @@ DATE_BARE_RE = re.compile(
     r')\b'
 )
 
-TIME_TOKEN_RE = re.compile(r'(?<!\S)h:(\d{1,2}:\d{2})\b', re.IGNORECASE)
+TIME_TOKEN_RE = re.compile(r'(?<!\S)(?:h:)?(\d{1,2}:\d{2})\b', re.IGNORECASE)
 PRIORITY_TOKEN_RE = re.compile(r'(?<!\S)\^(alta|media|baja)\b', re.IGNORECASE)
 
 
@@ -1791,7 +1826,7 @@ def extract_priority_from_quick(raw_text: str) -> Tuple[Optional[int], str]:
     if not s:
         return None, s
 
-    m = PRIORITY_TOKEN_RE.search(s)
+    m = PRIORITY_TOKEN_RE.search(_mask_quoted_text(s))
     if not m:
         return None, s
 
@@ -1868,7 +1903,8 @@ def extract_due_date_from_quick(raw_text: str) -> Tuple[Optional[date], str]:
         return None, s
 
     # 1) Buscar primero fecha con prefijo *
-    m = DATE_TOKEN_RE.search(s)
+    visible = _mask_quoted_text(s)
+    m = DATE_TOKEN_RE.search(visible)
     if m:
         token = m.group(1)
         due_date = parse_due_token(token)
@@ -1879,7 +1915,7 @@ def extract_due_date_from_quick(raw_text: str) -> Tuple[Optional[date], str]:
     # 2) Buscar palabras clave de fecha sin prefijo
     m = re.search(
         r'(?<!\w)(hoy|mañana|lunes|martes|miércoles|miercoles|jueves|viernes|sábado|sabado|domingo)(?!\w)',
-        s,
+        visible,
         re.IGNORECASE,
     )
     if m:
@@ -1890,7 +1926,7 @@ def extract_due_date_from_quick(raw_text: str) -> Tuple[Optional[date], str]:
         return due_date, cleaned
 
     # 3) Si no hay *, buscar fecha "bare" (sin prefijo)
-    m = DATE_BARE_RE.search(s)
+    m = DATE_BARE_RE.search(visible)
     if m:
         token = m.group(1)
         due_date = parse_due_token(token)
@@ -1918,14 +1954,14 @@ def extract_due_time_from_quick(raw_text: str) -> Tuple[Optional[time], str]:
     """
     Devuelve (due_time, cleaned_text)
 
-    Soporta prefijo: h:HH:MM
-    Ejemplos válidos: h:23:30, h:8:05
+    Soporta HH:MM y h:HH:MM
+    Ejemplos válidos: 23:30, 8:05, h:23:30, h:8:05
     """
     s = (raw_text or '').strip()
     if not s:
         return None, s
 
-    m = TIME_TOKEN_RE.search(s)
+    m = TIME_TOKEN_RE.search(_mask_quoted_text(s))
     if not m:
         return None, s
 
@@ -1936,15 +1972,17 @@ def extract_due_time_from_quick(raw_text: str) -> Tuple[Optional[time], str]:
 
 
 def parse_task_quick_entry(raw_title: str) -> Tuple[str, List[str], Optional[str], Optional[str]]:
-    tags = TAG_RE.findall(raw_title or "")
-    m = PROJ_RE.search(raw_title or "")
+    raw = raw_title or ""
+    tags = [match.group(1) for match in _unquoted_matches(TAG_RE, raw)]
+    m = _first_unquoted_match(PROJ_RE, raw)
     project_name = (m.group(1) or m.group(2) or '').strip() if m else None
-    m_folder = FOLDER_RE.search(raw_title or "")
+    m_folder = _first_unquoted_match(FOLDER_RE, raw)
     folder_name = (m_folder.group(1) or m_folder.group(2) or '').strip() if m_folder else None
 
-    title = TAG_RE.sub("", raw_title)
-    title = PROJ_RE.sub("", title)
-    title = FOLDER_RE.sub("", title)
+    title = _remove_unquoted_matches(raw, TAG_RE)
+    title = _remove_unquoted_matches(title, PROJ_RE)
+    title = _remove_unquoted_matches(title, FOLDER_RE)
+    title = _unquote_title(title)
     title = re.sub(r"\s+", " ", title).strip()
 
     tags = [normalize_name(t) for t in tags if normalize_name(t)]
@@ -6262,7 +6300,7 @@ def task_create():
     raw_work = raw
 
     # 1) Extraer etiquetas tipo @etiqueta
-    tags = re.findall(r'@([^\s@#]+)', raw_work)
+    tags = [match.group(1) for match in _unquoted_matches(QUICK_TAG_RE, raw_work)]
     # 2) Extraer fecha desde texto rápido
     detected_due_date = None
     detected_due_time = None
@@ -6282,7 +6320,7 @@ def task_create():
 
     # 4) Extraer posible proyecto desde #texto o #"texto con espacios"
     project_name = None
-    m_proj = PROJ_RE.search(raw_work)
+    m_proj = _first_unquoted_match(PROJ_RE, raw_work)
     if m_proj:
         candidate_name = (m_proj.group(1) or m_proj.group(2) or '').strip()
         if not re.fullmatch(r'\d{2}-\d{2}-\d{4}', candidate_name):
@@ -6290,16 +6328,17 @@ def task_create():
 
     # 4b) Extraer posible carpeta desde f:texto o f:"texto con espacios"
     folder_name_quick = None
-    m_folder = FOLDER_RE.search(raw_work)
+    m_folder = _first_unquoted_match(FOLDER_RE, raw_work)
     if m_folder:
         folder_name_quick = (m_folder.group(1) or m_folder.group(2) or '').strip()
 
     # 5) Limpiar el texto para obtener el título real
     title = raw_work
-    title = re.sub(r'@([^\s@#]+)', '', title)
+    title = _remove_unquoted_matches(title, QUICK_TAG_RE)
     # title = re.sub(r'#\d{2}-\d{2}-\d{4}\b', '', title)
-    title = PROJ_RE.sub('', title)
-    title = FOLDER_RE.sub('', title)
+    title = _remove_unquoted_matches(title, PROJ_RE)
+    title = _remove_unquoted_matches(title, FOLDER_RE)
+    title = _unquote_title(title)
     title = re.sub(r'\s+', ' ', title).strip(" -_,.;:")
 
     if not title:
@@ -11874,6 +11913,19 @@ def api_task_move(task_id: int):
     except Exception:
         return jsonify({"ok": False, "error": "Destino inválido"}), 400
 
+    def update_task_location(sql: str, params: Tuple[Any, ...]) -> None:
+        for attempt in range(2):
+            try:
+                exec_sql(sql, params)
+            except Exception as exc:
+                rollback()
+                error_code = exc.args[0] if getattr(exc, "args", ()) else None
+                if error_code != 1020 or attempt == 1:
+                    raise
+                continue
+            commit()
+            return
+
     try:
         if target_type == "project":
             project = q1(
@@ -11882,24 +11934,27 @@ def api_task_move(task_id: int):
             )
             if not project:
                 return jsonify({"ok": False, "error": "Proyecto destino no válido"}), 400
-            exec_sql(
+            update_task_location(
                 "UPDATE tasks SET project_id=%s, folder_id=NULL, sort_order=%s WHERE id=%s",
                 (target_id, next_project_task_sort_order(target_id), task_id),
             )
-            commit()
             return jsonify({"ok": True, "message": "Tarea movida a proyecto"})
 
         if target_type == "folder":
             folder = q1("SELECT id FROM folders WHERE id=%s", (target_id,))
             if not folder:
                 return jsonify({"ok": False, "error": "Carpeta destino no válida"}), 400
-            exec_sql("UPDATE tasks SET folder_id=%s, project_id=NULL WHERE id=%s", (target_id, task_id))
-            commit()
+            update_task_location(
+                "UPDATE tasks SET folder_id=%s, project_id=NULL WHERE id=%s",
+                (target_id, task_id),
+            )
             return jsonify({"ok": True, "message": "Tarea movida a carpeta"})
 
         return jsonify({"ok": False, "error": "Tipo de destino no soportado"}), 400
     except Exception as e:
         rollback()
+        if getattr(e, "args", ()) and e.args[0] == 1020:
+            return jsonify({"ok": False, "error": "La tarea cambió mientras se movía. Vuelve a intentarlo."}), 409
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
@@ -12126,7 +12181,7 @@ def gmail_import_to_inbox():
             raw_work = raw
 
             # Parseo estilo task_create sobre el subject del correo.
-            tags = re.findall(r'@([^\s@#]+)', raw_work)
+            tags = [match.group(1) for match in _unquoted_matches(QUICK_TAG_RE, raw_work)]
 
             detected_due_date = None
             detected_due_time = None
@@ -12134,29 +12189,22 @@ def gmail_import_to_inbox():
                 detected_due_date, raw_work = extract_due_date_from_quick(raw_work)
             detected_due_time, raw_work = extract_due_time_from_quick(raw_work)
 
-            recurrence = None
-            for pattern, rule in RECURRENCE_PATTERNS.items():
-                if re.search(pattern, raw_work, flags=re.IGNORECASE):
-                    recurrence = rule
-                    break
+            recurrence, raw_work = extract_recurrence_from_quick(raw_work)
 
             project_name = None
-            project_candidates = re.findall(r'#([^\s#]+)', raw_work)
+            project_candidates = _unquoted_matches(PROJ_RE, raw_work)
             for candidate in project_candidates:
-                if re.fullmatch(r'\d{2}-\d{2}-\d{4}', candidate):
+                candidate_name = (candidate.group(1) or candidate.group(2) or "").strip()
+                if re.fullmatch(r'\d{2}-\d{2}-\d{4}', candidate_name):
                     continue
-                project_name = normalize_name(candidate)
+                project_name = normalize_name(candidate_name)
                 break
 
             title = raw_work
-            title = re.sub(r'@([^\s@#]+)', '', title)
-            title = re.sub(r'\bcada\s+dia\b', '', title, flags=re.IGNORECASE)
-            title = re.sub(r'\bcada\s+semana\b', '', title, flags=re.IGNORECASE)
-            title = re.sub(r'\bcada\s+mes\b', '', title, flags=re.IGNORECASE)
-            title = re.sub(r'\bcada\s+año\b', '', title, flags=re.IGNORECASE)
-            title = re.sub(r'\bcada\s+laboral\b', '', title, flags=re.IGNORECASE)
-            title = re.sub(r'#([^\s#]+)', '', title)
-            title = re.sub(TIME_TOKEN_RE, '', title)
+            title = _remove_unquoted_matches(title, QUICK_TAG_RE)
+            title = _remove_unquoted_matches(title, PROJ_RE)
+            title = _remove_unquoted_matches(title, TIME_TOKEN_RE)
+            title = _unquote_title(title)
             title = re.sub(r'\s+', ' ', title).strip(" -_,.;:")
 
             if not title:

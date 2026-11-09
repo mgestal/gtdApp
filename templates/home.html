@@ -34,7 +34,7 @@
 
   <form method="post" action="{{ url_for('task_create') }}" class="form">
     <div class="hint">
-      Sintaxis: nombre + [@etiquetas] + [titulo](https:, http:, www.) + [ [*]dd-mm-[aaaa] | *hoy | *mañana | *+nDias | lunes|martes|miércoles|jueves|viernes|sábado|domingo ] [h:HH:MM] [#proyecto | #"proyecto con espacios"] [f:carpeta | f:"carpeta con espacios"] [cada {día|semana|mes|año|laboral}] ^{alta|media|baja} 
+      Sintaxis: nombre + [@etiquetas] + [titulo](https:, http:, www.) + [ [*]dd-mm-[aaaa] | *hoy | *mañana | *+nDias | lunes|martes|miércoles|jueves|viernes|sábado|domingo ] [HH:MM | h:HH:MM] [#proyecto | #"proyecto con espacios"] [f:carpeta | f:"carpeta con espacios"] [cada {día|semana|mes|año|laboral}] ^{alta|media|baja}. Usa comillas para mantener texto literal, como "20:00" o "marcos@udc.es".
     </div>
 
     <div class="quick-input-wrap audio-dictation-row">

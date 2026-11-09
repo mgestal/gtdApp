@@ -41,9 +41,12 @@ Revisar rutina f:"GTD Folders"
 Revisar cuentas @Finanzas *+3 h:09:00 cada mes
 Enviar propuesta ^alta @NextAction *hoy
 Preparar presentación Miércoles
+Llamar a "marcos@udc.es" 20:00
 ```
 
-Formato: `nombre [@etiqueta] [^alta|^media|^baja] [*fecha | hoy | mañana | lunes|martes|miércoles|jueves|viernes|sábado|domingo] [h:HH:MM] [#proyecto | #"proyecto con espacios"] [f:carpeta | f:"carpeta con espacios"] [cada día|semana|mes|año]`
+Formato: `nombre [@etiqueta] [^alta|^media|^baja] [*fecha | hoy | mañana | lunes|martes|miércoles|jueves|viernes|sábado|domingo] [HH:MM | h:HH:MM] [#proyecto | #"proyecto con espacios"] [f:carpeta | f:"carpeta con espacios"] [cada día|semana|mes|año]`
+
+Las comillas dobles conservan como texto literal su contenido y no se guardan en el título; por ejemplo, `"20:00"` no fija la hora y `"marcos@udc.es"` no crea una etiqueta.
 
 Notas sobre prioridad:
 

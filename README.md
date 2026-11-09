@@ -40,9 +40,10 @@ Revisar plan #"Area Personal"
 Revisar rutina f:"GTD Folders"
 Revisar cuentas @Finanzas *+3 h:09:00 cada mes
 Enviar propuesta ^alta @NextAction *hoy
+Preparar presentación Miércoles
 ```
 
-Formato: `nombre [@etiqueta] [^alta|^media|^baja] [*fecha] [h:HH:MM] [#proyecto | #"proyecto con espacios"] [f:carpeta | f:"carpeta con espacios"] [cada día|semana|mes|año]`
+Formato: `nombre [@etiqueta] [^alta|^media|^baja] [*fecha | hoy | mañana | lunes|martes|miércoles|jueves|viernes|sábado|domingo] [h:HH:MM] [#proyecto | #"proyecto con espacios"] [f:carpeta | f:"carpeta con espacios"] [cada día|semana|mes|año]`
 
 Notas sobre prioridad:
 

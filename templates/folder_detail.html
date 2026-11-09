@@ -264,7 +264,7 @@
           <input type="hidden" name="folder_id" value="{{ folder.id }}">
           <input type="hidden" name="next" value="{{ url_for('folder_detail', folder_id=folder.id) }}">
           <div class="hint">
-            Sintaxis: nombre + [@etiquetas] + [ [*]dd-mm-[aaaa] | *hoy | *mañana | *+nDias ] [h:HH:MM] [#proyecto] [cada {día|semana|mes|año|laboral}] ^{alta|media|baja}
+            Sintaxis: nombre + [@etiquetas] + [ [*]dd-mm-[aaaa] | *hoy | *mañana | *+nDias | lunes|martes|miércoles|jueves|viernes|sábado|domingo ] [h:HH:MM] [#proyecto] [cada {día|semana|mes|año|laboral}] ^{alta|media|baja}
           </div>
           <div class="folder-inline-form">
             <div class="quick-input-wrap audio-dictation-row">

@@ -1751,6 +1751,7 @@ DATE_TOKEN_RE = re.compile(
     r'\d{1,2}-\d{1,2}(?:-\d{4})?'
     r'|hoy'
     r'|mañana'
+    r'|lunes|martes|miércoles|miercoles|jueves|viernes|sábado|sabado|domingo'
     r'|\+\d+'
     r')\b',
     re.IGNORECASE
@@ -1805,6 +1806,21 @@ def parse_due_token(token: str) -> date:
     if token == "mañana":
         return today + timedelta(days=1)
 
+    weekdays = {
+        "lunes": 0,
+        "martes": 1,
+        "miércoles": 2,
+        "miercoles": 2,
+        "jueves": 3,
+        "viernes": 4,
+        "sábado": 5,
+        "sabado": 5,
+        "domingo": 6,
+    }
+    if token in weekdays:
+        days_ahead = (weekdays[token] - today.weekday()) % 7 or 7
+        return today + timedelta(days=days_ahead)
+
     if token.startswith("+") and token[1:].isdigit():
         return today + timedelta(days=int(token[1:]))
 
@@ -1827,6 +1843,7 @@ def extract_due_date_from_quick(raw_text: str) -> Tuple[Optional[date], str]:
     - *15-03-2026
     - *hoy
     - *mañana
+    - *lunes (también martes, miércoles, jueves, viernes, sábado y domingo)
     - *+3
     - 15-03
     - 15-03-2026
@@ -1848,8 +1865,12 @@ def extract_due_date_from_quick(raw_text: str) -> Tuple[Optional[date], str]:
         cleaned = re.sub(r"\s+", " ", cleaned)
         return due_date, cleaned
 
-    # 2) Buscar palabras clave de fecha sin prefijo: hoy, mañana
-    m = re.search(r'(?<!\w)(hoy|mañana)(?!\w)', s, re.IGNORECASE)
+    # 2) Buscar palabras clave de fecha sin prefijo
+    m = re.search(
+        r'(?<!\w)(hoy|mañana|lunes|martes|miércoles|miercoles|jueves|viernes|sábado|sabado|domingo)(?!\w)',
+        s,
+        re.IGNORECASE,
+    )
     if m:
         token = m.group(1).lower()
         due_date = parse_due_token(token)

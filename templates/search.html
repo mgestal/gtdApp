@@ -98,7 +98,7 @@
         </thead>
         <tbody>
         {% for t in rows %}
-          <tr class="{% if t.completed_at %}row-done{% endif %}"{% if t.archived %} style="opacity:.78;"{% endif %}>
+          <tr class="js-draggable-task {% if t.completed_at %}row-done{% endif %}" data-task-id="{{ t.id }}" draggable="true"{% if t.archived %} style="opacity:.78;"{% endif %}>
             <td>
               <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}">
                 <button class="radio" aria-label="toggle"></button>

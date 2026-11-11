@@ -308,6 +308,40 @@
     </div>
   </div>
 
+  <div class="card" id="notificaciones">
+    <div class="card-header">
+      <div>
+        <div class="card-title">🔔 Recordatorios y notificaciones</div>
+        <div class="card-sub">Avisos de tareas por Telegram, navegador o ambos.</div>
+      </div>
+    </div>
+    <div class="list">
+      <div class="list-row"><div>
+        <div style="font-weight:600;">Crear y consultar recordatorios</div>
+        <div class="hint">Edita la tarea y guarda primero sus cambios. En <strong>Recordatorios → + Añadir recordatorio</strong> elige cuándo y por qué canales avisar; puedes añadir varios, editarlos o eliminarlos. La campana de las listas abre esta sección.</div>
+        <div class="hint"><strong>Antes del vencimiento</strong> resta una antelación en minutos, horas o días a la fecha y hora de la tarea. Si la tarea tiene fecha pero no hora, indica una hora de referencia. El aviso se recalcula al cambiar el vencimiento y para cada vencimiento de una tarea periódica.</div>
+        <div class="hint"><strong>Fecha y hora concretas</strong> programa un aviso independiente del vencimiento que se envía una sola vez, incluso en tareas periódicas. La vista previa usa la fecha guardada y la zona horaria de la aplicación (<code>app.timezone</code>).</div>
+        <div class="hint">Selecciona Telegram, navegador o ambos; con ambos recibirás un aviso por cada canal. Los recordatorios nuevos seleccionan ambos por defecto; los anteriores conservan Telegram. En la tarea puedes consultar los estados y errores de envío.</div>
+      </div></div>
+      <div class="list-row"><div>
+        <div style="font-weight:600;">Configurar canales y horario</div>
+        <div class="hint">En <strong>Admin → Abrir panel de notificaciones</strong> configura la franja de envío, consulta el proceso y los errores, y envía pruebas. Por defecto es de 08:00 a 20:00, ambos minutos incluidos, en la zona horaria de la aplicación; puede cruzar medianoche. También las pruebas respetan el horario.</div>
+        <div class="hint"><strong>Telegram:</strong> configura el bot, autoriza al usuario y registra el chat con <code>/start</code>. En el panel puedes probar el envío y configurar opcionalmente la URL pública de GTDApp, incluida su ruta base, para añadir enlaces a las tareas. <a href="{{ url_for('manual_telegram') }}">Configuración de Telegram</a>.</div>
+        <div class="hint"><strong>Navegador:</strong> abre el panel en cada dispositivo, escribe un nombre, pulsa <strong>Activar en este dispositivo</strong> y acepta el permiso. Puedes probar el dispositivo actual o todos, desactivar el actual y eliminar dispositivos. El aviso se envía a los dispositivos suscritos, no a los de la extensión. Si una suscripción caduca, vuelve a activarla en ese dispositivo.</div>
+        <div class="hint">Se necesita HTTPS con un certificado válido y de confianza para el nombre utilizado. En iPhone o iPad, añade GTDApp a la pantalla de inicio y ábrela desde allí en una versión compatible. Al cambiar de dominio, puerto o ruta, vuelve a activar las notificaciones desde la nueva dirección. La aceptación del servicio no garantiza que el dispositivo muestre el aviso: revisa permisos, concentración y batería.</div>
+      </div></div>
+      <div class="list-row"><div>
+        <div style="font-weight:600;">Proceso automático y resolución de problemas</div>
+        <div class="hint">El proceso <code>send_reminders.py</code> debe ejecutarse cada 15 minutos, aunque nadie use la web. El aviso se intenta en la siguiente revisión dentro de la franja, no necesariamente a la hora exacta. Los pendientes fuera de horario se evalúan al reabrirse la franja; los fallos se reintentan por canal y dispositivo hasta 24 horas desde la hora programada.</div>
+        <div class="hint">Las tareas completadas, archivadas o en la papelera y las de proyectos archivados o eliminados suspenden sus avisos. Los relativos también se suspenden si falta la fecha o la hora de referencia necesaria. En el panel revisa la última ejecución, los errores y los dispositivos; una ejecución correcta no garantiza la visualización.</div>
+        <div class="hint">En instalaciones manuales, configura el crontab del usuario que puede leer la configuración y las credenciales:</div>
+        <pre><code>*/15 * * * * /ruta/gtdApp/.venv/bin/python /ruta/gtdApp/send_reminders.py &gt;&gt; /ruta/gtdApp/recordatorios.log 2&gt;&amp;1</code></pre>
+        <div class="hint">En Docker, copia el token del bot a <code>instance/.token-gtdapp</code> con permisos restrictivos, registra el chat y ejecuta <code>docker compose --profile reminders up -d --build</code>. Consulta los registros con <code>docker compose --profile reminders logs -f reminders</code>.</div>
+        <div class="hint">La clave privada VAPID de <code>instance/.vapid-private.pem</code> debe ser legible por la aplicación y el proceso de recordatorios. Guárdala en una copia de seguridad privada junto a la base de datos: perderla invalida las suscripciones. Para una CA privada, el panel puede ofrecer el certificado público configurado en <code>app.notifications.ca_certificate_path</code>; verifica su huella por un medio independiente y nunca distribuyas la clave privada.</div>
+      </div></div>
+    </div>
+  </div>
+
   <div class="card">
     <div class="card-header">
       <div>

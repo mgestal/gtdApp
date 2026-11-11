@@ -79,7 +79,7 @@
               <div style="font-weight: 500; margin-bottom: 2px;">
 
                 <div style="font-weight:600; display:flex; align-items:center; gap:6px;">
-                  {{ t.title }}
+                  {{ t.title }}{{ reminder_badge(t.id) }}
 
                   {% if t.notes %}
                     <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('next_actions')) }}"

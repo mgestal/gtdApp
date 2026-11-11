@@ -428,7 +428,7 @@
         <form class="kanban-toggle-form" method="post" action="{{ url_for('task_toggle', task_id=task.id) }}" onsubmit="return true;">
           <button type="submit" class="radio" title="Marcar / desmarcar" aria-label="toggle"></button>
         </form>
-        <div class="kanban-card-title">{{ task.title }}</div>
+        <div class="kanban-card-title">{{ task.title }}{{ reminder_badge(task.id) }}</div>
         <a class="kanban-task-edit" draggable="false" href="{{ url_for('task_edit', task_id=task.id, next=request.full_path) }}" title="Editar tarea" aria-label="Editar tarea: {{ task.title }}" onclick="event.stopPropagation();">✎</a>
       </div>
       <div class="kanban-card-meta">

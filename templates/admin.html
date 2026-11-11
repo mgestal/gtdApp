@@ -25,7 +25,17 @@
   {% else %}
 
     <div class="admin-panels-grid" id="adminPanelsGrid">
-        
+
+        <div class="card admin-panel-card" data-admin-panel="notifications" id="notificaciones">
+          <div class="card-header">
+            <div>
+              <div class="card-title">🔔 Notificaciones</div>
+              <div class="card-sub">Configura Telegram, el horario y los dispositivos del navegador.</div>
+            </div>
+          </div>
+          <a class="btn btn-primary" href="{{ url_for('admin_notifications') }}">Abrir panel de notificaciones</a>
+        </div>
+
         <div class="card admin-panel-card" data-admin-panel="database">
           <div class="card-header">
             <div class="card-title">Conexión MariaDB</div>
@@ -466,7 +476,7 @@
           </div>
         </div>
 
-        <div class="card admin-panel-card" data-admin-panel="google-tokens" style="margin-top:20px;">
+        <div class="card admin-panel-card" data-admin-panel="google-tokens" id="google-tokens" style="margin-top:20px;">
           <div class="card-header">
             <div class="card-title">Renovación tokens Google</div>
             <div class="card-sub">Estado y renovación de credenciales OAuth para Gmail/Calendar</div>
@@ -498,9 +508,15 @@
             <div class="hint" style="margin-top:8px;">
               ⚠️ Accede desde <strong>HTTPS</strong> para que funcione la renovación automática.
             </div>
-            <div class="hint" style="margin-top:4px;">
-              Al pulsar "Renovar token", serás redirigido a Google para autorizar. La app completará la renovación automáticamente. La dirección de callback fallará por ser ip privada. Basta copiar la dirección y pegar en otra pestaña del navegador (cambiando raspvinxeira por lanvinxeira).
-            </div>
+            <form method="post" class="form">
+              <input type="hidden" name="action" value="save_google_oauth_redirect">
+              <label class="label" for="google-oauth-redirect">URL de retorno OAuth (opcional)</label>
+              <input class="input" type="url" id="google-oauth-redirect" name="google_oauth_redirect_uri"
+                     value="{{ cfg.get('app', {}).get('google_oauth', {}).get('redirect_uri', '') }}"
+                     placeholder="{{ url_for('admin_google_oauth_callback', _external=True) }}">
+              <div class="hint">Si se deja vacía, se utiliza la URL HTTPS actual. Debe estar autorizada exactamente en Google Cloud y coincidir con el dominio desde el que accedes a Admin.</div>
+              <button class="btn btn-soft" type="submit">Guardar URL OAuth</button>
+            </form>
           </div>
         </div>
 

@@ -10,6 +10,13 @@
   "app": {
     "timezone": "Europe/Madrid",
     "title": "GTD App",
+    "public_url": "",
+    "notifications": {
+      "ca_certificate_path": ""
+    },
+    "google_oauth": {
+      "redirect_uri": ""
+    },
     "calendar_sync": {
       "calendar_id": "YOUR_GMAIL@gmail.com"
     },

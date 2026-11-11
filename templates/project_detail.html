@@ -400,7 +400,7 @@
               <div class="project-kanban-cards">
                 {% for task in project_tasks_by_status[column.key] %}
                   <div class="project-kanban-task {% if task.completed_at %}row-done{% endif %}" data-task-id="{{ task.id }}" draggable="true">
-                    <a class="project-kanban-task-title" href="{{ url_for('task_edit', task_id=task.id, next=url_for('project_detail', project_id=project.id)) }}">{{ task.title }}</a>
+                    <a class="project-kanban-task-title" href="{{ url_for('task_edit', task_id=task.id, next=url_for('project_detail', project_id=project.id)) }}">{{ task.title }}</a>{{ reminder_badge(task.id) }}
                     <div class="project-kanban-card-meta">
                       {% if task.priority in [1, 2, 3] %}<span class="project-kanban-pill">{{ {1: 'Alta', 2: 'Media', 3: 'Baja'}[task.priority] }}</span>{% endif %}
                       {% for tag in tags_map.get(task.id, []) %}<span class="project-kanban-pill">@{{ tag.name }}</span>{% endfor %}
@@ -475,7 +475,7 @@
             <td>
               <div style="font-weight:600; margin-bottom:4px;">
                 <div class="task-title-row" style="font-weight:600;">
-                  <span class="task-title-text">{{ t.title | linkify_title }}</span>
+                  <span class="task-title-text">{{ t.title | linkify_title }}{{ reminder_badge(t.id) }}</span>
                   {% if t.notes %}
                     <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('project_detail', project_id=project.id)) }}"
                        title="{{ t.notes }}"
@@ -637,7 +637,7 @@
             </td>
             <td>
               <div class="task-title-row" style="font-weight:600; margin-bottom:4px;">
-                <span class="task-title-text">{{ t.title | linkify_title }}</span>
+                <span class="task-title-text">{{ t.title | linkify_title }}{{ reminder_badge(t.id) }}</span>
               </div>
               <div style="display:flex; flex-wrap:wrap; gap:4px;">
                 {% if t.recurrence_rule %}<a class="pill taglink" style="font-size:10px;" href="{{ url_for('task_periodic_history', task_id=t.id, next=request.full_path) }}">⟲ periódica</a>{% set _pb = periodic_occurrences_badge(t) %}{% if _pb %}<span class="pill-progress">{{ _pb }}</span>{% endif %}{% endif %}

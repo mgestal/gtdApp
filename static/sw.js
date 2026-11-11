@@ -1,4 +1,4 @@
-const CACHE_VERSION = "gtdapp-v8";
+const CACHE_VERSION = "gtdapp-v11";
 const OFFLINE_URL = "./static/offline.html";
 
 self.addEventListener("install", (event) => {
@@ -30,6 +30,40 @@ self.addEventListener("activate", (event) => {
     })
   );
   self.clients.claim();
+});
+
+self.addEventListener("push", (event) => {
+  event.waitUntil((async () => {
+    let payload = {};
+    if (event.data) {
+      try {
+        payload = event.data.json();
+      } catch (error) {
+        console.error("Notificación push inválida", error);
+      }
+    }
+    const target = new URL(payload.url || self.registration.scope, self.registration.scope);
+    const safeTarget = target.origin === self.location.origin && target.href.startsWith(self.registration.scope)
+      ? target.href : self.registration.scope;
+    await self.registration.showNotification(payload.title || "GTDApp", {
+      body: payload.body || "Tienes una notificación.",
+      icon: new URL("static/icons/emoji-icon-192.png", self.registration.scope).href,
+      tag: payload.tag || "gtdapp",
+      renotify: payload.renotify === true,
+      data: {url: safeTarget}
+    });
+  })());
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  event.waitUntil((async () => {
+    const target = event.notification.data?.url || self.registration.scope;
+    const windows = await self.clients.matchAll({type: "window", includeUncontrolled: true});
+    const existing = windows.find(client => client.url === target);
+    if (existing) return existing.focus();
+    return self.clients.openWindow(target);
+  })());
 });
 
 self.addEventListener("fetch", (event) => {

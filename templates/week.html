@@ -156,7 +156,7 @@
 
               <td>
                 <div class="task-title-row" style="font-weight:600;">
-                  <span class="task-title-text">{{ t.title | linkify_title }}</span>
+                  <span class="task-title-text">{{ t.title | linkify_title }}{{ reminder_badge(t.id) }}</span>
                   {% if t.notes %}
                     <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('week')) }}"
                        title="{{ t.notes }}"
@@ -334,7 +334,7 @@
 				
 				
         <div class="task-title-row" style="font-weight:600;">
-          <span class="task-title-text">{{ t.title | linkify_title }}</span>
+          <span class="task-title-text">{{ t.title | linkify_title }}{{ reminder_badge(t.id) }}</span>
 
 				  {% if t.notes %}
 					<a href="{{ url_for('task_edit', task_id=t.id, next=url_for('next_actions')) }}"

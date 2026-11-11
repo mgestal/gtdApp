@@ -99,6 +99,163 @@
     </form>
   </div>
 
+  <div class="card" id="recordatorios" style="margin-top:14px;">
+    <div class="card-header">
+      <div>
+        <div class="card-title">🔔 Recordatorios</div>
+        <div class="card-sub">Se envían por los canales elegidos en la siguiente revisión dentro del horario configurado en <a href="{{ url_for('admin_notifications') }}">Notificaciones</a>. Guarda primero los cambios de la tarea.</div>
+      </div>
+    </div>
+    {% if reminders %}
+      {% for reminder in reminders %}
+        <div class="list-row" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <div style="flex:1;">
+            {% if reminder.kind == 'fixed' %}
+              Fecha y hora concretas
+            {% else %}
+              {{ reminder.offset_minutes }} minutos antes del vencimiento
+              {% if reminder.date_only_time %}(si no hay hora: {{ reminder.date_only_time.strftime('%H:%M') }}){% endif %}
+            {% endif %}
+            <div class="hint">
+              {% if reminder.schedule_error %}
+                No se puede calcular: {{ reminder.schedule_error }}
+              {% elif not reminder.local_when %}
+                Suspendido: la tarea necesita fecha y hora de referencia.
+              {% elif reminders_paused %}
+                Suspendido: la tarea o su proyecto no están activos. Hora programada: {{ reminder.local_when }}.
+              {% else %}
+                {{ reminder.local_when }} (zona horaria de la aplicación)
+                {% if reminder.send_telegram and reminder.delivery %}
+                  — Telegram: {{ {'sent':'enviado', 'failed':'error; se reintentará', 'expired':'caducado', 'pending':'pendiente'}[reminder.delivery.status] }}
+                  {% if reminder.delivery.last_error %}: {{ reminder.delivery.last_error }}{% endif %}
+                {% elif reminder.send_telegram %} — Telegram: pendiente{% endif %}
+                {% if reminder.send_browser %}
+                  — Navegador:
+                  {% if not reminder.push_delivery %}pendiente
+                  {% elif reminder.push_delivery.status == 'expired' %}caducado
+                  {% elif reminder.push_delivery.status == 'no_devices' %}sin dispositivos suscritos
+                  {% elif not reminder.push_delivery.total %}sin dispositivos válidos
+                  {% else %}{{ reminder.push_delivery.sent or 0 }}/{{ reminder.push_delivery.total }} aceptados{% if reminder.push_delivery.failed %}; {{ reminder.push_delivery.failed }} con error{% endif %}{% endif %}
+                {% endif %}
+              {% endif %}
+            </div>
+          </div>
+          <form method="post" action="{{ url_for('task_delete_reminder', task_id=task.id, reminder_id=reminder.id) }}">
+            <input type="hidden" name="next" value="{{ next_url }}">
+            <button type="submit" class="btn btn-soft" onclick="return confirm('¿Eliminar este recordatorio?');">Eliminar</button>
+          </form>
+        </div>
+        <details style="margin:4px 0 10px;">
+          <summary>Editar recordatorio</summary>
+          <form method="post" action="{{ url_for('task_add_reminder', task_id=task.id, reminder_id=reminder.id) }}" class="form js-reminder-form" data-preview-url="{{ url_for('task_reminder_preview', task_id=task.id) }}" style="margin-top:10px;">
+            <input type="hidden" name="next" value="{{ next_url }}">
+            <label class="label" for="reminder-kind-{{ reminder.id }}">Cuándo</label>
+            <select class="input js-reminder-kind" id="reminder-kind-{{ reminder.id }}" name="kind">
+              <option value="relative" {% if reminder.kind == 'relative' %}selected{% endif %}>Antes del vencimiento</option>
+              <option value="fixed" {% if reminder.kind == 'fixed' %}selected{% endif %}>Fecha y hora concretas</option>
+            </select>
+            <div class="js-reminder-relative">
+              <label class="label" for="reminder-amount-{{ reminder.id }}">Antelación</label>
+              <div class="grid2">
+                <input class="input" type="number" id="reminder-amount-{{ reminder.id }}" name="amount" min="0" max="5256000" value="{{ reminder.offset_minutes if reminder.offset_minutes is not none else 1 }}">
+                <select class="input" name="unit">
+                  <option value="minutes">Minutos</option>
+                  <option value="hours">Horas</option>
+                  <option value="days">Días</option>
+                </select>
+              </div>
+              <label class="label" for="reminder-time-{{ reminder.id }}">Hora de referencia si la tarea no tiene hora</label>
+              <input class="input" type="time" id="reminder-time-{{ reminder.id }}" name="date_only_time" value="{{ reminder.date_only_time.strftime('%H:%M') if reminder.date_only_time else '' }}">
+            </div>
+            <div class="js-reminder-fixed">
+              <label class="label" for="reminder-fixed-{{ reminder.id }}">Fecha y hora del aviso</label>
+              <input class="input" type="datetime-local" id="reminder-fixed-{{ reminder.id }}" name="fixed_at" value="{{ reminder.local_input if reminder.kind == 'fixed' else '' }}">
+            </div>
+            <fieldset>
+              <legend>Canales</legend>
+              <label><input type="checkbox" name="send_telegram" value="1" {% if reminder.send_telegram %}checked{% endif %}> Telegram</label>
+              <label><input type="checkbox" name="send_browser" value="1" {% if reminder.send_browser %}checked{% endif %}> Navegador</label>
+            </fieldset>
+            <div class="hint js-reminder-preview" role="status"></div>
+            <button type="submit" class="btn btn-primary">Guardar recordatorio</button>
+          </form>
+        </details>
+      {% endfor %}
+    {% else %}
+      <p class="hint">Esta tarea no tiene recordatorios.</p>
+    {% endif %}
+
+    <details style="margin-top:12px;">
+      <summary>+ Añadir recordatorio</summary>
+      <form method="post" action="{{ url_for('task_add_reminder', task_id=task.id) }}" class="form js-reminder-form" data-preview-url="{{ url_for('task_reminder_preview', task_id=task.id) }}" style="margin-top:10px;">
+        <input type="hidden" name="next" value="{{ next_url }}">
+        <label class="label" for="reminder-kind">Cuándo</label>
+        <select class="input js-reminder-kind" id="reminder-kind" name="kind">
+          <option value="relative">Antes del vencimiento</option>
+          <option value="fixed">Fecha y hora concretas</option>
+        </select>
+        <div class="js-reminder-relative">
+          <label class="label" for="reminder-amount">Antelación</label>
+          <div class="grid2">
+            <input class="input" type="number" id="reminder-amount" name="amount" min="0" max="5256000" value="1">
+            <select class="input" name="unit">
+              <option value="days">Días</option>
+              <option value="hours">Horas</option>
+              <option value="minutes">Minutos</option>
+            </select>
+          </div>
+          <label class="label" for="reminder-date-only-time">Hora de referencia si la tarea no tiene hora</label>
+          <input class="input" type="time" id="reminder-date-only-time" name="date_only_time">
+          <div class="hint">Obligatoria si la tarea no tiene hora. El aviso se calcula restando la antelación a esa hora.</div>
+        </div>
+        <div class="js-reminder-fixed">
+          <label class="label" for="reminder-fixed-at">Fecha y hora del aviso</label>
+          <input class="input" type="datetime-local" id="reminder-fixed-at" name="fixed_at">
+        </div>
+        <div class="hint">Si la tarea es periódica, el aviso relativo se aplica a cada vencimiento. El aviso de fecha concreta solo se envía una vez.</div>
+        <fieldset>
+          <legend>Canales</legend>
+          <label><input type="checkbox" name="send_telegram" value="1" checked> Telegram</label>
+          <label><input type="checkbox" name="send_browser" value="1" checked> Navegador</label>
+        </fieldset>
+        <div class="hint">Para recibir avisos en el navegador, activa las notificaciones en Admin desde cada dispositivo.</div>
+        <div class="hint js-reminder-preview" role="status"></div>
+        <button class="btn btn-primary" type="submit">Añadir recordatorio</button>
+      </form>
+    </details>
+  </div>
+  <script>
+    (function () {
+      document.querySelectorAll(".js-reminder-form").forEach(function (form) {
+        const kind = form.querySelector(".js-reminder-kind");
+        const preview = form.querySelector(".js-reminder-preview");
+        let version = 0;
+        let timer;
+        function updateReminderFields() {
+          form.querySelector(".js-reminder-relative").hidden = kind.value !== "relative";
+          form.querySelector(".js-reminder-fixed").hidden = kind.value !== "fixed";
+        }
+        function updatePreview() {
+          updateReminderFields();
+          const current = ++version;
+          clearTimeout(timer);
+          timer = setTimeout(async function () {
+            try {
+              const response = await fetch(form.dataset.previewUrl, {method: "POST", body: new FormData(form)});
+              const data = await response.json();
+              if (current === version) preview.textContent = data.message;
+            } catch (error) {
+              if (current === version) preview.textContent = "No se pudo calcular la vista previa; comprueba la conexión.";
+            }
+          }, 250);
+        }
+        form.addEventListener("input", updatePreview);
+        form.addEventListener("change", updatePreview);
+        updateReminderFields();
+      });
+    })();
+  </script>
+
   <!-- =========================
        SUBTAREAS
        ========================= -->

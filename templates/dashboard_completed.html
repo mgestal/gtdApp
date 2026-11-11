@@ -75,7 +75,7 @@
               </td>
               <td>
                 <div style="font-weight:600; display:flex; align-items:center; gap:6px;">
-                  <a href="{{ url_for('task_edit', task_id=t.id, next=request.full_path) }}" style="text-decoration:none; color:inherit;">{{ t.title }}</a>
+                  <a href="{{ url_for('task_edit', task_id=t.id, next=request.full_path) }}" style="text-decoration:none; color:inherit;">{{ t.title }}</a>{{ reminder_badge(t.id) }}
                   {% if t.notes %}
                     <a href="{{ url_for('task_edit', task_id=t.id, next=request.full_path) }}" title="{{ t.notes }}" style="text-decoration:none; font-size:0.9rem; opacity:.75;">📝</a>
                   {% endif %}

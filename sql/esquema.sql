@@ -312,6 +312,76 @@ CREATE TABLE `tasks` (
 ) ENGINE=InnoDB AUTO_INCREMENT=782 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
+CREATE TABLE IF NOT EXISTS task_reminders (
+  id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  task_id INT NOT NULL,
+  kind VARCHAR(16) NOT NULL,
+  fixed_at_utc DATETIME DEFAULT NULL,
+  offset_minutes INT DEFAULT NULL,
+  date_only_time TIME DEFAULT NULL,
+  created_at_utc DATETIME NOT NULL,
+  send_telegram TINYINT(1) NOT NULL DEFAULT 1,
+  send_browser TINYINT(1) NOT NULL DEFAULT 0,
+  KEY idx_reminders_task (task_id),
+  CONSTRAINT fk_reminders_task FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS reminder_deliveries (
+  id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  reminder_id INT NOT NULL,
+  scheduled_at_utc DATETIME NOT NULL,
+  status VARCHAR(16) NOT NULL,
+  attempts INT NOT NULL DEFAULT 0,
+  updated_at_utc DATETIME NOT NULL,
+  last_error VARCHAR(255) DEFAULT NULL,
+  UNIQUE KEY uq_reminder_occurrence (reminder_id, scheduled_at_utc),
+  KEY idx_reminder_delivery_status (status),
+  CONSTRAINT fk_delivery_reminder FOREIGN KEY (reminder_id) REFERENCES task_reminders(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS reminder_worker_status (
+  id INT NOT NULL PRIMARY KEY,
+  last_run_utc DATETIME NOT NULL,
+  last_error VARCHAR(255) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  endpoint_hash CHAR(64) NOT NULL,
+  endpoint TEXT NOT NULL,
+  p256dh VARCHAR(128) NOT NULL,
+  auth_key VARCHAR(128) NOT NULL,
+  device_name VARCHAR(100) NOT NULL,
+  scope_path VARCHAR(255) NOT NULL,
+  origin VARCHAR(255) NOT NULL,
+  active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at_utc DATETIME NOT NULL,
+  updated_at_utc DATETIME NOT NULL,
+  UNIQUE KEY uq_push_endpoint (endpoint_hash)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS push_occurrences (
+  id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  reminder_id INT NOT NULL,
+  scheduled_at_utc DATETIME NOT NULL,
+  status VARCHAR(16) NOT NULL,
+  UNIQUE KEY uq_push_occurrence (reminder_id, scheduled_at_utc),
+  CONSTRAINT fk_push_occ_reminder FOREIGN KEY (reminder_id) REFERENCES task_reminders(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS push_deliveries (
+  id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  occurrence_id INT NOT NULL,
+  subscription_id INT NOT NULL,
+  status VARCHAR(16) NOT NULL,
+  attempts INT NOT NULL DEFAULT 0,
+  updated_at_utc DATETIME NOT NULL,
+  last_error VARCHAR(255) DEFAULT NULL,
+  UNIQUE KEY uq_push_delivery (occurrence_id, subscription_id),
+  CONSTRAINT fk_push_delivery_occ FOREIGN KEY (occurrence_id) REFERENCES push_occurrences(id) ON DELETE CASCADE,
+  CONSTRAINT fk_push_delivery_sub FOREIGN KEY (subscription_id) REFERENCES push_subscriptions(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 --
 -- Dumping events for database 'gtd'
 --

@@ -157,6 +157,50 @@ Comprar pilas @Casa *hoy h:20:00
 
 **`send_today.py`** envía el listado diario al chat configurado (apto para cron).
 
+### Recordatorios por Telegram y navegador
+
+En **Editar tarea → Recordatorios** se pueden añadir varios avisos, editarlos o eliminarlos:
+
+- **Fecha y hora concretas:** el aviso es independiente del vencimiento y se envía una sola vez, también en tareas periódicas.
+- **Antes del vencimiento:** indica una antelación en minutos, horas o días. Si la tarea no tiene hora, es obligatorio proporcionar una hora de referencia. El aviso se recalcula al cambiar la fecha u hora y para cada nuevo vencimiento de una tarea periódica.
+
+En cada recordatorio se pueden elegir **Telegram, navegador o ambos**. Los nuevos seleccionan ambos canales por defecto; los existentes conservan únicamente Telegram. Si se seleccionan ambos se reciben dos avisos. El canal navegador envía a todos los dispositivos suscritos, no a los dispositivos de la extensión.
+
+Para activar Web Push, abre **Admin → Abrir panel de notificaciones** en cada dispositivo, introduce un nombre, pulsa **Activar en este dispositivo** y acepta el permiso. Desde ese panel puedes enviar una prueba al dispositivo actual o a todos los dispositivos activos, desactivar el dispositivo actual o eliminar otro de la lista. Las pruebas respetan el horario configurado y muestran los errores por dispositivo; la aceptación del proveedor no garantiza su visualización. Requiere HTTPS y un navegador compatible. En iOS/iPadOS se necesita una versión compatible y abrir la aplicación web añadida a la pantalla de inicio. Permisos del sistema, modos de concentración o ajustes de batería pueden impedir que se muestre el aviso. La suscripción puede caducar; en ese caso se indica en Admin y debe volver a activarse en el dispositivo.
+
+El nombre de la instalación y el certificado TLS se configuran en el servidor web o proxy, no en GTDApp. Para Web Push el certificado debe ser válido y de confianza para el nombre utilizado por el navegador. Si cambias de dominio, puerto o ruta, vuelve a activar las notificaciones desde la nueva dirección: las suscripciones pertenecen a cada origen. La URL base opcional del panel (`app.public_url`) se usa solo para añadir enlaces a mensajes de Telegram.
+
+Si usas una CA privada, puedes configurar `app.notifications.ca_certificate_path` en `instance/config.json` con la ruta absoluta de su **certificado público PEM**, legible por el proceso web. El panel de notificaciones ofrecerá su descarga y mostrará la huella SHA-256; no configures ni distribuyas la clave privada. Verifica la huella por un medio independiente y seguro antes de instalar el certificado raíz. Un dispositivo que todavía no confía en HTTPS necesitará recibir el certificado por otro medio seguro; descargarlo mediante una conexión cuya identidad no se ha verificado no establece confianza. Este ajuste es opcional, no instala certificados y no configura TLS en el servidor.
+
+En **Admin → Renovación tokens Google** puedes configurar la URL HTTPS completa del callback OAuth (`app.google_oauth.redirect_uri`); si está vacía, se utiliza la dirección desde la que se accede a Admin. Debe coincidir exactamente con una URL de redirección autorizada en Google Cloud e incluir el prefijo de instalación y `/admin/google_oauth/callback`. Inicia la autorización desde el mismo dominio y puerto para conservar la sesión del navegador. La configuración de esta URL no modifica el certificado TLS.
+
+La clave privada VAPID se crea en `instance/.vapid-private.pem` al activar el primer dispositivo; debe ser legible por el usuario de la aplicación y por el proceso de recordatorios. No se sube a Git. Inclúyela en una copia de seguridad **privada**, junto con la base de datos: perderla invalida las suscripciones existentes. Si falta pero hay dispositivos registrados, se solicita restaurarla o eliminar esas suscripciones antes de crear una nueva. En Docker, `instance/` está compartido por los dos servicios. Tras cambiar las dependencias, reconstruye las imágenes.
+
+La vista previa utiliza la fecha guardada de la tarea y la zona horaria `app.timezone` de la aplicación. Guarda los cambios de la tarea antes de añadir o modificar recordatorios. Las horas inexistentes durante el cambio de horario se rechazan; si una hora se repite, se usa su primera ocurrencia. Las antelaciones se calculan sobre la hora local de la tarea.
+
+La campana en las listas abre los recordatorios de la tarea. Los recordatorios de tareas completadas, archivadas o en la papelera, o de proyectos archivados o eliminados, quedan suspendidos. Si se restaura la tarea, los avisos pendientes vuelven a evaluarse. Si se quita la fecha o la hora necesaria para un aviso relativo, este queda suspendido hasta que se vuelva a informar.
+
+Los envíos solo se realizan dentro del horario configurable en **Admin → Notificaciones**, por defecto de 08:00 a 20:00, ambos minutos incluidos, en la zona horaria de la aplicación. La franja puede cruzar medianoche. También se restringen las pruebas. Un aviso programado fuera de la franja se intentará enviar cuando esta vuelva a abrirse, siempre que tenga menos de 24 horas de retraso.
+
+Para que los avisos se envíen aunque nadie esté usando la web, además de configurar el bot y registrar el chat con `/start`, hay que ejecutar el proceso **cada 15 minutos**. La hora programada indica cuándo queda pendiente el aviso, no garantiza el envío exacto: se procesa en la siguiente revisión dentro de la franja. En una instalación manual, añade al crontab del usuario que puede leer la configuración y el token:
+
+```cron
+*/15 * * * * /ruta/gtdApp/.venv/bin/python /ruta/gtdApp/send_reminders.py >> /ruta/gtdApp/recordatorios.log 2>&1
+```
+
+En Docker, copia el token del bot a `instance/.token-gtdapp` con permisos restrictivos (esa ruta está excluida de Git), asegúrate de que `instance/telegram_chat.json` contiene el chat registrado e inicia el servicio opcional:
+
+```bash
+docker compose --profile reminders up -d --build
+docker compose --profile reminders logs -f reminders
+```
+
+El servicio usa el mismo `instance/` que la aplicación. El token de `instance/.token-gtdapp` se utiliza para los recordatorios y su prueba en Admin; el bot ejecutado fuera de Docker sigue utilizando el token de la raíz.
+
+El proceso evita envíos duplicados ordinarios mediante un registro por recordatorio, momento y canal; en el navegador también se registra cada dispositivo. Los fallos se reintentan de forma independiente en la siguiente ejecución, pero si un servicio recibe el mensaje y se pierde la respuesta, podría haber duplicados. Si no había dispositivos suscritos, se volverá a intentar hasta que se registre alguno o caduque el aviso; una vez iniciado el envío, se conserva la lista inicial de destinatarios. Tras una caída, solo se procesan avisos con menos de 24 horas de retraso. El servicio push puede aceptar un aviso sin que llegue a verse; se solicita entrega inmediata sin almacenamiento diferido, por lo que un dispositivo desconectado podría no recibirlo. Esto evita que se entregue deliberadamente fuera del horario permitido.
+
+El proceso y sus errores aparecen en **Admin → Notificaciones**. La URL pública opcional se usa para los enlaces de Telegram; al pulsar una notificación del navegador se abre la tarea en la misma instalación de GTDApp. El estado del proceso solo indica su última ejecución, no garantiza la entrega o visualización.
+
 ---
 
 ## Stack técnico

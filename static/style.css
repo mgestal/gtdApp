@@ -2083,3 +2083,8 @@ hr{
   padding-left:6px;
   border-left:1px solid var(--border);
 }
+.reminder-badge {
+  font-size: 0.8rem;
+  line-height: 1;
+  text-decoration: none;
+}

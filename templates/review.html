@@ -370,7 +370,7 @@
             </form>
             <div class="review-mini-item-main">
             <div class="review-mini-item-title">
-              <span class="task-title-text">{{ t.title | linkify_title }}</span>
+              <span class="task-title-text">{{ t.title | linkify_title }}{{ reminder_badge(t.id) }}</span>
 			   {% if t.notes %}
 					<a href="{{ url_for('task_edit', task_id=t.id, next=url_for('next_actions')) }}"
 					   title="{{ t.notes }}"
@@ -451,7 +451,7 @@
                 </form>
                 <div class="review-mini-item-main">
                 <div class="review-mini-item-title">
-                  <span class="task-title-text">{{ t.title | linkify_title }}</span>
+                  <span class="task-title-text">{{ t.title | linkify_title }}{{ reminder_badge(t.id) }}</span>
 				   {% if t.notes %}
 					  <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('next_actions')) }}"
 					     title="{{ t.notes }}"
@@ -504,7 +504,7 @@
                 </form>
                 <div class="review-mini-item-main">
                 <div class="review-mini-item-title">
-                  <span class="task-title-text">{{ t.title | linkify_title }}</span>
+                  <span class="task-title-text">{{ t.title | linkify_title }}{{ reminder_badge(t.id) }}</span>
 				   {% if t.notes %}
 					  <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('next_actions')) }}"
 					     title="{{ t.notes }}"
@@ -564,7 +564,7 @@
             </form>
             <div class="review-mini-item-main">
             <div class="review-mini-item-title">
-              <span class="task-title-text">{{ t.title | linkify_title }}</span>
+              <span class="task-title-text">{{ t.title | linkify_title }}{{ reminder_badge(t.id) }}</span>
 			   {% if t.notes %}
 					<a href="{{ url_for('task_edit', task_id=t.id, next=url_for('next_actions')) }}"
 					   title="{{ t.notes }}"
@@ -626,7 +626,7 @@
             </form>
             <div class="review-mini-item-main">
             <div class="review-mini-item-title">
-              <span class="task-title-text">{{ t.title | linkify_title }}</span>
+              <span class="task-title-text">{{ t.title | linkify_title }}{{ reminder_badge(t.id) }}</span>
 			   {% if t.notes %}
 					<a href="{{ url_for('task_edit', task_id=t.id, next=url_for('next_actions')) }}"
 					   title="{{ t.notes }}"
@@ -679,7 +679,7 @@
             </form>
             <div class="review-mini-item-main">
             <div class="review-mini-item-title">
-              <span class="task-title-text">{{ t.title | linkify_title }}</span>
+              <span class="task-title-text">{{ t.title | linkify_title }}{{ reminder_badge(t.id) }}</span>
 			   {% if t.notes %}
 					<a href="{{ url_for('task_edit', task_id=t.id, next=url_for('next_actions')) }}"
 					   title="{{ t.notes }}"
@@ -740,7 +740,7 @@
             </form>
             <div class="review-mini-item-main">
             <div class="review-mini-item-title">
-              <span class="task-title-text">{{ t.title | linkify_title }}</span>
+              <span class="task-title-text">{{ t.title | linkify_title }}{{ reminder_badge(t.id) }}</span>
 			   {% if t.notes %}
 					<a href="{{ url_for('task_edit', task_id=t.id, next=url_for('next_actions')) }}"
 					   title="{{ t.notes }}"
@@ -801,7 +801,7 @@
               </form>
               <div class="review-mini-item-main">
               <div class="review-mini-item-title">
-                <span class="task-title-text">{{ t.title | linkify_title }}</span>
+                <span class="task-title-text">{{ t.title | linkify_title }}{{ reminder_badge(t.id) }}</span>
 			     {% if t.notes %}
 					  <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('next_actions')) }}"
 					     title="{{ t.notes }}"
@@ -994,7 +994,7 @@
                   <button class="radio" aria-label="toggle" title="Marcar / desmarcar"></button>
                 </form>
                 <div class="review-mini-item-title" style="flex:1;min-width:0;">
-                  <span class="task-title-text">{{ t.title | linkify_title }}</span>
+                  <span class="task-title-text">{{ t.title | linkify_title }}{{ reminder_badge(t.id) }}</span>
                   {% if t.notes %}
                     <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('next_actions')) }}"
                        title="{{ t.notes }}"
@@ -1096,7 +1096,7 @@
               </form>
               <div class="review-mini-item-main">
               <div class="review-mini-item-title">
-                <span class="task-title-text">{{ t.title | linkify_title }}</span>
+                <span class="task-title-text">{{ t.title | linkify_title }}{{ reminder_badge(t.id) }}</span>
                 {% if t.notes %}
                   <a href="{{ url_for('task_edit', task_id=t.id, next=url_for('next_actions')) }}"
                      title="{{ t.notes }}"

@@ -6,8 +6,14 @@ import os
 import re
 import calendar
 import hashlib
+import hmac
+import secrets
 import unicodedata
 import pymysql
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from py_vapid import VapidException
+from requests.exceptions import RequestException
 
 
 from dataclasses import dataclass
@@ -15,6 +21,10 @@ from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
+from reminders import (REMINDER_SCHEMA, db_time, load_reminder_token, local_to_utc,
+                       notification_hours, scheduled_at, send_telegram, utc_now,
+                       within_notification_hours)
+from browser_push import KEY_PATH, PUSH_SCHEMA, WebPushException, endpoint_hash, public_key, send_browser_push, validate_subscription
 
 from flask import Flask, abort, flash, g, redirect, render_template, request, session, url_for, send_file, jsonify, make_response
 from markupsafe import Markup, escape as html_escape
@@ -1512,6 +1522,13 @@ def ensure_schema_updates() -> None:
     global _schema_bootstrapped
     if _schema_bootstrapped:
         return
+
+    for statement in REMINDER_SCHEMA:
+        exec_sql(statement)
+    exec_sql("ALTER TABLE task_reminders ADD COLUMN IF NOT EXISTS send_telegram TINYINT(1) NOT NULL DEFAULT 1")
+    exec_sql("ALTER TABLE task_reminders ADD COLUMN IF NOT EXISTS send_browser TINYINT(1) NOT NULL DEFAULT 0")
+    for statement in PUSH_SCHEMA:
+        exec_sql(statement)
 
     # Normalize tag types while preserving values from installations that still
     # have the original free-text `tags.type` column.
@@ -3187,6 +3204,15 @@ def periodic_occurrences_badge(task: Dict[str, Any]) -> Optional[str]:
 @app.context_processor
 def inject_common():
     cfg = load_config()
+    reminder_task_ids = {row["task_id"] for row in q("SELECT DISTINCT task_id FROM task_reminders")}
+
+    def reminder_badge(task_id):
+        if task_id not in reminder_task_ids:
+            return Markup("")
+        href = url_for("task_edit", task_id=task_id, next=request.full_path) + "#recordatorios"
+        return Markup(' <a href="{}" class="reminder-badge" title="Ver recordatorios" '
+                      'aria-label="Ver recordatorios">🔔</a>').format(href)
+
     return {
         "APP_TITLE": cfg.get("app", {}).get("title", "GTD App"),
         "folder_tree": load_folder_tree(include_archived=False),
@@ -3198,6 +3224,7 @@ def inject_common():
         "SCRIPT_ROOT": request.script_root or "",
         "location_to_href": location_to_href,
         "periodic_occurrences_badge": periodic_occurrences_badge,
+        "reminder_badge": reminder_badge,
     }
 
 @app.context_processor
@@ -6583,7 +6610,7 @@ def task_edit(task_id: int):
 
     # ---------- load task ----------
     task = q1(
-        "SELECT id, title, notes, location, due_date, due_time, project_id, folder_id, recurrence_rule, max_occurrences, priority, completed_at "
+        "SELECT id, title, notes, location, due_date, due_time, project_id, folder_id, recurrence_rule, max_occurrences, priority, completed_at, archived, deleted_at "
         "FROM tasks WHERE id=%s",
         (task_id,),
     )
@@ -6787,6 +6814,43 @@ def task_edit(task_id: int):
             flash(f"No se pudo actualizar: {e}", "error")
             return redirect(url_for("task_edit", task_id=task_id, next=next_url))
 
+    reminder_rows = q(
+        "SELECT * FROM task_reminders WHERE task_id=%s ORDER BY id", (task_id,)
+    )
+    tz = ZoneInfo(load_config().get("app", {}).get("timezone", "Europe/Madrid"))
+    reminder_project = q1("SELECT archived, deleted_at FROM projects WHERE id=%s", (task["project_id"],)) if task["project_id"] else None
+    reminders_paused = bool(task["completed_at"] or task["archived"] or task["deleted_at"]
+                            or (task["project_id"] and (not reminder_project or reminder_project["archived"]
+                                                        or reminder_project["deleted_at"])))
+    for reminder in reminder_rows:
+        reminder.update(due_date=task.get("due_date"), due_time=task.get("due_time"))
+        try:
+            when = scheduled_at(reminder, tz)
+            reminder["local_when"] = (
+                when.replace(tzinfo=ZoneInfo("UTC")).astimezone(tz).strftime("%d-%m-%Y %H:%M")
+                if when else None
+            )
+            reminder["local_input"] = (
+                when.replace(tzinfo=ZoneInfo("UTC")).astimezone(tz).strftime("%Y-%m-%dT%H:%M")
+                if when else ""
+            )
+            reminder["delivery"] = q1(
+                "SELECT status, last_error FROM reminder_deliveries "
+                "WHERE reminder_id=%s AND scheduled_at_utc=%s",
+                (reminder["id"], when),
+            ) if when else None
+            reminder["push_delivery"] = q1(
+                "SELECT o.status, COUNT(d.id) AS total, "
+                "SUM(d.status='sent') AS sent, SUM(d.status IN ('failed','invalid')) AS failed, "
+                "SUM(d.status='pending') AS pending FROM push_occurrences o "
+                "LEFT JOIN push_deliveries d ON d.occurrence_id=o.id "
+                "WHERE o.reminder_id=%s AND o.scheduled_at_utc=%s GROUP BY o.id, o.status",
+                (reminder["id"], when),
+            ) if when else None
+        except ValueError as exc:
+            reminder["schedule_error"] = str(exc)
+        reminder["date_only_time"] = db_time(reminder["date_only_time"])
+
     # ---------- GET render ----------
     return render_template(
         "task_edit.html",
@@ -6797,7 +6861,122 @@ def task_edit(task_id: int):
         subtasks=subs,
         sub_counts=cnt,
         next_url=next_url,
+        reminders=reminder_rows,
+        reminders_paused=reminders_paused,
     )
+
+
+def parse_reminder_form(form, task, tz):
+    kind = form.get("kind")
+    if kind == "fixed":
+        local = datetime.strptime(form.get("fixed_at", ""), "%Y-%m-%dT%H:%M")
+        fixed = local_to_utc(local, tz)
+        return kind, fixed, None, None, fixed
+    if kind != "relative":
+        raise ValueError("Selecciona un tipo de recordatorio.")
+    if not task["due_date"]:
+        raise ValueError("Guarda primero una fecha de finalización para la tarea.")
+    amount = int(form.get("amount", ""))
+    units = {"minutes": 1, "hours": 60, "days": 1440}
+    unit = form.get("unit")
+    if amount < 0 or unit not in units or amount * units[unit] > 5256000:
+        raise ValueError("El intervalo debe estar entre cero y diez años.")
+    offset = amount * units[unit]
+    fallback_raw = (form.get("date_only_time") or "").strip()
+    fallback_time = datetime.strptime(fallback_raw, "%H:%M").time() if fallback_raw else None
+    if not task["due_time"] and fallback_time is None:
+        raise ValueError("Indica la hora de referencia para una tarea sin hora.")
+    when = scheduled_at({"kind": kind, "offset_minutes": offset,
+                         "date_only_time": fallback_time, **task}, tz)
+    return kind, None, offset, fallback_time, when
+
+
+@app.route("/tasks/<int:task_id>/reminders/preview", methods=["POST"])
+def task_reminder_preview(task_id: int):
+    task = q1("SELECT id, due_date, due_time FROM tasks WHERE id=%s", (task_id,))
+    if not task:
+        abort(404)
+    tz = ZoneInfo(load_config().get("app", {}).get("timezone", "Europe/Madrid"))
+    try:
+        *_, when = parse_reminder_form(request.form, task, tz)
+        if when is None or when <= utc_now():
+            raise ValueError("El recordatorio debe estar programado para una fecha futura.")
+        local = when.replace(tzinfo=ZoneInfo("UTC")).astimezone(tz)
+        return jsonify({"ok": True, "message": (
+            f"Programado para el {local:%d-%m-%Y a las %H:%M} ({tz.key}); "
+            "se intentará enviar en la siguiente revisión dentro del horario permitido."
+        )})
+    except ValueError as exc:
+        return jsonify({"ok": False, "message": str(exc)}), 400
+
+
+@app.route("/tasks/<int:task_id>/reminders", methods=["POST"])
+@app.route("/tasks/<int:task_id>/reminders/<int:reminder_id>/edit", methods=["POST"])
+def task_add_reminder(task_id: int, reminder_id: Optional[int] = None):
+    task = q1("SELECT id, due_date, due_time FROM tasks WHERE id=%s", (task_id,))
+    if not task:
+        abort(404)
+    existing = None
+    if reminder_id is not None:
+        existing = q1("SELECT * FROM task_reminders WHERE id=%s AND task_id=%s", (reminder_id, task_id))
+        if not existing:
+            abort(404)
+    next_url = safe_next_url(request.form.get("next"))
+    target = url_for("task_edit", task_id=task_id, next=next_url) + "#recordatorios"
+    tz = ZoneInfo(load_config().get("app", {}).get("timezone", "Europe/Madrid"))
+    try:
+        kind, fixed, offset, fallback_time, when = parse_reminder_form(request.form, task, tz)
+        send_telegram_flag = request.form.get("send_telegram") == "1"
+        send_browser_flag = request.form.get("send_browser") == "1"
+        if not send_telegram_flag and not send_browser_flag:
+            raise ValueError("Selecciona al menos un canal de notificación.")
+        changed = not existing or (
+            existing["kind"], existing["fixed_at_utc"], existing["offset_minutes"],
+            db_time(existing["date_only_time"])
+        ) != (kind, fixed, offset, fallback_time)
+        if changed and (when is None or when <= utc_now()):
+            raise ValueError("El recordatorio debe estar programado para una fecha futura.")
+        if existing and changed:
+            exec_sql("UPDATE task_reminders SET kind=%s, fixed_at_utc=%s, offset_minutes=%s, "
+                     "date_only_time=%s, send_telegram=%s, send_browser=%s WHERE id=%s AND task_id=%s",
+                     (kind, fixed, offset, fallback_time, send_telegram_flag, send_browser_flag, reminder_id, task_id))
+            exec_sql("DELETE FROM reminder_deliveries WHERE reminder_id=%s", (reminder_id,))
+            exec_sql("DELETE FROM push_occurrences WHERE reminder_id=%s", (reminder_id,))
+        elif existing:
+            exec_sql("UPDATE task_reminders SET send_telegram=%s,send_browser=%s WHERE id=%s AND task_id=%s",
+                     (send_telegram_flag, send_browser_flag, reminder_id, task_id))
+        elif not existing:
+            exec_sql(
+                "INSERT INTO task_reminders(task_id, kind, fixed_at_utc, offset_minutes, date_only_time, created_at_utc, send_telegram, send_browser) "
+                "VALUES(%s,%s,%s,%s,%s,%s,%s,%s)",
+                (task_id, kind, fixed, offset, fallback_time, utc_now(), send_telegram_flag, send_browser_flag),
+            )
+        commit()
+        flash("Recordatorio actualizado." if existing else "Recordatorio añadido.", "ok")
+    except ValueError as exc:
+        flash(f"Recordatorio no válido: {exc}", "error")
+    except Exception:
+        rollback()
+        app.logger.exception("No se pudo guardar el recordatorio de la tarea %s", task_id)
+        flash("No se pudo guardar el recordatorio.", "error")
+    return redirect(target)
+
+
+@app.route("/tasks/<int:task_id>/reminders/<int:reminder_id>/delete", methods=["POST"])
+def task_delete_reminder(task_id: int, reminder_id: int):
+    next_url = safe_next_url(request.form.get("next"))
+    target = url_for("task_edit", task_id=task_id, next=next_url) + "#recordatorios"
+    if not q1("SELECT id FROM task_reminders WHERE id=%s AND task_id=%s", (reminder_id, task_id)):
+        abort(404)
+    try:
+        exec_sql("DELETE FROM task_reminders WHERE id=%s AND task_id=%s", (reminder_id, task_id))
+        commit()
+        flash("Recordatorio eliminado.", "ok")
+    except Exception:
+        rollback()
+        app.logger.exception("No se pudo eliminar el recordatorio %s", reminder_id)
+        flash("No se pudo eliminar el recordatorio.", "error")
+    return redirect(target)
 
 
 @app.route("/tasks/<int:task_id>/delete", methods=["POST"])
@@ -9326,6 +9505,297 @@ def admin_api_tokens():
         t["token_prefix"] = t["token"][:6]
     return render_template("admin_api_tokens.html", tokens=tokens)
 
+
+def require_push_admin():
+    if not admin_required():
+        abort(403)
+    supplied = request.headers.get("X-GTD-Push-CSRF", "")
+    expected = session.get("push_csrf", "")
+    if not expected or not hmac.compare_digest(supplied, expected):
+        abort(403)
+
+
+@app.route("/admin/push/key", methods=["POST"])
+def admin_push_key():
+    require_push_admin()
+    try:
+        if not KEY_PATH.exists() and q1("SELECT id FROM push_subscriptions LIMIT 1"):
+            return jsonify({"ok": False, "error": "Falta la clave VAPID existente. Restáurala o elimina todas las suscripciones antes de crear otra."}), 409
+        return jsonify({"ok": True, "publicKey": public_key(create=True)})
+    except (OSError, ValueError) as exc:
+        app.logger.exception("No se pudo preparar la clave de Web Push")
+        return jsonify({"ok": False, "error": f"No se pudo preparar Web Push ({type(exc).__name__})."}), 500
+
+
+@app.route("/admin/push/subscribe", methods=["POST"])
+def admin_push_subscribe():
+    require_push_admin()
+    data = request.get_json(silent=True)
+    try:
+        if not isinstance(data, dict):
+            raise ValueError("Datos de suscripción no válidos.")
+        endpoint, p256dh, auth_key = validate_subscription(data.get("subscription"))
+        origin = data.get("origin", "")
+        parsed = urlparse(origin)
+        if (len(origin) > 255 or parsed.scheme != "https" or parsed.netloc != request.host
+                or parsed.path or parsed.query or parsed.fragment or parsed.username):
+            raise ValueError("Origen de suscripción no válido; se requiere HTTPS.")
+        name = data.get("name", "")
+        if not isinstance(name, str) or not name.strip() or len(name.strip()) > 100:
+            raise ValueError("Indica un nombre de dispositivo de hasta 100 caracteres.")
+        scope_path = request.script_root or ""
+        if len(scope_path) > 255:
+            raise ValueError("La ruta base es demasiado larga.")
+        public_key()
+        now = utc_now()
+        exec_sql(
+            "INSERT INTO push_subscriptions(endpoint_hash,endpoint,p256dh,auth_key,device_name,scope_path,origin,created_at_utc,updated_at_utc) "
+            "VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE "
+            "p256dh=VALUES(p256dh),auth_key=VALUES(auth_key),device_name=VALUES(device_name),"
+            "scope_path=VALUES(scope_path),origin=VALUES(origin),active=1,updated_at_utc=VALUES(updated_at_utc)",
+            (endpoint_hash(endpoint), endpoint, p256dh, auth_key, name.strip(), scope_path, origin, now, now),
+        )
+        commit()
+        return jsonify({"ok": True})
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except (pymysql.MySQLError, OSError) as exc:
+        rollback()
+        app.logger.exception("No se pudo registrar la suscripción Web Push")
+        return jsonify({"ok": False, "error": f"No se pudo registrar el dispositivo ({type(exc).__name__})."}), 500
+
+
+@app.route("/admin/push/unsubscribe", methods=["POST"])
+def admin_push_unsubscribe():
+    require_push_admin()
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or not isinstance(data.get("endpoint"), str):
+        return jsonify({"ok": False, "error": "Suscripción no válida."}), 400
+    exec_sql("DELETE FROM push_subscriptions WHERE endpoint_hash=%s", (endpoint_hash(data["endpoint"]),))
+    commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/admin/push/status", methods=["POST"])
+def admin_push_status():
+    require_push_admin()
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or not isinstance(data.get("endpoint"), str):
+        return jsonify({"ok": False, "error": "Suscripción no válida."}), 400
+    row = q1("SELECT id, device_name FROM push_subscriptions WHERE endpoint_hash=%s AND active=1", (endpoint_hash(data["endpoint"]),))
+    return jsonify({"ok": True, "registered": bool(row), "name": row["device_name"] if row else None})
+
+
+@app.route("/admin/push/<int:subscription_id>/delete", methods=["POST"])
+def admin_push_delete(subscription_id: int):
+    require_push_admin()
+    exec_sql("DELETE FROM push_subscriptions WHERE id=%s", (subscription_id,))
+    commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/admin/push/test", methods=["POST"])
+def admin_push_test():
+    require_push_admin()
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or not isinstance(data.get("endpoint"), str):
+        return jsonify({"ok": False, "error": "Suscripción no válida."}), 400
+    if not push_test_within_hours():
+        return jsonify({"ok": False, "error": "La prueba no se envía fuera del horario de notificaciones."}), 400
+    subscription = q1("SELECT * FROM push_subscriptions WHERE endpoint_hash=%s AND active=1", (endpoint_hash(data["endpoint"]),))
+    if not subscription:
+        return jsonify({"ok": False, "error": "Este dispositivo no está suscrito."}), 404
+    error, code = send_push_test(subscription)
+    if error:
+        return jsonify({"ok": False, "error": error}), code
+    return jsonify({"ok": True})
+
+
+def push_test_within_hours():
+    cfg = load_config().get("app", {})
+    start, end = notification_hours(cfg)
+    return within_notification_hours(utc_now(), ZoneInfo(cfg.get("timezone", "Europe/Madrid")), start, end)
+
+
+def send_push_test(subscription):
+    try:
+        send_browser_push(subscription, {"title": "GTDApp", "body": "Prueba de notificaciones",
+                                         "url": f"{subscription['scope_path'].rstrip('/')}/admin/notifications",
+                                         "tag": "gtd-push-test", "renotify": True})
+        return None, 200
+    except WebPushException as exc:
+        if exc.response is not None and exc.response.status_code in (404, 410):
+            exec_sql("UPDATE push_subscriptions SET active=0 WHERE id=%s", (subscription["id"],))
+            commit()
+            return "La suscripción ha caducado. Vuelve a activar este dispositivo.", 410
+        app.logger.warning("La prueba de Web Push falló: %s", type(exc).__name__)
+        return "No se pudo enviar la prueba de Web Push.", 502
+    except (OSError, ValueError, VapidException, RequestException) as exc:
+        app.logger.warning("La prueba de Web Push falló: %s", type(exc).__name__)
+        return f"No se pudo enviar la prueba ({type(exc).__name__}).", 502
+
+
+@app.route("/admin/push/test-all", methods=["POST"])
+def admin_push_test_all():
+    require_push_admin()
+    if not push_test_within_hours():
+        return jsonify({"ok": False, "error": "La prueba no se envía fuera del horario de notificaciones."}), 400
+    subscriptions = q("SELECT * FROM push_subscriptions WHERE active=1 ORDER BY id")
+    if not subscriptions:
+        return jsonify({"ok": False, "error": "No hay dispositivos activos suscritos."}), 400
+    results = []
+    for subscription in subscriptions:
+        if not push_test_within_hours():
+            error = "No enviada: horario de notificaciones finalizado."
+        else:
+            error, _ = send_push_test(subscription)
+        results.append({"name": subscription["device_name"], "id": subscription["id"], "error": error})
+    return jsonify({"ok": True, "results": results})
+
+
+def load_notification_status(cfg):
+    session.setdefault("push_csrf", secrets.token_urlsafe(32))
+    from telegram_gtdAppbot import load_chat_id
+    try:
+        load_reminder_token()
+        if not int(load_chat_id()):
+            raise ValueError("Chat ID no válido")
+        telegram_configured = True
+        telegram_status = "Configurado; usa la prueba para comprobar la conexión."
+    except (OSError, ValueError, KeyError, TypeError, RuntimeError) as exc:
+        telegram_configured = False
+        telegram_status = f"No configurado o configuración inválida ({type(exc).__name__})."
+    worker_status = q1("SELECT last_run_utc, last_error FROM reminder_worker_status WHERE id=1")
+    timezone_name = cfg.get("app", {}).get("timezone", "Europe/Madrid")
+    if worker_status:
+        worker_status["last_run_local"] = worker_status["last_run_utc"].replace(
+            tzinfo=ZoneInfo("UTC")
+        ).astimezone(ZoneInfo(timezone_name)).strftime("%d-%m-%Y %H:%M:%S")
+        worker_status["stale"] = utc_now() - worker_status["last_run_utc"] > timedelta(minutes=20)
+    start_time, end_time = notification_hours(cfg.get("app", {}))
+    failed_deliveries = q(
+        "SELECT d.last_error, d.updated_at_utc, d.scheduled_at_utc, "
+        "r.*, t.title, t.due_date, t.due_time FROM reminder_deliveries d "
+        "JOIN task_reminders r ON r.id=d.reminder_id JOIN tasks t ON t.id=r.task_id "
+        "LEFT JOIN projects p ON p.id=t.project_id WHERE d.status='failed' AND r.send_telegram=1 "
+        "AND t.completed_at IS NULL AND t.archived=0 AND t.deleted_at IS NULL "
+        "AND (t.project_id IS NULL OR (p.archived=0 AND p.deleted_at IS NULL)) "
+        "ORDER BY d.updated_at_utc DESC"
+    )
+    current_failures = []
+    for failure in failed_deliveries:
+        try:
+            current = scheduled_at(failure, ZoneInfo(timezone_name))
+        except ValueError:
+            continue
+        if (current == failure["scheduled_at_utc"]
+                and utc_now() - current < timedelta(hours=24)):
+            current_failures.append(failure)
+    push_failed_rows = q(
+        "SELECT d.last_error, d.status AS delivery_status, o.scheduled_at_utc, "
+        "s.device_name, r.*, t.title, t.due_date, t.due_time "
+        "FROM push_deliveries d JOIN push_subscriptions s ON s.id=d.subscription_id "
+        "JOIN push_occurrences o ON o.id=d.occurrence_id "
+        "JOIN task_reminders r ON r.id=o.reminder_id JOIN tasks t ON t.id=r.task_id "
+        "LEFT JOIN projects p ON p.id=t.project_id "
+        "WHERE d.status IN ('failed','invalid') AND r.send_browser=1 "
+        "AND t.completed_at IS NULL AND t.archived=0 AND t.deleted_at IS NULL "
+        "AND (t.project_id IS NULL OR (p.archived=0 AND p.deleted_at IS NULL)) "
+        "ORDER BY d.updated_at_utc DESC"
+    )
+    push_errors = []
+    for failure in push_failed_rows:
+        try:
+            current = scheduled_at(failure, ZoneInfo(timezone_name))
+        except ValueError:
+            continue
+        if (current == failure["scheduled_at_utc"]
+                and utc_now() - current < timedelta(hours=24)):
+            push_errors.append(failure)
+    notification_status = {
+        "telegram_configured": telegram_configured,
+        "telegram_status": telegram_status,
+        "worker": worker_status,
+        "failed": current_failures[:10],
+        "start_time": start_time.strftime("%H:%M"),
+        "end_time": end_time.strftime("%H:%M"),
+        "within_hours": within_notification_hours(utc_now(), ZoneInfo(timezone_name), start_time, end_time),
+        "timezone": timezone_name,
+        "devices": q("SELECT id, device_name, active, created_at_utc, updated_at_utc FROM push_subscriptions ORDER BY id"),
+        "push_csrf": session["push_csrf"],
+        "push_errors": push_errors[:10],
+    }
+    return notification_status
+
+
+@app.route("/admin/notifications")
+def admin_notifications():
+    if not admin_required():
+        flash("No autorizado. Inicia sesión como admin.", "error")
+        return redirect(url_for("admin"))
+    cfg = load_config()
+    ca_status = {"configured": bool(cfg.get("app", {}).get("notifications", {}).get("ca_certificate_path"))}
+    if ca_status["configured"]:
+        try:
+            certificate = load_notification_ca_certificate(cfg)
+            ca_status["fingerprint"] = certificate.fingerprint(hashes.SHA256()).hex(":").upper()
+        except (OSError, ValueError, x509.ExtensionNotFound) as exc:
+            app.logger.warning("No se pudo cargar el certificado de CA: %s", type(exc).__name__)
+            ca_status["error"] = "No se puede leer un certificado de CA válido; revisa la configuración y los permisos."
+    return render_template("admin_notifications.html", cfg=cfg, notification_status=load_notification_status(cfg),
+                           ca_status=ca_status)
+
+
+def load_notification_ca_certificate(cfg: Dict[str, Any]) -> x509.Certificate:
+    path = cfg.get("app", {}).get("notifications", {}).get("ca_certificate_path", "")
+    if not isinstance(path, str) or not path or not Path(path).is_absolute():
+        raise ValueError("La ruta del certificado de CA debe ser absoluta.")
+    with Path(path).open("rb") as file:
+        data = file.read(65537)
+    if len(data) > 65536:
+        raise ValueError("El certificado de CA es demasiado grande.")
+    certificate = x509.load_pem_x509_certificate(data)
+    if not certificate.extensions.get_extension_for_class(x509.BasicConstraints).value.ca:
+        raise ValueError("El certificado no pertenece a una CA.")
+    return certificate
+
+
+@app.route("/admin/notifications/ca-certificate")
+def admin_notification_ca_certificate():
+    if not admin_required():
+        abort(403)
+    cfg = load_config()
+    if not cfg.get("app", {}).get("notifications", {}).get("ca_certificate_path"):
+        abort(404)
+    try:
+        certificate = load_notification_ca_certificate(cfg)
+    except (OSError, ValueError, x509.ExtensionNotFound) as exc:
+        app.logger.warning("No se pudo descargar el certificado de CA: %s", type(exc).__name__)
+        abort(503, description="No se puede leer el certificado de CA configurado.")
+    response = send_file(io.BytesIO(certificate.public_bytes(serialization.Encoding.PEM)),
+                         mimetype="application/x-x509-ca-cert", as_attachment=True,
+                         download_name="gtdapp-ca.crt")
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+def google_oauth_redirect_uri(cfg: Dict[str, Any]) -> str:
+    configured = (cfg.get("app", {}).get("google_oauth", {}).get("redirect_uri") or "").strip()
+    uri = configured or url_for("admin_google_oauth_callback", _external=True)
+    parsed = urlparse(uri)
+    expected_path = url_for("admin_google_oauth_callback")
+    if (parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password
+            or parsed.query or parsed.fragment or parsed.path != expected_path):
+        raise ValueError(f"La URL OAuth debe usar HTTPS y terminar en {expected_path}.")
+    try:
+        parsed.port
+    except ValueError as exc:
+        raise ValueError("El puerto de la URL OAuth no es válido.") from exc
+    if parsed.netloc.lower() != request.host.lower():
+        raise ValueError("Accede a Admin usando el mismo dominio y puerto configurados para OAuth.")
+    return uri
+
+
 @app.route("/admin", methods=["GET", "POST"])
 def admin():
     env_pwd_set = bool(os.environ.get("GTD_ADMIN_PASSWORD", ""))
@@ -9389,6 +9859,66 @@ def admin():
         if not admin_required():
             flash("No autorizado.", "error")
             return redirect(url_for("admin"))
+
+        if action == "test_reminder_telegram":
+            from telegram_gtdAppbot import load_chat_id
+            try:
+                notification_cfg = load_config().get("app", {})
+                start, end = notification_hours(notification_cfg)
+                zone = ZoneInfo(notification_cfg.get("timezone", "Europe/Madrid"))
+                if not within_notification_hours(utc_now(), zone, start, end):
+                    flash("La prueba no se envía fuera del horario de notificaciones.", "error")
+                    return redirect(url_for("admin_notifications"))
+                send_telegram(load_reminder_token(), load_chat_id(), "🔔 Prueba de recordatorios de GTDApp.")
+                flash("Mensaje de prueba enviado a Telegram.", "ok")
+            except Exception as exc:
+                app.logger.warning("La prueba de Telegram falló: %s", type(exc).__name__)
+                flash(f"No se pudo enviar la prueba de Telegram ({type(exc).__name__}). Comprueba la configuración y la conexión.", "error")
+            return redirect(url_for("admin_notifications"))
+
+        if action == "save_reminder_url":
+            public_url = (request.form.get("public_url") or "").strip().rstrip("/")
+            parsed = urlparse(public_url)
+            if public_url and (parsed.scheme not in ("http", "https") or not parsed.netloc
+                               or parsed.username or parsed.password or parsed.query or parsed.fragment):
+                flash("Indica una URL pública HTTP o HTTPS válida, sin credenciales ni parámetros.", "error")
+            else:
+                cfg = load_config()
+                cfg.setdefault("app", {})["public_url"] = public_url
+                save_config(cfg)
+                flash("URL para recordatorios guardada.", "ok")
+            return redirect(url_for("admin_notifications"))
+
+        if action == "save_reminder_hours":
+            start_raw = (request.form.get("start_time") or "").strip()
+            end_raw = (request.form.get("end_time") or "").strip()
+            try:
+                if not re.fullmatch(r"\d{2}:\d{2}", start_raw) or not re.fullmatch(r"\d{2}:\d{2}", end_raw):
+                    raise ValueError("Indica las horas en formato HH:MM.")
+                notification_hours({"notifications": {"start_time": start_raw, "end_time": end_raw}})
+                cfg = load_config()
+                settings = cfg.setdefault("app", {}).setdefault("notifications", {})
+                settings["start_time"] = start_raw
+                settings["end_time"] = end_raw
+                save_config(cfg)
+                flash("Horario de recordatorios guardado.", "ok")
+            except ValueError as exc:
+                flash(f"Horario no válido: {exc}", "error")
+            return redirect(url_for("admin_notifications"))
+
+        if action == "save_google_oauth_redirect":
+            redirect_uri = (request.form.get("google_oauth_redirect_uri") or "").strip()
+            cfg = load_config()
+            try:
+                candidate = {"app": {"google_oauth": {"redirect_uri": redirect_uri}}}
+                if redirect_uri:
+                    google_oauth_redirect_uri(candidate)
+                cfg.setdefault("app", {}).setdefault("google_oauth", {})["redirect_uri"] = redirect_uri
+                save_config(cfg)
+                flash("URL de OAuth guardada.", "ok")
+            except ValueError as exc:
+                flash(f"URL de OAuth no válida: {exc}", "error")
+            return redirect(url_for("admin") + "#google-tokens")
 
         if action == "create_api_token":
             user_id = get_api_token_owner_user_id()
@@ -9498,8 +10028,7 @@ def admin():
                 return redirect(url_for("admin"))
 
             try:
-                # Usar HTTPS para callback automático (Google lo requiere en producción)
-                redirect_uri = "https://lanvinxeira.mooo.com/gtdApp/admin/google_oauth/callback"
+                redirect_uri = google_oauth_redirect_uri(load_config())
                 flow = _build_admin_google_flow(redirect_uri)
                 auth_url, state = flow.authorization_url(
                     access_type="offline",
@@ -9508,6 +10037,7 @@ def admin():
                 )
                 session["google_oauth_state"] = state
                 session["google_oauth_code_verifier"] = getattr(flow, "code_verifier", None)
+                session["google_oauth_redirect_uri"] = redirect_uri
                 return redirect(auth_url)
             except Exception as e:
                 flash(f"No se pudo iniciar la renovación OAuth: {e}", "error")
@@ -9836,6 +10366,7 @@ def admin():
         "conflict": 0,
         "error": 0,
     }
+    notification_status = None
 
     # Estado del token para la card (unificado)
     token_path = gmail_token_path()
@@ -9936,10 +10467,12 @@ def admin():
         calendar_sync_last_level=calendar_sync_last_level,
         google_token_status=google_token_status,
         google_token_expiry=google_token_expiry,
+        notification_status=notification_status,
     )
 
 
 ADMIN_PANEL_KEYS = (
+    "notifications",
     "database",
     "trash",
     "archive",
@@ -10001,17 +10534,17 @@ def admin_google_oauth_callback():
     try:
         expected_state = session.pop("google_oauth_state", None)
         code_verifier = session.pop("google_oauth_code_verifier", None)
+        redirect_uri = session.pop("google_oauth_redirect_uri", None)
         incoming_state = (request.args.get("state") or "").strip()
 
-        if not expected_state or not incoming_state or expected_state != incoming_state:
+        if not expected_state or not incoming_state or expected_state != incoming_state or not redirect_uri:
             raise RuntimeError("Estado OAuth inválido o expirado (state mismatch)")
 
-        redirect_uri = "https://lanvinxeira.mooo.com/gtdApp/admin/google_oauth/callback"
         flow = _build_admin_google_flow(redirect_uri)
         if code_verifier:
             flow.code_verifier = str(code_verifier)
 
-        flow.fetch_token(authorization_response=request.url)
+        flow.fetch_token(authorization_response=redirect_uri + "?" + request.query_string.decode("ascii"))
         creds = flow.credentials
 
         token_path = gmail_token_path()

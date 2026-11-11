@@ -45,5 +45,20 @@ services:
       mysql:
         condition: service_healthy
 
+  reminders:
+    profiles: ["reminders"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    entrypoint: ["python", "send_reminders.py", "--loop"]
+    restart: unless-stopped
+    volumes:
+      - ./instance:/app/instance
+    depends_on:
+      mysql:
+        condition: service_healthy
+      app:
+        condition: service_started
+
 volumes:
   mysql_data:

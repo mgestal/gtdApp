@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="page-title">
+    <h1>🔔 Notificaciones</h1>
+    <p class="subtitle">Configura los canales, el horario y los dispositivos.</p>
+    <a class="btn btn-soft" href="{{ url_for('admin') }}">Volver a Admin</a>
+    <p class="hint">La dirección HTTPS y su certificado se configuran en el servidor web o proxy. El navegador usa el origen desde el que accedes; el certificado debe ser válido y de confianza para ese nombre.</p>
+  </div>
+        <div class="card" id="horario">
+          <div class="card-header"><div class="card-title">Horario de notificaciones</div></div>
+          <p>
+            <strong>Proceso de recordatorios:</strong>
+            {% if not notification_status.worker %}
+              Nunca ejecutado. Configura la ejecución cada 15 minutos como se indica en el manual.
+            {% elif notification_status.worker.stale %}
+              Sin ejecución reciente. Última: {{ notification_status.worker.last_run_local }}.
+            {% else %}
+              Última ejecución: {{ notification_status.worker.last_run_local }}.
+            {% endif %}
+            {% if notification_status.worker and notification_status.worker.last_error %}
+              <span class="flash-error">{{ notification_status.worker.last_error }}</span>
+            {% endif %}
+          </p>
+          <form method="post" action="{{ url_for('admin') }}" class="form">
+            <input type="hidden" name="action" value="save_reminder_hours">
+            <div class="grid2">
+              <div>
+                <label class="label" for="reminder-start-time">Enviar desde</label>
+                <input class="input" type="time" id="reminder-start-time" name="start_time" value="{{ notification_status.start_time }}" required>
+              </div>
+              <div>
+                <label class="label" for="reminder-end-time">Hasta (incluido)</label>
+                <input class="input" type="time" id="reminder-end-time" name="end_time" value="{{ notification_status.end_time }}" required>
+              </div>
+            </div>
+            <div class="hint">Zona: {{ notification_status.timezone }}. Comprobación cada 15 minutos. Fuera de la franja no se envía ningún aviso ni prueba; los pendientes se evaluarán al reabrirse la franja. Se permite una franja que cruza medianoche.</div>
+            <div class="hint">{{ 'Ahora dentro del horario.' if notification_status.within_hours else 'Ahora fuera del horario: envíos suspendidos.' }}</div>
+            <button type="submit" class="btn btn-soft">Guardar horario</button>
+          </form>
+          {% if notification_status.failed %}
+            <p><strong>Envíos con error (se reintentan hasta 24 horas):</strong></p>
+            <ul>
+              {% for failure in notification_status.failed %}
+                <li><a href="{{ url_for('task_edit', task_id=failure.task_id, next=url_for('admin_notifications')) }}">{{ failure.title }}</a>: {{ failure.last_error }}</li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+        </div>
+
+        <div class="card" id="telegram" style="margin-top:14px;">
+          <div class="card-header">
+            <div>
+              <div class="card-title">🔔 Notificaciones</div>
+              <div class="card-sub">Estado y envío de recordatorios por Telegram.</div>
+            </div>
+          </div>
+          <p><strong>Telegram:</strong> {{ notification_status.telegram_status }}</p>
+          <form method="post" action="{{ url_for('admin') }}">
+            <input type="hidden" name="action" value="test_reminder_telegram">
+            <button type="submit" class="btn btn-soft">Enviar prueba a Telegram</button>
+          </form>
+        </div>
+
+        <div class="card" id="enlaces" style="margin-top:14px;">
+          <div class="card-header"><div class="card-title">Enlaces de Telegram</div></div>
+          <form method="post" action="{{ url_for('admin') }}" class="form">
+            <input type="hidden" name="action" value="save_reminder_url">
+            <label class="label" for="reminder-public-url">URL pública de GTDApp (opcional)</label>
+            <input class="input" type="url" id="reminder-public-url" name="public_url" value="{{ cfg.get('app', {}).get('public_url', '') }}" placeholder="https://ejemplo.com/gtdApp">
+            <div class="hint">Se usa para añadir al mensaje un enlace a la tarea. Incluye la ruta base si procede.</div>
+            <button class="btn btn-soft" type="submit">Guardar URL</button>
+          </form>
+        </div>
+
+        <div class="card" id="navegador" style="margin-top:14px;">
+          <div class="card-header"><div class="card-title">Notificaciones del navegador</div></div>
+          <div id="push-settings"
+               data-csrf="{{ notification_status.push_csrf }}"
+               data-key-url="{{ url_for('admin_push_key') }}"
+               data-subscribe-url="{{ url_for('admin_push_subscribe') }}"
+               data-unsubscribe-url="{{ url_for('admin_push_unsubscribe') }}"
+               data-status-url="{{ url_for('admin_push_status') }}"
+               data-test-url="{{ url_for('admin_push_test') }}"
+               data-test-all-url="{{ url_for('admin_push_test_all') }}"
+               data-sw-url="{{ url_for('service_worker') }}">
+            <p><strong>Notificaciones del navegador:</strong> <span id="browser-notification-status" role="status">No se ha cargado la configuración. Comprueba la conexión y recarga la página.</span></p>
+            <label class="label" for="push-device-name">Nombre de este dispositivo</label>
+            <input class="input" id="push-device-name" maxlength="100" placeholder="Por ejemplo: móvil personal">
+            <div class="row">
+              <button type="button" class="btn btn-soft" id="push-enable">Activar en este dispositivo</button>
+               <button type="button" class="btn btn-soft" id="push-disable">Desactivar en este dispositivo</button>
+               <br/>
+              <button type="button" class="btn btn-soft" id="push-test">Enviar prueba</button>
+              <button type="button" class="btn btn-soft" id="push-test-all">Enviar prueba a todos los dispositivos</button>
+            </div>
+            <div class="hint">Requiere HTTPS y permiso de notificaciones. En iPhone o iPad debes añadir GTDApp a la pantalla de inicio y abrirla desde allí.</div>
+            <div class="hint">La prueba y los recordatorios respetan el horario configurado. Un envío aceptado no garantiza que el dispositivo lo muestre.</div>
+            <ul id="push-test-results" role="status" hidden></ul>
+            <p><strong>Dispositivos suscritos:</strong></p>
+            {% if notification_status.devices %}
+              <ul>
+              {% for device in notification_status.devices %}
+                <li>{{ device.device_name }} — {{ 'activo' if device.active else 'suscripción caducada; volver a activar' }} — registrado {{ device.created_at_utc.strftime('%d-%m-%Y %H:%M') }} UTC
+                  <button type="button" class="btn btn-soft js-push-remove" data-url="{{ url_for('admin_push_delete', subscription_id=device.id) }}" data-name="{{ device.device_name }}">Eliminar</button>
+                </li>
+              {% endfor %}
+              </ul>
+            {% else %}<p class="hint">No hay dispositivos suscritos.</p>{% endif %}
+            {% if notification_status.push_errors %}
+              <p><strong>Errores de navegador:</strong></p>
+              <ul>{% for failure in notification_status.push_errors %}
+                <li><a href="{{ url_for('task_edit', task_id=failure.task_id, next=url_for('admin_notifications')) }}">{{ failure.title }}</a> — {{ failure.device_name }}: {{ failure.last_error }}</li>
+              {% endfor %}</ul>
+            {% endif %}
+          </div>
+          <script src="{{ url_for('static', filename='push_settings.js', v='2') }}"></script>
+        </div>
+
+        <div class="card" id="certificado" style="margin-top:14px;">
+          <div class="card-header"><div class="card-title">Certificado HTTPS</div></div>
+          <p class="hint">Para una instalación con CA privada, necesitas una CA y un certificado de servidor firmado por ella, configurado en el servidor web o proxy que sirve GTDApp. La CA puede crearse en el servidor o en otro equipo seguro; no es necesaria si usas un certificado de una CA pública de confianza. El nombre de la CA es libre. El certificado del servidor sí debe incluir el dominio usado para acceder (por ejemplo, lanvinxeira.mooo.com) en sus nombres alternativos (SAN).</p>
+          {% if ca_status.fingerprint %}
+            <p><a class="btn btn-soft" href="{{ url_for('admin_notification_ca_certificate') }}">Descargar certificado público de la CA</a></p>
+            <p class="hint">Huella SHA-256: <code>{{ ca_status.fingerprint }}</code>. Compruébala por un medio independiente y seguro antes de confiar en la CA. Si el dispositivo todavía no confía en esta conexión, transfiere el certificado por otro medio seguro. Nunca distribuyas la clave privada de la CA.</p>
+          {% elif ca_status.error %}
+            <p class="flash-error">{{ ca_status.error }}</p>
+          {% else %}
+            <p class="hint">No hay un certificado de CA configurado para descargar. Es opcional; consulta el manual para configurarlo.</p>
+          {% endif %}
+        </div>
+
+{% endblock %}

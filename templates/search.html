@@ -107,7 +107,7 @@
 
             <td>
               <div style="font-weight:600; display:flex; align-items:center; gap:6px;">
-                {{ t.title }}
+                {{ t.title }}{{ reminder_badge(t.id) }}
                 {% if t.archived %}
                   <span class="pill" style="font-size:10px;">archivada</span>
                 {% endif %}
@@ -374,4 +374,3 @@
 {% endif %}
 
 {% endblock %}
-

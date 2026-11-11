@@ -497,7 +497,12 @@
                   {% endif %}
                 </div>
                 <div class="hint" style="margin-top:6px;">
-                  Última expiración: {{ google_token_expiry or '—' }}
+                  Próxima expiración:
+                  {% if google_token_expiry %}
+                    <time id="googleTokenExpiry" datetime="{{ google_token_expiry }}">{{ google_token_expiry }}</time>
+                  {% else %}
+                    —
+                  {% endif %}
                 </div>
               </div>
               <form method="post" class="form" style="margin:0;">
@@ -569,6 +574,22 @@
     </div>
     <script>
       (() => {
+        const tokenExpiry = document.getElementById('googleTokenExpiry');
+        if (tokenExpiry) {
+          const expiryDate = new Date(tokenExpiry.dateTime);
+          if (!Number.isNaN(expiryDate.getTime())) {
+            tokenExpiry.textContent = new Intl.DateTimeFormat(undefined, {
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit',
+              timeZoneName: 'short',
+            }).format(expiryDate);
+          }
+        }
+
         const grid = document.getElementById('adminPanelsGrid');
         if (!grid) return;
         const configuredOrder = {{ admin_panel_order | tojson }};

@@ -24,10 +24,34 @@
       <input class="input" name="type_new" value="" placeholder="persona, herramienta...">
       <div class="hint">Si rellenas "Nuevo tipo", tendrá prioridad sobre el desplegable.</div>
 
+      <fieldset id="tag-location">
+        <legend>Recordatorio por ubicación</legend>
+        <label><input type="checkbox" name="location_enabled" id="location-enabled" {% if location %}checked{% endif %}> Activar ubicación para esta etiqueta</label>
+        <p class="hint">Al abrir GTDApp, los dispositivos que lo permitan podrán mostrar tareas pendientes dentro de este radio.</p>
+        <div class="tag-location-fields">
+          <div>
+            <label class="label" for="location-latitude">Latitud</label>
+            <input class="input" type="number" step="any" min="-90" max="90" id="location-latitude" name="latitude" value="{{ location.latitude if location else '' }}">
+          </div>
+          <div>
+            <label class="label" for="location-longitude">Longitud</label>
+            <input class="input" type="number" step="any" min="-180" max="180" id="location-longitude" name="longitude" value="{{ location.longitude if location else '' }}">
+          </div>
+          <div>
+            <label class="label" for="location-radius">Radio en metros</label>
+            <input class="input" type="number" step="any" min="0.01" max="100000" id="location-radius" name="radius_m" value="{{ location.radius_m if location else 200 }}">
+          </div>
+        </div>
+        <button type="button" class="btn btn-soft" id="location-use-current">Usar ubicación actual</button>
+        <p class="hint" id="tag-location-status" role="status"></p>
+        <p class="hint">Si desactivas la ubicación y guardas, se eliminarán sus coordenadas y radio.</p>
+      </fieldset>
+
       <div class="row">
         <button class="btn btn-primary" type="submit">Guardar</button>
         <a class="btn btn-soft" href="{{ next_url }}">Cancelar</a>
       </div>
     </form>
   </div>
+  <script src="{{ url_for('static', filename='tag_location.js', v=1) }}"></script>
 {% endblock %}

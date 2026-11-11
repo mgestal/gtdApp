@@ -7,6 +7,7 @@ import re
 import calendar
 import hashlib
 import hmac
+import math
 import secrets
 import unicodedata
 import pymysql
@@ -1529,6 +1530,21 @@ def ensure_schema_updates() -> None:
     exec_sql("ALTER TABLE task_reminders ADD COLUMN IF NOT EXISTS send_browser TINYINT(1) NOT NULL DEFAULT 0")
     for statement in PUSH_SCHEMA:
         exec_sql(statement)
+    exec_sql(
+        "CREATE TABLE IF NOT EXISTS tag_locations ("
+        "tag_id INT NOT NULL PRIMARY KEY, latitude DOUBLE NOT NULL, "
+        "longitude DOUBLE NOT NULL, radius_m DOUBLE NOT NULL, "
+        "CONSTRAINT fk_tag_location_tag FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+    )
+    exec_sql(
+        "CREATE TABLE IF NOT EXISTS notification_reads ("
+        "reminder_id INT NOT NULL, scheduled_at_utc DATETIME NOT NULL, read_at_utc DATETIME NOT NULL, "
+        "PRIMARY KEY (reminder_id, scheduled_at_utc), "
+        "CONSTRAINT fk_notification_read_reminder FOREIGN KEY (reminder_id) "
+        "REFERENCES task_reminders(id) ON DELETE CASCADE"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+    )
 
     # Normalize tag types while preserving values from installations that still
     # have the original free-text `tags.type` column.
@@ -3204,6 +3220,7 @@ def periodic_occurrences_badge(task: Dict[str, Any]) -> Optional[str]:
 @app.context_processor
 def inject_common():
     cfg = load_config()
+    session.setdefault("notification_csrf", secrets.token_urlsafe(32))
     reminder_task_ids = {row["task_id"] for row in q("SELECT DISTINCT task_id FROM task_reminders")}
 
     def reminder_badge(task_id):
@@ -3225,6 +3242,7 @@ def inject_common():
         "location_to_href": location_to_href,
         "periodic_occurrences_badge": periodic_occurrences_badge,
         "reminder_badge": reminder_badge,
+        "notification_csrf": session["notification_csrf"],
     }
 
 @app.context_processor
@@ -5094,6 +5112,7 @@ def tag_edit(tag_id: int):
         "SELECT name AS type FROM TagsType ORDER BY name ASC"
     )
     existing_tag_types = [r["type"] for r in type_rows]
+    location = q1("SELECT latitude, longitude, radius_m FROM tag_locations WHERE tag_id=%s", (tag_id,))
 
     next_url = request.args.get("next") or request.form.get("next") or url_for("tags")
 
@@ -5116,9 +5135,31 @@ def tag_edit(tag_id: int):
             flash("El nombre es obligatorio.", "error")
             return redirect(url_for("tag_edit", tag_id=tag_id, next=next_url))
 
+        location_values = None
+        if request.form.get("location_enabled"):
+            try:
+                location_values = tuple(float(request.form.get(field, "")) for field in
+                                        ("latitude", "longitude", "radius_m"))
+                lat, lon, radius = location_values
+                if not all(math.isfinite(value) for value in location_values) or not (
+                    -90 <= lat <= 90 and -180 <= lon <= 180 and 0.01 <= radius <= 100000
+                ):
+                    raise ValueError
+            except (TypeError, ValueError):
+                flash("Introduce una latitud entre -90 y 90, una longitud entre -180 y 180 y un radio entre 0,01 y 100000 metros.", "error")
+                return redirect(url_for("tag_edit", tag_id=tag_id, next=next_url))
+
         try:
             type_id = get_or_create_tag_type(tag_type) if tag_type else None
             exec_sql("UPDATE tags SET name=%s, type_id=%s WHERE id=%s", (name, type_id, tag_id))
+            if location_values is not None:
+                exec_sql(
+                    "INSERT INTO tag_locations(tag_id, latitude, longitude, radius_m) VALUES(%s,%s,%s,%s) "
+                    "ON DUPLICATE KEY UPDATE latitude=VALUES(latitude), longitude=VALUES(longitude), radius_m=VALUES(radius_m)",
+                    (tag_id, *location_values),
+                )
+            else:
+                exec_sql("DELETE FROM tag_locations WHERE tag_id=%s", (tag_id,))
             commit()
             flash("Etiqueta actualizada.", "ok")
             return redirect(next_url)
@@ -5132,6 +5173,7 @@ def tag_edit(tag_id: int):
         tag=tag,
         next_url=next_url,
         existing_tag_types=existing_tag_types,
+        location=location,
     )
     
     
@@ -5188,6 +5230,109 @@ def tag_create():
     return redirect(next_url)
 
 
+@app.route("/api/location-alerts")
+def location_alerts():
+    rows = q(
+            "SELECT tg.id, tg.name, loc.latitude, loc.longitude, loc.radius_m, t.id AS task_id "
+            "FROM tag_locations loc JOIN tags tg ON tg.id=loc.tag_id "
+            "JOIN task_tags tt ON tt.tag_id=tg.id JOIN tasks t ON t.id=tt.task_id "
+            "LEFT JOIN projects p ON p.id=t.project_id "
+            "WHERE t.completed_at IS NULL AND t.archived=0 AND t.deleted_at IS NULL "
+            "AND (t.project_id IS NULL OR (p.archived=0 AND p.deleted_at IS NULL)) "
+            "ORDER BY tg.name, t.id"
+    )
+    locations = {}
+    for row in rows:
+        location = locations.setdefault(row["id"], {
+            "id": row["id"], "name": row["name"], "latitude": row["latitude"],
+            "longitude": row["longitude"], "radius_m": row["radius_m"], "task_ids": [],
+            "url": url_for("tag_detail", tag_id=row["id"], location_pending=1),
+        })
+        location["task_ids"].append(row["task_id"])
+    response = jsonify({"within_hours": push_test_within_hours(), "locations": list(locations.values())})
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+def notification_history_days(cfg):
+    value = cfg.get("app", {}).get("notifications", {}).get("history_days", 1)
+    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 365:
+        raise ValueError("Los días de historial de notificaciones deben estar entre 1 y 365.")
+    return value
+
+
+@app.route("/api/notifications")
+def notification_history():
+    cfg = load_config()
+    cutoff = utc_now() - timedelta(days=notification_history_days(cfg))
+    rows = q(
+        "SELECT r.id AS reminder_id, r.task_id, t.title, d.scheduled_at_utc, d.updated_at_utc, "
+        "'Telegram' AS channel, NULL AS device, nr.read_at_utc "
+        "FROM reminder_deliveries d JOIN task_reminders r ON r.id=d.reminder_id "
+        "JOIN tasks t ON t.id=r.task_id "
+        "LEFT JOIN notification_reads nr ON nr.reminder_id=r.id AND nr.scheduled_at_utc=d.scheduled_at_utc "
+        "WHERE d.status='sent' AND d.updated_at_utc >= %s "
+        "UNION ALL "
+        "SELECT r.id, r.task_id, t.title, o.scheduled_at_utc, d.updated_at_utc, "
+        "'Navegador', s.device_name, nr.read_at_utc "
+        "FROM push_deliveries d JOIN push_occurrences o ON o.id=d.occurrence_id "
+        "JOIN push_subscriptions s ON s.id=d.subscription_id "
+        "JOIN task_reminders r ON r.id=o.reminder_id JOIN tasks t ON t.id=r.task_id "
+        "LEFT JOIN notification_reads nr ON nr.reminder_id=r.id AND nr.scheduled_at_utc=o.scheduled_at_utc "
+        "WHERE d.status='sent' AND d.updated_at_utc >= %s",
+        (cutoff, cutoff),
+    )
+    zone = ZoneInfo(cfg.get("app", {}).get("timezone", "Europe/Madrid"))
+    grouped = {}
+    for row in rows:
+        key = (row["reminder_id"], row["scheduled_at_utc"])
+        item = grouped.setdefault(key, {
+            "reminder_id": row["reminder_id"], "scheduled_at": row["scheduled_at_utc"].isoformat(),
+            "title": row["title"], "url": url_for("task_edit", task_id=row["task_id"]),
+            "read": row["read_at_utc"] is not None, "channels": [], "updated_at": row["updated_at_utc"],
+        })
+        label = f"Navegador: {row['device']}" if row["device"] is not None else row["channel"]
+        if label not in item["channels"]:
+            item["channels"].append(label)
+        item["updated_at"] = max(item["updated_at"], row["updated_at_utc"])
+    result = sorted(grouped.values(), key=lambda item: item["updated_at"], reverse=True)
+    for item in result:
+        item["updated_at"] = item["updated_at"].replace(tzinfo=ZoneInfo("UTC")).astimezone(zone).strftime("%d-%m-%Y %H:%M")
+    response = jsonify({"notifications": result})
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@app.route("/api/notifications/read", methods=["POST"])
+def notification_mark_read():
+    supplied = request.headers.get("X-GTD-Notification-CSRF", "")
+    expected = session.get("notification_csrf", "")
+    if not expected or not hmac.compare_digest(supplied, expected):
+        abort(403)
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or type(data.get("reminder_id")) is not int or data["reminder_id"] <= 0:
+        return jsonify({"error": "Recordatorio no válido."}), 400
+    try:
+        scheduled = datetime.fromisoformat(data.get("scheduled_at", ""))
+        if scheduled.tzinfo is not None or scheduled.microsecond:
+            raise ValueError
+    except (TypeError, ValueError):
+        return jsonify({"error": "Fecha de recordatorio no válida."}), 400
+    reminder_id = data["reminder_id"]
+    sent = q1(
+        "SELECT 1 AS sent FROM reminder_deliveries WHERE reminder_id=%s AND scheduled_at_utc=%s AND status='sent' "
+        "UNION ALL SELECT 1 FROM push_occurrences o JOIN push_deliveries d ON d.occurrence_id=o.id "
+        "WHERE o.reminder_id=%s AND o.scheduled_at_utc=%s AND d.status='sent' LIMIT 1",
+        (reminder_id, scheduled, reminder_id, scheduled),
+    )
+    if not sent:
+        return jsonify({"error": "No se encontró el recordatorio enviado."}), 404
+    exec_sql("INSERT IGNORE INTO notification_reads(reminder_id, scheduled_at_utc, read_at_utc) VALUES(%s,%s,%s)",
+             (reminder_id, scheduled, utc_now()))
+    commit()
+    return jsonify({"ok": True})
+
+
 @app.route("/tags")
 def tags():
     qtxt = (request.args.get("q") or "").strip()
@@ -5230,8 +5375,10 @@ def tags():
 
     # (opcional pero útil) contador de tareas por etiqueta
     rows = q(
-        "SELECT tg.id, tg.name, ttype.name AS type, COUNT(t.id) AS task_count "
+        "SELECT tg.id, tg.name, ttype.name AS type, COUNT(t.id) AS task_count, "
+        "MAX(loc.tag_id IS NOT NULL) AS has_location "
         "FROM tags tg LEFT JOIN TagsType ttype ON ttype.id=tg.type_id "
+        "LEFT JOIN tag_locations loc ON loc.tag_id=tg.id "
         "LEFT JOIN task_tags tasktag ON tasktag.tag_id=tg.id "
         "LEFT JOIN tasks t ON t.id=tasktag.task_id AND t.archived=0 AND t.deleted_at IS NULL "
         f"{where} "
@@ -5340,9 +5487,14 @@ def tag_detail(tag_id: int):
     tag_sidebar_cfg = (load_config().get("sidebar") or {}).get("tag_task_visibility") or {}
     include_completed = bool(tag_sidebar_cfg.get("completed", False))
     include_archived = bool(tag_sidebar_cfg.get("archived", False))
+    location_pending = request.args.get("location_pending") == "1"
+    if location_pending:
+        include_completed = False
+        include_archived = False
     completed_clause = "" if include_completed else "AND t.completed_at IS NULL "
     archived_clause = "" if include_archived else "AND t.archived=0 "
     project_archived_clause = "" if include_archived else "AND (t.project_id IS NULL OR p.archived=0) "
+    project_deleted_clause = "AND (t.project_id IS NULL OR p.deleted_at IS NULL) " if location_pending else ""
 
     # total de tareas con esa etiqueta
     total_row = q1(
@@ -5354,6 +5506,7 @@ def tag_detail(tag_id: int):
         f"{archived_clause}"
         "AND t.deleted_at IS NULL "
         f"{project_archived_clause}"
+        f"{project_deleted_clause}"
         f"{completed_clause}",
         (tag_id,),
     )
@@ -5375,6 +5528,7 @@ def tag_detail(tag_id: int):
         f"{archived_clause}"
         "AND t.deleted_at IS NULL "
         f"{project_archived_clause}"
+        f"{project_deleted_clause}"
         f"{completed_clause}"
         f"ORDER BY (t.completed_at IS NOT NULL) ASC, ({effective_due_expr} IS NULL) ASC, {effective_due_expr} ASC, t.id DESC "
         "LIMIT %s OFFSET %s",
@@ -5397,6 +5551,7 @@ def tag_detail(tag_id: int):
         per_page=per_page,
         periodic_tag=is_periodic_tag_name(tag.get("name") or ""),
         periodic_history_url=url_for("periodic_history", tag_id=tag_id),
+        location_pending=location_pending,
     )
 
 
@@ -9907,6 +10062,19 @@ def admin():
                 flash(f"Horario no válido: {exc}", "error")
             return redirect(url_for("admin_notifications"))
 
+        if action == "save_notification_history":
+            raw = (request.form.get("history_days") or "").strip()
+            try:
+                if not re.fullmatch(r"\d+", raw) or not 1 <= int(raw) <= 365:
+                    raise ValueError("Indica un número entero entre 1 y 365.")
+                cfg = load_config()
+                cfg.setdefault("app", {}).setdefault("notifications", {})["history_days"] = int(raw)
+                save_config(cfg)
+                flash("Historial de notificaciones actualizado.", "ok")
+            except ValueError as exc:
+                flash(f"Historial no válido: {exc}", "error")
+            return redirect(url_for("admin_notifications") + "#historial")
+
         if action == "save_google_oauth_redirect":
             redirect_uri = (request.form.get("google_oauth_redirect_uri") or "").strip()
             cfg = load_config()
@@ -11193,10 +11361,11 @@ def _sidebar_tags_ordered() -> List[Dict[str, Any]]:
     archived_clause = "" if include_archived else "AND t.archived=0 "
     project_archived_clause = "" if include_archived else "AND (t.project_id IS NULL OR p.archived=0) "
     rows = q(
-        "SELECT tg.id, tg.name, ttype.name AS type, "
+        "SELECT tg.id, tg.name, ttype.name AS type, MAX(loc.tag_id IS NOT NULL) AS has_location, "
         "COUNT(CASE WHEN t.id IS NOT NULL "
         f"{completed_clause}{archived_clause}{project_archived_clause}THEN 1 END) AS task_count "
         "FROM tags tg LEFT JOIN TagsType ttype ON ttype.id=tg.type_id "
+        "LEFT JOIN tag_locations loc ON loc.tag_id=tg.id "
         "LEFT JOIN task_tags tasktag ON tasktag.tag_id=tg.id "
         "LEFT JOIN tasks t ON t.id=tasktag.task_id AND t.deleted_at IS NULL "
         "LEFT JOIN projects p ON p.id=t.project_id "
@@ -11227,7 +11396,8 @@ def inject_sidebar_filters():
         for r in _sidebar_tags_ordered():
             tag_type = (r.get("type") or "").strip()
             group = groups_by_type.setdefault(tag_type.lower(), {"type": tag_type, "tags": []})
-            group["tags"].append({"id": int(r["id"]), "name": r["name"], "count": int(r["task_count"] or 0)})
+            group["tags"].append({"id": int(r["id"]), "name": r["name"], "count": int(r["task_count"] or 0),
+                                  "has_location": bool(r["has_location"])})
         tag_groups = sorted(
             (g for k, g in groups_by_type.items() if k),
             key=lambda g: g["type"].lower(),

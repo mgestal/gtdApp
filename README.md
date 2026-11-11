@@ -201,6 +201,23 @@ El proceso evita envíos duplicados ordinarios mediante un registro por recordat
 
 El proceso y sus errores aparecen en **Admin → Notificaciones**. La URL pública opcional se usa para los enlaces de Telegram; al pulsar una notificación del navegador se abre la tarea en la misma instalación de GTDApp. El estado del proceso solo indica su última ejecución, no garantiza la entrega o visualización.
 
+### Avisos por ubicación al abrir GTDApp
+
+Edita una etiqueta, activa **Recordatorio por ubicación** y guarda su latitud, longitud y radio en metros. El botón **Usar ubicación actual** puede rellenar las coordenadas con permiso del navegador; también puedes introducirlas manualmente. Desactivar la ubicación de la etiqueta y guardar elimina sus coordenadas y radio.
+Las etiquetas con ubicación configurada se identifican con 📍 en el listado y en el menú lateral.
+
+En cada móvil o portátil, abre **Admin → Notificaciones → Avisos por ubicación** y pulsa **Activar en este dispositivo**. Se necesita HTTPS, un navegador compatible y permiso de ubicación. La activación se guarda en ese navegador; para dejar de usarla pulsa **Desactivar en este dispositivo**. El permiso del navegador se gestiona por separado en sus ajustes.
+
+Al abrir o recargar GTDApp se comprueban las etiquetas con tareas pendientes, dentro del horario de notificaciones configurado. No se comprueba la posición al navegar entre páginas ni al volver a una pestaña abierta en segundo plano. Los avisos aparecen en la campana de la barra superior, no por Telegram ni Web Push, y enlazan a la lista de tareas pendientes de cada etiqueta. Las ubicaciones detectadas se conservan al navegar en la misma pestaña; al pulsar una ubicación se marcan como leídas las tareas que mostraba y solo volverán a contarse tareas nuevas. La lectura de ubicación se guarda en el navegador, independientemente de otros dispositivos.
+
+La comparación se realiza en el dispositivo y su posición no se envía al servidor ni se almacena como historial. Las ubicaciones configuradas de las etiquetas sí se guardan en la base de datos. Para evitar falsos positivos, la zona de incertidumbre indicada por el navegador debe quedar completamente dentro del radio; si la precisión es insuficiente no se mostrará ese aviso. Un portátil sin GPS puede necesitar un radio mayor. Si el permiso se deniega, falla la ubicación o no hay conexión, se informa en la aplicación. La función no detecta llegadas mientras GTDApp está cerrada.
+
+### Campana de notificaciones
+
+La campana agrupa los avisos de ubicación y los recordatorios enviados por Telegram y navegador. El número suma las tareas nuevas por ubicación, sin duplicarlas si coinciden varias etiquetas, y los recordatorios enviados no leídos. Al pulsar un aviso se marca como leído y se abre su etiqueta o tarea; también se pueden marcar todos como leídos.
+
+Los envíos del mismo recordatorio y momento se agrupan, mostrando sus canales y dispositivos. El historial se actualiza al abrir la campana, al volver a la aplicación y cada minuto mientras está visible. La lectura de estos envíos se comparte entre dispositivos, mientras que los avisos de ubicación y su lectura son locales al navegador. El historial conserva visibles los envíos leídos durante el periodo configurado en **Admin → Notificaciones → Historial de la campana** (por defecto, un día). Es una ventana de visualización, no borra el historial. Solo incluye registros de envío todavía disponibles: al borrar un recordatorio o una suscripción también pueden desaparecer sus registros. La aceptación de Telegram o del servicio push no garantiza que el aviso se haya mostrado en el dispositivo.
+
 ---
 
 ## Stack técnico

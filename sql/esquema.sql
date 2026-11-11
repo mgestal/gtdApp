@@ -211,6 +211,7 @@ CREATE TABLE `subtasks` (
 -- Table structure for table `tags`
 --
 
+DROP TABLE IF EXISTS `tag_locations`;
 DROP TABLE IF EXISTS `tags`;
 DROP TABLE IF EXISTS `TagsType`;
 CREATE TABLE `TagsType` (
@@ -250,6 +251,14 @@ CREATE TABLE `task_tags` (
   CONSTRAINT `fk_tasktags_task` FOREIGN KEY (`task_id`) REFERENCES `tasks` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
+
+CREATE TABLE IF NOT EXISTS tag_locations (
+  tag_id INT NOT NULL PRIMARY KEY,
+  latitude DOUBLE NOT NULL,
+  longitude DOUBLE NOT NULL,
+  radius_m DOUBLE NOT NULL,
+  CONSTRAINT fk_tag_location_tag FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 --
 -- Table structure for table `tasks`
@@ -337,6 +346,14 @@ CREATE TABLE IF NOT EXISTS reminder_deliveries (
   UNIQUE KEY uq_reminder_occurrence (reminder_id, scheduled_at_utc),
   KEY idx_reminder_delivery_status (status),
   CONSTRAINT fk_delivery_reminder FOREIGN KEY (reminder_id) REFERENCES task_reminders(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS notification_reads (
+  reminder_id INT NOT NULL,
+  scheduled_at_utc DATETIME NOT NULL,
+  read_at_utc DATETIME NOT NULL,
+  PRIMARY KEY (reminder_id, scheduled_at_utc),
+  CONSTRAINT fk_notification_read_reminder FOREIGN KEY (reminder_id) REFERENCES task_reminders(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS reminder_worker_status (

@@ -73,7 +73,7 @@
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/emoji-icon-192.png') }}?v=3">
   <link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='icons/emoji-icon-192.png') }}?v=3">
   <link rel="shortcut icon" type="image/png" href="{{ url_for('static', filename='icons/emoji-icon-192.png') }}?v=3">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=9) }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=11) }}">
 
   <style>
 
@@ -234,6 +234,21 @@
       </div>
 
       <div class="topbar-actions">
+        <div class="notification-center" id="notification-center"
+             data-history-url="{{ url_for('notification_history') }}"
+             data-read-url="{{ url_for('notification_mark_read') }}"
+             data-csrf="{{ notification_csrf }}">
+          <button type="button" class="btn btn-soft notification-bell" id="notification-toggle" aria-expanded="false" aria-controls="notification-panel" aria-label="Notificaciones">
+            🔔<span id="notification-count" class="notification-count" hidden>0</span>
+          </button>
+          <section id="notification-panel" class="notification-panel" aria-label="Centro de notificaciones" hidden>
+            <div class="notification-heading"><strong>Notificaciones</strong>
+              <button type="button" class="btn btn-soft" id="notification-read-all">Marcar todo como leído</button>
+            </div>
+            <p class="hint" id="notification-status" role="status"></p>
+            <div id="notification-list"></div>
+          </section>
+        </div>
         <button title="Colapsar barra lateral" class="btn btn-soft sidebar-toggle-btn" id="sidebarToggleBtn" type="button" aria-label="Mostrar u ocultar menú"> ☰ </button>
         <a title="Buscar" class="btn btn-soft" href="{{ url_for('search') }}">🔍</a>
         <a title="Calendario" class="btn btn-soft" href="{{ url_for('calendar') }}">🗓️</a>
@@ -407,6 +422,9 @@
                       <span class="side-filter-handle side-tag-handle" draggable="true" title="Arrastrar para ordenar o cambiar de tipo" aria-label="Arrastrar para ordenar o cambiar de tipo"><i></i><i></i><i></i><i></i></span>
                       <a class="side-filter-link" href="{{ url_for('tag_detail', tag_id=tag.id) }}">
                         <span class="tree-label">@{{ tag.name }}</span>
+                        {% if tag.has_location %}
+                          <span class="tag-location-indicator" title="Recordatorio por ubicación configurado" aria-label="Recordatorio por ubicación configurado">📍</span>
+                        {% endif %}
                         <span class="pill">{{ tag.count }}</span>
                       </a>
                     </div>
@@ -423,6 +441,7 @@
 
     <main class="main">
       <div class="container">
+        <div id="location-alerts" data-url="{{ url_for('location_alerts') }}" data-scope="{{ url_for('home') }}" data-launch-url="{{ url_for('pwa_launch') }}" aria-live="polite"></div>
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
             <div class="flash-area">
@@ -560,6 +579,7 @@
     })();
   </script>
   <script src="{{ url_for('static', filename='audio.js', v=9) }}"></script>
+  <script src="{{ url_for('static', filename='location_alerts.js', v=2) }}"></script>
   
   <script>
     function toggleTreeNode(nodeId, iconId, storageKey){

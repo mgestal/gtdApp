@@ -1,4 +1,4 @@
-const CACHE_VERSION = "gtdapp-v11";
+const CACHE_VERSION = "gtdapp-v13";
 const OFFLINE_URL = "./static/offline.html";
 
 self.addEventListener("install", (event) => {
@@ -70,6 +70,12 @@ self.addEventListener("fetch", (event) => {
   const req = event.request;
 
   if (req.method !== "GET") {
+    return;
+  }
+
+  if ([new URL("api/location-alerts", self.registration.scope).href,
+       new URL("api/notifications", self.registration.scope).href].includes(new URL(req.url).href)) {
+    event.respondWith(fetch(req));
     return;
   }
 

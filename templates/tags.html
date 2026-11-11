@@ -97,6 +97,9 @@
 			<a class="tagchiptags taglink" href="{{ url_for('tag_detail', tag_id=t.id) }}">
 			  @{{ t.name }}
 			</a>
+      {% if t.has_location %}
+        <span class="tag-location-indicator" title="Recordatorio por ubicación configurado" aria-label="Recordatorio por ubicación configurado">📍</span>
+      {% endif %}
       {% if t.type %}
         <span class="muted" style="margin-left:8px;">({{ t.type }})</span>
       {% endif %}

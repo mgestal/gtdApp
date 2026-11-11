@@ -48,6 +48,17 @@
           {% endif %}
         </div>
 
+        <div class="card" id="historial" style="margin-top:14px;">
+          <div class="card-header"><div class="card-title">Historial de la campana</div></div>
+          <form method="post" action="{{ url_for('admin') }}" class="form">
+            <input type="hidden" name="action" value="save_notification_history">
+            <label class="label" for="history-days">Mostrar envíos de los últimos días</label>
+            <input class="input" type="number" id="history-days" name="history_days" min="1" max="365" required value="{{ cfg.get('app', {}).get('notifications', {}).get('history_days', 1) }}">
+            <div class="hint">Entre 1 y 365 días. Solo se muestran envíos registrados como aceptados; esto no garantiza que se hayan visualizado.</div>
+            <button type="submit" class="btn btn-soft">Guardar historial</button>
+          </form>
+        </div>
+
         <div class="card" id="telegram" style="margin-top:14px;">
           <div class="card-header">
             <div>
@@ -115,6 +126,15 @@
             {% endif %}
           </div>
           <script src="{{ url_for('static', filename='push_settings.js', v='2') }}"></script>
+        </div>
+
+        <div class="card" id="ubicacion" style="margin-top:14px;">
+          <div class="card-header"><div class="card-title">Avisos por ubicación en este dispositivo</div></div>
+          <p>Al abrir o recargar GTDApp, se comprueba la ubicación y las tareas pendientes de las etiquetas cercanas aparecen en la campana, dentro del horario configurado.</p>
+          <p class="hint">La posición se calcula en este navegador y no se envía al servidor. Tras leer un aviso solo se vuelve a contar una tarea nueva. Requiere HTTPS y permiso de ubicación.</p>
+          <p id="location-device-status" role="status">No se ha cargado la configuración de ubicación.</p>
+          <button type="button" class="btn btn-soft" id="location-device-enable">Activar en este dispositivo</button>
+          <button type="button" class="btn btn-soft" id="location-device-disable">Desactivar en este dispositivo</button>
         </div>
 
         <div class="card" id="certificado" style="margin-top:14px;">

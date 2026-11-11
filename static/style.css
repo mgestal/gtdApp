@@ -74,6 +74,22 @@ code{
   gap: 8px;
   flex-wrap: wrap;
 }
+.notification-center{ position:relative; }
+.notification-bell{ position:relative; }
+.notification-count{
+  position:absolute; top:-7px; right:-7px; min-width:20px; padding:2px 4px;
+  border-radius:999px; background:#bd2737; color:#fff; font-size:11px; font-weight:700; text-align:center;
+}
+.notification-panel{
+  position:absolute; top:calc(100% + 8px); right:0; width:min(390px, 92vw);
+  max-height:70vh; overflow:auto; padding:14px; border:1px solid var(--border);
+  border-radius:var(--radius); background:#fff; box-shadow:var(--shadow); z-index:20;
+}
+.notification-panel[hidden], .notification-count[hidden]{ display:none; }
+.notification-heading{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.notification-item{ padding:10px 0; border-top:1px solid var(--border); }
+.notification-item a{ font-weight:600; text-decoration:underline; }
+.notification-item-read{ opacity:.65; }
 
 .layout{
   max-width: 1180px;
@@ -277,6 +293,20 @@ code{
 .input:focus{
   border-color: #e7a7ad;
   box-shadow: 0 0 0 3px rgba(231,167,173,0.25);
+}
+
+#tag-location{ min-width:0; }
+.tag-location-fields{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:10px;
+  margin-bottom:10px;
+}
+.tag-location-fields > div{ min-width:0; }
+.tag-location-indicator{ flex:0 0 auto; }
+@media (max-width:640px){
+  .tag-location-fields{ gap:6px; }
+  .tag-location-fields .input{ padding:10px 6px; }
 }
 
 .grid2{

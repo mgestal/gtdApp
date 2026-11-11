@@ -62,6 +62,24 @@ async function trigger(name, event) {
   });
   assert.equal((await fetchResponse).status, 200);
   assert.deepEqual(fetched, ["https://example.test/gtdApp/static/push_settings.js?v=2"]);
+  const apiUrl = "https://example.test/gtdApp/api/location-alerts";
+  cached.set(apiUrl, "stale location data");
+  handlers.fetch({
+    request: {method: "GET", mode: "cors", url: apiUrl},
+    respondWith: promise => { fetchResponse = promise; }
+  });
+  assert.equal((await fetchResponse).status, 200);
+  assert.equal(cached.get(apiUrl), "stale location data");
+  assert.equal(fetched.at(-1), apiUrl);
+  const historyUrl = "https://example.test/gtdApp/api/notifications";
+  cached.set(historyUrl, "stale history");
+  handlers.fetch({
+    request: {method: "GET", mode: "cors", url: historyUrl},
+    respondWith: promise => { fetchResponse = promise; }
+  });
+  assert.equal((await fetchResponse).status, 200);
+  assert.equal(cached.get(historyUrl), "stale history");
+  assert.equal(fetched.at(-1), historyUrl);
   console.log("Service worker: push, click y protección del destino OK");
 })().catch(error => {
   console.error(error);

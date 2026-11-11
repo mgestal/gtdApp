@@ -37,15 +37,15 @@
     </div>
     <div style="display:flex; gap:8px; flex-wrap:wrap;">
       {% if page > 1 %}
-        <a class="btn btn-soft" href="{{ url_for('tag_detail', tag_id=tag.id, page=1) }}">« Primera</a>
-        <a class="btn btn-soft" href="{{ url_for('tag_detail', tag_id=tag.id, page=page-1) }}">‹ Anterior</a>
+        <a class="btn btn-soft" href="{{ url_for('tag_detail', tag_id=tag.id, page=1, location_pending='1' if location_pending else None) }}">« Primera</a>
+        <a class="btn btn-soft" href="{{ url_for('tag_detail', tag_id=tag.id, page=page-1, location_pending='1' if location_pending else None) }}">‹ Anterior</a>
       {% else %}
         <span class="btn btn-soft disabled">« Primera</span>
         <span class="btn btn-soft disabled">‹ Anterior</span>
       {% endif %}
       {% if page < pages %}
-        <a class="btn btn-soft" href="{{ url_for('tag_detail', tag_id=tag.id, page=page+1) }}">Siguiente ›</a>
-        <a class="btn btn-soft" href="{{ url_for('tag_detail', tag_id=tag.id, page=pages) }}">Última »</a>
+        <a class="btn btn-soft" href="{{ url_for('tag_detail', tag_id=tag.id, page=page+1, location_pending='1' if location_pending else None) }}">Siguiente ›</a>
+        <a class="btn btn-soft" href="{{ url_for('tag_detail', tag_id=tag.id, page=pages, location_pending='1' if location_pending else None) }}">Última »</a>
       {% else %}
         <span class="btn btn-soft disabled">Siguiente ›</span>
         <span class="btn btn-soft disabled">Última »</span>

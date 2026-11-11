@@ -5362,7 +5362,8 @@ def tag_detail(tag_id: int):
 
     # tareas (con proyecto para mostrarlo/enlazarlo)
     rows = q(
-        f"SELECT t.id, t.title, t.location, t.notes, {effective_due_expr} AS due_date, t.completed_at, t.recurrence_rule, t.priority, "
+        f"SELECT t.id, t.title, t.location, t.notes, {effective_due_expr} AS due_date, "
+        "TIME_FORMAT(t.due_time, '%%H:%%i') AS due_time_text, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.id AS folder_id, fd.name AS folder_name "
         "FROM task_tags tt "

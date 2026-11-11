@@ -114,6 +114,9 @@
 
             <td style="font-size: 0.9rem;">
               {% if t.due_date %}{{ t.due_date.strftime('%d-%m-%Y') }}{% else %}<span class="muted">—</span>{% endif %}
+              {% if t.due_time_text is not none %}
+                <div class="muted" style="font-size:12px; margin-top:2px;">{{ t.due_time_text }}</div>
+              {% endif %}
             </td>
 
             <td style="font-size: 0.8rem;">

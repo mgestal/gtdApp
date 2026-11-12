@@ -1,5 +1,7 @@
 const DEFAULT_BASE_URL = "http://localhost:5000";
 
+const TAG_RE = /@([A-Za-z0-9_.\-áéíóúÁÉÍÓÚñÑ]+)/g;
+const PROJ_RE = /#(?:"([^"]+)"|([A-Za-z0-9_\-áéíóúÁÉÍÓÚñÑ]+))/g;
 
 const state = {
   baseUrl: DEFAULT_BASE_URL,
@@ -199,6 +201,37 @@ async function getActiveTab() {
   el.activePageUrl.title = state.activeTab.url;
 }
 
+function parseTaskText(text) {
+  const raw = (text || "").trim();
+  if (!raw) {
+    return { title: "", tags: [], projectName: null };
+  }
+
+  // Extraer etiquetas @tag
+  const tags = [];
+  const tagMatches = raw.matchAll(TAG_RE);
+  for (const match of tagMatches) {
+    tags.push(match[1]);
+  }
+
+  // Extraer proyecto #proyecto
+  let projectName = null;
+  const projMatch = raw.match(PROJ_RE);
+  if (projMatch) {
+    // El regex captura entre comillas o directamente
+    projectName = projMatch[1] || projMatch[2];
+  }
+
+  // Limpiar título: remover @tags y #proyecto
+  let title = raw
+    .replace(TAG_RE, "")
+    .replace(PROJ_RE, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return { title, tags, projectName };
+}
+
 async function onAddPageTask() {
   if (!state.activeTab || !state.activeTab.url) {
     setStatus("No se detecta URL de pestaña activa.", true);
@@ -210,6 +243,9 @@ async function onAddPageTask() {
   setStatus("Guardando página en Inbox...");
 
   try {
+    // Parsear tags y proyecto del replacement text
+    const parsed = parseTaskText(replacementText);
+
     const headers = { "Content-Type": "application/json" };
     if (state.token) {
       headers["Authorization"] = `Bearer ${state.token}`;
@@ -221,7 +257,9 @@ async function onAddPageTask() {
       body: JSON.stringify({
         url: state.activeTab.url,
         page_title: state.activeTab.title || "",
-        replacement_text: replacementText,
+        replacement_text: parsed.title,
+        tags: parsed.tags,
+        project_name: parsed.projectName,
         priority: parseInt(el.prioritySelect.value) || null,
       }),
     });

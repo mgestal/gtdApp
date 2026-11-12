@@ -103,7 +103,8 @@
     <div class="card-header">
       <div>
         <div class="card-title">🔔 Recordatorios</div>
-        <div class="card-sub">Se envían por los canales elegidos en la siguiente revisión dentro del horario configurado en <a href="{{ url_for('admin_notifications') }}">Notificaciones</a>. Guarda primero los cambios de la tarea. <a href="{{ url_for('manual') }}#notificaciones">Ayuda sobre recordatorios</a>.</div>
+        <div class="card-sub">Se envían por los canales elegidos a continuación dentro del horario configurado en <a href="{{ url_for('admin_notifications') }}">Notificaciones</a>. El crontab en el servidor se ejecuta por defecto cada <u>15 minutos</u> (hh:00, hh:15, hh:30, hh:45). Guarda primero los cambios de la tarea.
+        <br/> <a class="link"href="{{ url_for('manual') }}#notificaciones">Ayuda sobre recordatorios</a>.</div>
       </div>
     </div>
     {% if reminders %}

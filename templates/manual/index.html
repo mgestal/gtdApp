@@ -23,6 +23,17 @@
       background: #ffe3e5;
       border-color: #f1aeb3;
     }
+
+    #notificaciones .list-row > div {
+      min-width: 0;
+      width: 100%;
+    }
+
+    #notificaciones pre {
+      max-width: 100%;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
   </style>
 
   <div class="card">
@@ -68,8 +79,24 @@
       </thead>
       <tbody>
         <tr>
-          <td><code>Llamar a Juan @NextAction *mañana</code></td>
-          <td>Crea una tarea para mañana con la etiqueta NextAction.</td>
+          <td><code>Llamar a Juan @NextAction *mañana h:09:30</code></td>
+          <td>Crea una tarea para mañana a las 09:30 con la etiqueta NextAction.</td>
+        </tr>
+        <tr>
+          <td><code>Revisar informe hoy 14:00</code></td>
+          <td>Programa la tarea para hoy a las 14:00. La hora se puede escribir como <code>HH:MM</code> o <code>h:HH:MM</code>.</td>
+        </tr>
+        <tr>
+          <td><code>Preparar reunión *lunes</code></td>
+          <td>Programa la tarea para el próximo lunes; si hoy es lunes, será el lunes de la semana siguiente.</td>
+        </tr>
+        <tr>
+          <td><code>Comprar material *+3</code></td>
+          <td>Programa la tarea para dentro de 3 días.</td>
+        </tr>
+        <tr>
+          <td><code>Presentar documentación *15-03-2027 (o 15/03/2027)</code></td> 
+          <td>Programa la tarea para el 15 de marzo de 2027. También puedes usar barras (<code>*15/03/2027</code>) u omitir el año (<code>*15-03</code> o <code>*15/03</code>).</td>
         </tr>
         <tr>
           <td><code>Podar árboles #Jardin</code></td>
@@ -92,11 +119,18 @@
           <td>Crea una tarea con fecha dentro de 3 días, hora 09:00 y recurrencia mensual.</td>
         </tr>
         <tr>
+          <td><code>Revisar agenda cada laboral</code></td>
+          <td>Repite la tarea cada día laborable (de lunes a viernes). También puedes usar <code>cada día</code>, <code>cada semana</code> o <code>cada año</code>.</td>
+        </tr>
+        <tr>
           <td><code>Llamar proveedor ^alta @NextAction *hoy</code></td>
           <td>Asigna prioridad Alta al crear la tarea (también existe <code>^media</code> y <code>^baja</code>).</td>
         </tr>
       </tbody>
     </table>
+    <div class="hint" style="margin-top:10px;">
+      <strong>Fechas admitidas:</strong> <code>hoy</code>, <code>mañana</code>, <code>lunes</code>, <code>martes</code>, <code>miércoles</code> (también <code>miercoles</code>), <code>jueves</code>, <code>viernes</code>, <code>sábado</code> (también <code>sabado</code>) y <code>domingo</code>. Puedes anteponer <code>*</code>; los días de la semana indican la próxima ocurrencia. En fechas numéricas puedes usar guiones o barras: <code>día-mes</code> / <code>día/mes</code> y <code>día-mes-año</code> / <code>día/mes/año</code>. Las horas usan formato de 24 horas, entre <code>00:00</code> y <code>23:59</code>.
+    </div>
     <div class="hint" style="margin-top:10px;">
       Si no indicas prioridad, la tarea queda sin prioridad (valor nulo).
     </div>
@@ -335,7 +369,7 @@
         <div class="hint">El proceso <code>send_reminders.py</code> debe ejecutarse cada 15 minutos, aunque nadie use la web. El aviso se intenta en la siguiente revisión dentro de la franja, no necesariamente a la hora exacta. Los pendientes fuera de horario se evalúan al reabrirse la franja; los fallos se reintentan por canal y dispositivo hasta 24 horas desde la hora programada.</div>
         <div class="hint">Las tareas completadas, archivadas o en la papelera y las de proyectos archivados o eliminados suspenden sus avisos. Los relativos también se suspenden si falta la fecha o la hora de referencia necesaria. En el panel revisa la última ejecución, los errores y los dispositivos; una ejecución correcta no garantiza la visualización.</div>
         <div class="hint">En instalaciones manuales, configura el crontab del usuario que puede leer la configuración y las credenciales:</div>
-        <pre><code>*/15 * * * * /ruta/gtdApp/.venv/bin/python /ruta/gtdApp/send_reminders.py &gt;&gt; /ruta/gtdApp/recordatorios.log 2&gt;&amp;1</code></pre>
+        <pre><code>*/15 8-22 * * * /ruta/gtdApp/.venv/bin/python /ruta/gtdApp/send_reminders.py &gt;&gt; /ruta/gtdApp/recordatorios.log 2&gt;&amp;1</code></pre>
         <div class="hint">En Docker, copia el token del bot a <code>instance/.token-gtdapp</code> con permisos restrictivos, registra el chat y ejecuta <code>docker compose --profile reminders up -d --build</code>. Consulta los registros con <code>docker compose --profile reminders logs -f reminders</code>.</div>
         <div class="hint">La clave privada VAPID de <code>instance/.vapid-private.pem</code> debe ser legible por la aplicación y el proceso de recordatorios. Guárdala en una copia de seguridad privada junto a la base de datos: perderla invalida las suscripciones. Para una CA privada, el panel puede ofrecer el certificado público configurado en <code>app.notifications.ca_certificate_path</code>; verifica su huella por un medio independiente y nunca distribuyas la clave privada.</div>
       </div></div>

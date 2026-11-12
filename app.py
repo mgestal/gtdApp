@@ -1827,7 +1827,7 @@ def is_periodic_tag_name(tag_name: str) -> bool:
     
 DATE_TOKEN_RE = re.compile(
     r'(?<!\S)\*('
-    r'\d{1,2}-\d{1,2}(?:-\d{4})?'
+    r'\d{1,2}(?:-|/)\d{1,2}(?:(?:-|/)\d{4})?'
     r'|hoy'
     r'|mañana'
     r'|lunes|martes|miércoles|miercoles|jueves|viernes|sábado|sabado|domingo'
@@ -1838,7 +1838,7 @@ DATE_TOKEN_RE = re.compile(
 
 DATE_BARE_RE = re.compile(
     r'(?<![#@\w])('
-    r'\d{1,2}-\d{1,2}(?:-\d{4})?'
+    r'\d{1,2}(?:-|/)\d{1,2}(?:(?:-|/)\d{4})?'
     r')\b'
 )
 
@@ -1903,11 +1903,11 @@ def parse_due_token(token: str) -> date:
     if token.startswith("+") and token[1:].isdigit():
         return today + timedelta(days=int(token[1:]))
 
-    m = re.fullmatch(r'(\d{1,2})-(\d{1,2})(?:-(\d{4}))?', token)
+    m = re.fullmatch(r'(\d{1,2})([-/])(\d{1,2})(?:\2(\d{4}))?', token)
     if m:
         day = int(m.group(1))
-        month = int(m.group(2))
-        year = int(m.group(3)) if m.group(3) else today.year
+        month = int(m.group(3))
+        year = int(m.group(4)) if m.group(4) else today.year
         return datetime.strptime(f"{day:02d}-{month:02d}-{year}", "%d-%m-%Y").date()
 
     raise ValueError(f"Fecha inválida: {token}")
@@ -1918,14 +1918,14 @@ def extract_due_date_from_quick(raw_text: str) -> Tuple[Optional[date], str]:
     Devuelve (due_date, cleaned_text)
 
     Soporta:
-    - *15-03
-    - *15-03-2026
+    - *15-03 o *15/03
+    - *15-03-2026 o *15/03/2026
     - *hoy
     - *mañana
     - *lunes (también martes, miércoles, jueves, viernes, sábado y domingo)
     - *+3
-    - 15-03
-    - 15-03-2026
+    - 15-03 o 15/03
+    - 15-03-2026 o 15/03/2026
 
     Prioridad:
     1) fecha con *
@@ -12492,6 +12492,73 @@ def api_extension_task_toggle(task_id: int):
 
 @app.route("/api/extension/tasks/add_page", methods=["POST"])
 @require_api_token
+def api_extension_add_page_task():
+    payload = request.get_json(silent=True) or {}
+    page_url = (payload.get("url") or "").strip()
+    page_title = (payload.get("page_title") or "").strip()
+    replacement_text = normalize_name(payload.get("replacement_text") or "")
+    tags = payload.get("tags") or []
+    project_name = (payload.get("project_name") or "").strip()
+    priority = coerce_priority(payload.get("priority"), default=None)
+
+    parsed = urlparse(page_url)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        return jsonify({"ok": False, "error": "URL inválida"}), 400
+
+    # Si hay texto de reemplazo, se guarda como título y el enlace en notas.
+    # Si no, el título es el enlace completo para mantenerlo visible en la lista.
+    task_title = replacement_text or page_url
+    notes = page_url if replacement_text else (page_title or None)
+
+    try:
+        # Resolver proyecto si viene en el payload
+        project_id = None
+        if project_name:
+            existing_project_id = find_project_by_name_active(project_name)
+            if existing_project_id is not None:
+                project_id = existing_project_id
+            else:
+                # Crear proyecto si no existe
+                project_id = exec_sql(
+                    "INSERT INTO projects(name, archived) VALUES(%s,%s)",
+                    (project_name, 0),
+                )
+
+        task_id = exec_sql(
+            "INSERT INTO tasks(title, notes, project_id, folder_id, due_date, due_time, recurrence_rule, priority) "
+            "VALUES(%s,%s,%s,NULL,NULL,NULL,NULL,%s)",
+            (task_title, notes, project_id, priority),
+        )
+
+        # Añadir etiquetas
+        for tag_name in tags:
+            tag_name = normalize_name(tag_name)
+            if tag_name:
+                tag_id = get_or_create_tag(tag_name)
+                exec_sql(
+                    "INSERT IGNORE INTO task_tags(task_id, tag_id) VALUES(%s,%s)",
+                    (task_id, tag_id),
+                )
+
+        _mark_task_calendar_dirty(task_id, force_push_if_empty=True)
+        commit()
+        return jsonify(
+            {
+                "ok": True,
+                "task": {
+                    "id": int(task_id),
+                    "title": task_title,
+                    "notes": notes,
+                    "project_id": project_id,
+                    "project_name": project_name if project_id else None,
+                },
+            }
+        )
+    except Exception as e:
+        rollback()
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+    
 def api_extension_add_page_task():
     payload = request.get_json(silent=True) or {}
     page_url = (payload.get("url") or "").strip()

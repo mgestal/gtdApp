@@ -253,6 +253,7 @@ def exec_sql(sql: str, params: Tuple[Any, ...] = ()) -> int:
 # Parsing de tareas
 # =========================================================
 TAG_RE = re.compile(r"@([A-Za-z0-9_\-áéíóúÁÉÍÓÚñÑ]+)")
+PROJ_RE = re.compile(r'#(?:"([^"]+)"|([A-Za-z0-9_\-áéíóúÁÉÍÓÚñÑ][A-Za-z0-9_\-áéíóúÁÉÍÓÚñÑ]*))')
 STAR_DATE_RE = re.compile(r"\*(hoy|mañana)\b", re.IGNORECASE)
 SLASH_DATE_RE = re.compile(r"(?<!\d)(\d{1,2}/\d{1,2}/\d{4})(?!\d)")
 
@@ -308,20 +309,28 @@ def extract_due_date(text: str) -> tuple[Optional[date], str]:
     return None, s
 
 
-def parse_task_text(raw: str) -> tuple[str, List[str], Optional[date]]:
+def parse_task_text(raw: str) -> tuple[str, List[str], Optional[str], Optional[date]]:
     due_date, cleaned = extract_due_date(raw)
     tags = [normalize_name(t) for t in TAG_RE.findall(cleaned)]
+    
+    # Extraer proyecto (primer match de #Proyecto)
+    m_proj = PROJ_RE.search(cleaned)
+    project_name = (m_proj.group(1) or m_proj.group(2) or '').strip() if m_proj else None
+    
+    # Limpiar título: remover @etiquetas y #proyecto
     title = TAG_RE.sub("", cleaned)
+    title = PROJ_RE.sub("", title)
     title = re.sub(r"\s+", " ", title).strip(" -_,.;:")
 
-    return title, tags, due_date
+    project_name = normalize_name(project_name) if project_name else None
+    return title, tags, project_name, due_date
 
 
 # =========================================================
 # Crear tarea
 # =========================================================
 def create_inbox_task_from_text(raw_text: str):
-    title, tags, due_date = parse_task_text(raw_text)
+    title, tags, project_name, due_date = parse_task_text(raw_text)
 
     if not title:
         raise ValueError("No se detectó un título válido")
@@ -329,10 +338,28 @@ def create_inbox_task_from_text(raw_text: str):
     conn = get_db_conn()
     try:
         with conn.cursor() as cur:
+            # Resolver proyecto si viene en el texto
+            project_id = None
+            if project_name:
+                cur.execute(
+                    "SELECT id FROM projects WHERE name=%s AND archived=0",
+                    (project_name,)
+                )
+                row = cur.fetchone()
+                if row:
+                    project_id = int(row["id"])
+                else:
+                    # Crear proyecto si no existe
+                    cur.execute(
+                        "INSERT INTO projects(name, archived) VALUES(%s,%s)",
+                        (project_name, 0)
+                    )
+                    project_id = cur.lastrowid or 0
+
             cur.execute(
                 "INSERT INTO tasks(title, project_id, folder_id, due_date, recurrence_rule) "
-                "VALUES(%s,NULL,NULL,%s,NULL)",
-                (title, due_date),
+                "VALUES(%s,%s,NULL,%s,NULL)",
+                (title, project_id, due_date),
             )
             task_id = cur.lastrowid or 0
 
@@ -357,7 +384,7 @@ def create_inbox_task_from_text(raw_text: str):
                 )
 
         conn.commit()
-        return task_id, title, due_date, all_tags
+        return task_id, title, due_date, all_tags, project_name
 
     except Exception:
         conn.rollback()
@@ -789,8 +816,11 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     try:
-        task_id, title, due_date, tags = create_inbox_task_from_text(raw)
+        task_id, title, due_date, tags, project_name = create_inbox_task_from_text(raw)
         parts = [f"✅ Tarea creada: {title}"]
+
+        if project_name:
+            parts.append(f"💼 {project_name}")
 
         if due_date:
             parts.append(f"📅 {due_date.strftime('%d/%m/%Y')}")

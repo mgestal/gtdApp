@@ -216,16 +216,18 @@ function parseTaskText(text) {
 
   // Extraer proyecto #proyecto
   let projectName = null;
-  const projMatch = raw.match(PROJ_RE);
+  const PROJ_RE_SINGLE = /#(?:"([^"]+)"|([A-Za-z0-9_\-áéíóúÁÉÍÓÚñÑ]+))/;
+  const projMatch = raw.match(PROJ_RE_SINGLE);
   if (projMatch) {
-    // El regex captura entre comillas o directamente
     projectName = projMatch[1] || projMatch[2];
   }
 
   // Limpiar título: remover @tags y #proyecto
+  const TAG_RE_CLEAN = /@([A-Za-z0-9_.\-áéíóúÁÉÍÓÚñÑ]+)/g;
+  const PROJ_RE_CLEAN = /#(?:"([^"]+)"|([A-Za-z0-9_\-áéíóúÁÉÍÓÚñÑ]+))/g;
   let title = raw
-    .replace(TAG_RE, "")
-    .replace(PROJ_RE, "")
+    .replace(TAG_RE_CLEAN, "")
+    .replace(PROJ_RE_CLEAN, "")
     .replace(/\s+/g, " ")
     .trim();
 

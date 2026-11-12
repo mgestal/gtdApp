@@ -12505,10 +12505,14 @@ def api_extension_add_page_task():
     if parsed.scheme not in ("http", "https") or not parsed.netloc:
         return jsonify({"ok": False, "error": "URL inválida"}), 400
 
-    # Si hay texto de reemplazo, se guarda como título y el enlace en notas.
-    # Si no, el título es el enlace completo para mantenerlo visible en la lista.
-    task_title = replacement_text or page_url
-    notes = page_url if replacement_text else (page_title or None)
+    # Si hay texto de reemplazo, se guarda como enlace markdown en el título.
+    # Si no, el título es la URL.
+    if replacement_text:
+        task_title = f"[{replacement_text}]({page_url})"
+        notes = None
+    else:
+        task_title = page_url
+        notes = page_title or None
 
     try:
         # Resolver proyecto si viene en el payload
@@ -12570,10 +12574,14 @@ def api_extension_add_page_task():
     if parsed.scheme not in ("http", "https") or not parsed.netloc:
         return jsonify({"ok": False, "error": "URL inválida"}), 400
 
-    # Si hay texto de reemplazo, se guarda como título y el enlace en notas.
-    # Si no, el título es el enlace completo para mantenerlo visible en la lista.
-    task_title = replacement_text or page_url
-    notes = page_url if replacement_text else (page_title or None)
+    # Si hay texto de reemplazo, se guarda como enlace markdown en el título.
+    # Si no, el título es la URL.
+    if replacement_text:
+        task_title = f"[{replacement_text}]({page_url})"
+        notes = None
+    else:
+        task_title = page_url
+        notes = page_title or None
 
     try:
         task_id = exec_sql(

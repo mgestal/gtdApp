@@ -1015,6 +1015,25 @@
         });
       });
 
+      // Al mantener el arrastre sobre una carpeta colapsada con hijos, se expande
+      const EXPAND_DELAY_MS = 600;
+      let hoverFolderEl = null;
+      let hoverFolderSince = 0;
+      function maybeExpandFolder(el){
+        if (hoverFolderEl !== el) {
+          hoverFolderEl = el;
+          hoverFolderSince = Date.now();
+          return;
+        }
+        if (Date.now() - hoverFolderSince < EXPAND_DELAY_MS) return;
+        const toggle = el.querySelector('.tree-toggle-icon');
+        const node = el.closest('.tree-node');
+        const body = node ? node.querySelector(':scope > .tree-children') : null;
+        if (toggle && body && body.style.display === 'none') toggle.click();
+      }
+      document.addEventListener('dragend', () => { hoverFolderEl = null; });
+      document.addEventListener('drop', () => { hoverFolderEl = null; });
+
       document.querySelectorAll('.js-drop-target').forEach((el) => {
         el.addEventListener('dragover', (ev) => {
           if (!dragPayload) {
@@ -1022,14 +1041,16 @@
           }
           const dropType = (el.getAttribute('data-drop-type') || '').toLowerCase();
           const targetId = Number(el.getAttribute('data-target-id'));
+          if (dropType === 'folder' && el.classList.contains('tree-head')) maybeExpandFolder(el);
           if (!targetAccepts(dropType, dragPayload, targetId)) return;
           ev.preventDefault();
           ev.dataTransfer.dropEffect = 'move';
           el.classList.add('dnd-drop-active');
         });
 
-        el.addEventListener('dragleave', () => {
+        el.addEventListener('dragleave', (ev) => {
           el.classList.remove('dnd-drop-active');
+          if (hoverFolderEl === el && !el.contains(ev.relatedTarget)) hoverFolderEl = null;
         });
 
         el.addEventListener('drop', async (ev) => {

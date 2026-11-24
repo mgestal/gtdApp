@@ -1,12 +1,10 @@
-const CACHE_VERSION = "gtdapp-v13";
+const CACHE_VERSION = "gtdapp-v14";
 const OFFLINE_URL = "./static/offline.html";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_VERSION).then((cache) => {
       return cache.addAll([
-        "./",
-        "./pwa-launch",
         "./static/style.css",
         "./static/tag_autocomplete.js",
         "./static/periodic_toggle_confirm.js",

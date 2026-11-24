@@ -256,6 +256,12 @@
         <a title="Dashboard" class="btn btn-soft" href="{{ url_for('dashboard') }}">📈</a>
         <a title="Admin" class="btn btn-soft" href="{{ url_for('admin') }}">⚙️</a>
         <a title="Manual" class="btn btn-soft" href="{{ url_for('manual') }}">❓</a>
+        {% if auth_enabled and logout_csrf %}
+        <form method="post" action="{{ url_for('auth_logout') }}" style="display:inline;margin:0">
+          <input type="hidden" name="csrf_token" value="{{ logout_csrf }}">
+          <button title="Cerrar sesión" class="btn btn-soft" type="submit">🚪</button>
+        </form>
+        {% endif %}
       </div>
     </div>
   </header>

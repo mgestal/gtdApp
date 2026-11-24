@@ -392,6 +392,11 @@ def save_config(cfg: Dict[str, Any]) -> None:
 
 app = Flask(__name__, instance_relative_config=True)
 app.config["SECRET_KEY"] = os.environ.get("GTD_SECRET_KEY", "CHANGE_ME_IN_PROD")
+app.config["GTD_SECRET_FROM_ENV"] = bool(os.environ.get("GTD_SECRET_KEY"))
+
+from auth import init_auth  # login con contraseña + TOTP (instance/config.json -> "auth")
+init_auth(app, load_config=lambda: load_config(),
+          q1=lambda *a: q1(*a), exec_sql=lambda *a: exec_sql(*a), commit=lambda: commit())
 
 _schema_bootstrapped = False
 

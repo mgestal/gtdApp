@@ -147,15 +147,48 @@
 
           <p>Esto se asegura de que existan:</p>
           <ul>
-            <li>Etiquetas: <code>NextAction</code>, <code>EnSeguimiento</code>, <code>Agenda</code>, <code>EnEspera</code></li>
-            <li>Carpetas: <code>✅ Checklists</code>, <code>ADTV</code>, <code>🔜 EstaSemanaNo</code>, <code>Agenda 🗃️</code></li>
+            <li>Etiquetas: <code>{{ R_TAG.next_action }}</code>, <code>{{ R_TAG.following }}</code>, <code>{{ R_TAG.agenda }}</code>, <code>{{ R_TAG.waiting }}</code></li>
+            <li>Carpetas: <code>{{ R_FOLDER.checklists }}</code>, <code>{{ R_FOLDER.adtv }}</code>, <code>{{ R_FOLDER.not_this_week }}</code>, <code>{{ R_FOLDER.agenda }}</code></li>
           </ul>
+          <p class="hint">Los nombres se configuran en la sección <b>Etiquetas y carpetas GTD</b>.</p>
 
           <form method="post" class="form">
             <input type="hidden" name="action" value="initialize_system">
             <button class="btn btn-primary" type="submit" onclick="return confirm('¿Inicializar sistema GTD? Se crearán etiquetas/carpetas faltantes.');">
               Inicializar sistema GTD
             </button>
+          </form>
+        </div>
+
+        <div class="card admin-panel-card" data-admin-panel="gtd-roles" id="gtd-roles" style="margin-top:20px;">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Etiquetas y carpetas GTD</div>
+              <div class="card-sub">Qué etiqueta o carpeta cumple cada papel especial (NextAction, EnEspera, Sometime…)</div>
+            </div>
+          </div>
+
+          <form method="post" class="form">
+            <input type="hidden" name="action" value="save_gtd_roles">
+            <div class="hint">El primer nombre es el canónico (el que se usa al crear o etiquetar). Puedes añadir alias separados por comas; también se reconocen. Cambiar el nombre aquí <b>no</b> renombra la etiqueta o carpeta existente: renómbrala también en Etiquetas/Carpetas. Deja un campo vacío para volver al valor por defecto.</div>
+
+            <div class="review-subtitle" style="margin-top:12px;"><b>Etiquetas</b></div>
+            {% for role, defaults, label, desc in gtd_role_defs.tags %}
+              <label class="label" for="role_tag_{{ role }}">{{ label }} <span class="muted">({{ role }})</span></label>
+              <input class="input" id="role_tag_{{ role }}" name="tag__{{ role }}" value="{{ gtd_roles_current.tags[role]|join(', ') }}" placeholder="{{ defaults|join(', ') }}">
+              <div class="hint">{{ desc }}</div>
+            {% endfor %}
+
+            <div class="review-subtitle" style="margin-top:12px;"><b>Carpetas</b> (incluyen sus subcarpetas)</div>
+            {% for role, defaults, label, desc in gtd_role_defs.folders %}
+              <label class="label" for="role_folder_{{ role }}">{{ label }} <span class="muted">({{ role }})</span></label>
+              <input class="input" id="role_folder_{{ role }}" name="folder__{{ role }}" value="{{ gtd_roles_current.folders[role]|join(', ') }}" placeholder="{{ defaults|join(', ') }}">
+              <div class="hint">{{ desc }}</div>
+            {% endfor %}
+
+            <div class="row" style="margin-top:10px;">
+              <button class="btn btn-primary" type="submit">Guardar</button>
+            </div>
           </form>
         </div>
 

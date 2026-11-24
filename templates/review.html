@@ -430,14 +430,14 @@
 
   <div class="card">
     <div class="card-header">
-      <div class="card-title">2) Revisar NextActions</div>
+      <div class="card-title">2) Revisar {{ R_TAG.next_action }}s</div>
       <div class="muted">{{ nextactions_open|length + nextactions_overdue|length }}</div>
     </div>
 
     {% if not nextaction_exists %}
-      <div class="empty">No existe la etiqueta NextAction.</div>
+      <div class="empty">No existe la etiqueta {{ R_TAG.next_action }}.</div>
     {% else %}
-      <div class="review-subtitle">NextActions no vencidas</div>
+      <div class="review-subtitle">{{ R_TAG.next_action }}s no vencidas</div>
       <div class="card" style="padding:10px; margin-bottom:10px;">
         {% if nextactions_open %}
           <div class="review-mini-list" style="margin-bottom:0;">
@@ -486,11 +486,11 @@
             {% endfor %}
           </div>
         {% else %}
-          <div class="empty">No hay tareas no vencidas con NextAction.</div>
+          <div class="empty">No hay tareas no vencidas con {{ R_TAG.next_action }}.</div>
         {% endif %}
       </div>
 
-      <div class="review-subtitle">NextActions vencidas</div>
+      <div class="review-subtitle">{{ R_TAG.next_action }}s vencidas</div>
       <div class="card" style="padding:10px; margin-bottom:10px;">
         {% if nextactions_overdue %}
           <div class="review-mini-list" style="margin-bottom:0;">
@@ -539,7 +539,7 @@
             {% endfor %}
           </div>
         {% else %}
-          <div class="empty">No hay tareas vencidas con NextAction.</div>
+          <div class="empty">No hay tareas vencidas con {{ R_TAG.next_action }}.</div>
         {% endif %}
       </div>
     {% endif %}
@@ -605,13 +605,13 @@
 
   <div class="card">
     <div class="card-header">
-      <div class="card-title">3) Revisar agenda (eventos futuros) · @EnSeguimiento 15 días</div>
+      <div class="card-title">3) Revisar agenda (eventos futuros) · @{{ R_TAG.following }} 15 días</div>
       <div class="muted">{{ en_seguimiento_now|length + en_seguimiento_next_15|length }}</div>
     </div>
 
-    <div class="review-subtitle"><b>@EnSeguimiento</b> ya viables</div>
+    <div class="review-subtitle"><b>@{{ R_TAG.following }}</b> ya viables</div>
     {% if not en_seguimiento_exists %}
-      <div class="empty">No existe la etiqueta EnSeguimiento.</div>
+      <div class="empty">No existe la etiqueta {{ R_TAG.following }}.</div>
     {% else %}
       <div class="card" style="padding:10px; margin-bottom:10px;">
       {% if en_seguimiento_now %}
@@ -661,11 +661,11 @@
         {% endfor %}
       </div>
       {% else %}
-      <div class="empty">No hay tareas @EnSeguimiento ya viables.</div>
+      <div class="empty">No hay tareas @{{ R_TAG.following }} ya viables.</div>
       {% endif %}
       </div>
 
-      <div class="review-subtitle"><b>@EnSeguimiento</b> viables en los próximos 15 días</div>
+      <div class="review-subtitle"><b>@{{ R_TAG.following }}</b> viables en los próximos 15 días</div>
       <div class="card" style="padding:10px; margin-bottom:10px;">
       {% if en_seguimiento_next_15 %}
       <div class="review-mini-list">
@@ -714,7 +714,7 @@
         {% endfor %}
       </div>
       {% else %}
-      <div class="empty">No hay tareas @EnSeguimiento que vayan a ser viables en los próximos 15 días.</div>
+      <div class="empty">No hay tareas @{{ R_TAG.following }} que vayan a ser viables en los próximos 15 días.</div>
       {% endif %}
       </div>
     {% endif %}
@@ -781,14 +781,14 @@
 
   <div class="card">
     <div class="card-header">
-      <div class="card-title">5) Revisar EnEspera</div>
+      <div class="card-title">5) Revisar {{ R_TAG.waiting }}</div>
       <div class="muted">{{ en_espera_tasks|length + en_espera_projects|length }}</div>
     </div>
 
     <div class="review-subtitle">Tareas en Espera</div>
     <div class="card" style="padding:10px; margin-bottom:10px;">
       {% if not en_espera_exists %}
-        <div class="empty">No existe la etiqueta EnEspera.</div>
+        <div class="empty">No existe la etiqueta {{ R_TAG.waiting }}.</div>
       {% elif en_espera_tasks %}
         <div class="review-mini-list" style="margin-bottom:0;">
           {% for t in en_espera_tasks %}
@@ -836,14 +836,14 @@
           {% endfor %}
         </div>
       {% else %}
-        <div class="empty">No hay tareas con la etiqueta EnEspera.</div>
+        <div class="empty">No hay tareas con la etiqueta {{ R_TAG.waiting }}.</div>
       {% endif %}
     </div>
 
-    <div class="review-subtitle">Proyectos en carpeta EnEspera</div>
+    <div class="review-subtitle">Proyectos en carpeta {{ R_FOLDER.waiting }}</div>
     <div class="card" style="padding:10px; margin-bottom:10px;">
       {% if not en_espera_folder_exists %}
-        <div class="empty">No existe la carpeta EnEspera.</div>
+        <div class="empty">No existe la carpeta {{ R_FOLDER.waiting }}.</div>
       {% elif en_espera_projects %}
         <div class="review-mini-list" style="margin-bottom:0;">
           {% for p in en_espera_projects %}
@@ -858,7 +858,7 @@
           {% endfor %}
         </div>
       {% else %}
-        <div class="empty">No hay proyectos activos en la carpeta EnEspera.</div>
+        <div class="empty">No hay proyectos activos en la carpeta {{ R_FOLDER.waiting }}.</div>
       {% endif %}
     </div>
   </div>
@@ -885,7 +885,7 @@
           {% endfor %}
         </div>
       {% else %}
-        <div class="empty">No hay proyectos activos fuera de ♲ Rutinas.</div>
+        <div class="empty">No hay proyectos activos fuera de {{ R_FOLDER.routines }}.</div>
       {% endif %}
     </div>
 
@@ -909,7 +909,7 @@
       {% endif %}
     </div>
 
-    <div class="review-subtitle">Proyectos activos en <b>♲ Rutinas</b></div>
+    <div class="review-subtitle">Proyectos activos en <b>{{ R_FOLDER.routines }}</b></div>
     <div class="card" style="padding:10px; margin-bottom:10px;">
       {% if active_projects_rutinas %}
         <div class="review-mini-list" style="margin-bottom:0;">
@@ -925,7 +925,7 @@
           {% endfor %}
         </div>
       {% else %}
-        <div class="empty">No hay proyectos activos en ♲ Rutinas.</div>
+        <div class="empty">No hay proyectos activos en {{ R_FOLDER.routines }}.</div>
       {% endif %}
     </div>
   </div>
@@ -934,14 +934,14 @@
 
   <div class="card">
     <div class="card-header">
-      <div class="card-title">7) Revisión ADTV / SomeTime / EnEspera</div>
+      <div class="card-title">7) Revisión {{ R_FOLDER.adtv }} / {{ R_FOLDER.someday }} / {{ R_FOLDER.waiting }}</div>
       <div class="muted">{{ adtv_projects|length + esta_semana_no_projects|length + sometime_tasks_no_project|length }}</div>
     </div>
 
-    <div class="review-subtitle">Proyectos en ADTV</div>
+    <div class="review-subtitle">Proyectos en {{ R_FOLDER.adtv }}</div>
     <div class="card" style="padding:10px; margin-bottom:10px;">
       {% if not adtv_folder_exists %}
-        <div class="empty">No existe la carpeta ADTV.</div>
+        <div class="empty">No existe la carpeta {{ R_FOLDER.adtv }}.</div>
       {% elif adtv_projects %}
         <div class="review-mini-list" style="margin-bottom:0;">
           {% for p in adtv_projects %}
@@ -949,19 +949,19 @@
               <div class="review-mini-item-title">
                 <a class="link" href="{{ url_for('project_detail', project_id=p.id) }}">💼 {{ p.name }}</a>
               </div>
-              <div class="review-mini-meta">📁 ADTV</div>
+              <div class="review-mini-meta">📁 {{ R_FOLDER.adtv }}</div>
             </div>
           {% endfor %}
         </div>
       {% else %}
-        <div class="empty">No hay proyectos en ADTV.</div>
+        <div class="empty">No hay proyectos en {{ R_FOLDER.adtv }}.</div>
       {% endif %}
     </div>
 
-    <div class="review-subtitle">Proyectos en 🔜EstaSemanaNo</div>
+    <div class="review-subtitle">Proyectos en {{ R_FOLDER.not_this_week }}</div>
     <div class="card" style="padding:10px; margin-bottom:10px;">
       {% if not esta_semana_no_folder_exists %}
-        <div class="empty">No existe la carpeta 🔜EstaSemanaNo.</div>
+        <div class="empty">No existe la carpeta {{ R_FOLDER.not_this_week }}.</div>
       {% elif esta_semana_no_projects %}
         <div class="review-mini-list" style="margin-bottom:0;">
           {% for p in esta_semana_no_projects %}
@@ -969,19 +969,19 @@
               <div class="review-mini-item-title">
                 <a class="link" href="{{ url_for('project_detail', project_id=p.id) }}">💼 {{ p.name }}</a>
               </div>
-              <div class="review-mini-meta">📁 🔜EstaSemanaNo</div>
+              <div class="review-mini-meta">📁 {{ R_FOLDER.not_this_week }}</div>
             </div>
           {% endfor %}
         </div>
       {% else %}
-        <div class="empty">No hay proyectos en 🔜EstaSemanaNo.</div>
+        <div class="empty">No hay proyectos en {{ R_FOLDER.not_this_week }}.</div>
       {% endif %}
     </div>
 
     <div class="review-subtitle">Tareas en SomeTime sin proyecto</div>
     <div class="card" style="padding:10px; margin-bottom:10px;">
       {% if not sometime_folder_exists %}
-        <div class="empty">No existe la carpeta SomeTime/Sometime.</div>
+        <div class="empty">No existe la carpeta {{ R_FOLDER.someday }}.</div>
       {% elif sometime_tasks_no_project %}
         <div class="review-mini-list" style="margin-bottom:0;">
           {% for t in sometime_tasks_no_project %}
@@ -1020,7 +1020,7 @@
           {% endfor %}
         </div>
       {% else %}
-        <div class="empty">No hay tareas en SomeTime/Sometime sin proyecto.</div>
+        <div class="empty">No hay tareas en {{ R_FOLDER.someday }} sin proyecto.</div>
       {% endif %}
     </div>
   </div>
@@ -1029,14 +1029,14 @@
 
  <div class="card">
     <div class="card-header">
-      <div class="card-title">7) Revisión ADTV / SomeTime / EnEspera </div>
+      <div class="card-title">7) Revisión {{ R_FOLDER.adtv }} / {{ R_FOLDER.someday }} / {{ R_FOLDER.waiting }} </div>
       <div class="muted">{{ projects_seguimiento|length }}</div>
     </div>
 
-    <div class="review-subtitle">Proyectos en Seguimiento</div>
+    <div class="review-subtitle">Proyectos en {{ R_FOLDER.following }}</div>
     <div class="card" style="padding:10px; margin-bottom:10px;">
       {% if not projects_seguimiento %}
-        <div class="empty">No existen proyectos en Seguimiento.</div>
+        <div class="empty">No existen proyectos en {{ R_FOLDER.following }}.</div>
       {% elif projects_seguimiento %}
         <div class="review-mini-list" style="margin-bottom:0;">
           {% for p in projects_seguimiento %}
@@ -1051,7 +1051,7 @@
           {% endfor %}
         </div>
       {% else %}
-        <div class="empty">No hay proyectos en Seguimiento.</div>
+        <div class="empty">No hay proyectos en {{ R_FOLDER.following }}.</div>
       {% endif %}
     </div>
 
@@ -1067,7 +1067,7 @@
     </div>
 
     {% if not checklists_folder_exists %}
-      <div class="empty">No existe la carpeta ✅Checklists.</div>
+      <div class="empty">No existe la carpeta {{ R_FOLDER.checklists }}.</div>
     {% elif checklist_projects or checklist_tasks %}
       {% if checklist_projects %}
 
@@ -1077,7 +1077,7 @@
               <div class="review-mini-item-title">
                 <a class="link" href="{{ url_for('project_detail', project_id=p.id) }}">💼 {{ p.name }}</a>
               </div>
-              <div class="review-mini-meta">📁 ✅Checklists</div>
+              <div class="review-mini-meta">📁 {{ R_FOLDER.checklists }}</div>
             </div>
           {% endfor %}
         </div>
@@ -1119,7 +1119,7 @@
         </div>
       {% endif %}
     {% else %}
-      <div class="empty">No hay proyectos ni tareas en ✅Checklists.</div>
+      <div class="empty">No hay proyectos ni tareas en {{ R_FOLDER.checklists }}.</div>
     {% endif %}
   </div>
 
@@ -1162,7 +1162,7 @@
       </div>
 
       <div class="review-summary-card">
-        <div class="review-summary-label">NextActions</div>
+        <div class="review-summary-label">{{ R_TAG.next_action }}s</div>
         <p class="review-summary-value">{{ nextactions_open|length + nextactions_overdue|length }}</p>
       </div>
 
@@ -1209,9 +1209,9 @@
           {% endif %}
 
           {% if nextactions_overdue|length > 0 %}
-            <div class="review-summary-item">Tienes {{ nextactions_overdue|length }} NextActions vencidas. El sistema de ejecución está algo saturado o hay tareas que requieren reapertura.</div>
+            <div class="review-summary-item">Tienes {{ nextactions_overdue|length }} {{ R_TAG.next_action }}s vencidas. El sistema de ejecución está algo saturado o hay tareas que requieren reapertura.</div>
           {% else %}
-            <div class="review-summary-item">No hay NextActions vencidas. La ejecución está bien alineada con la planificación semanal.</div>
+            <div class="review-summary-item">No hay {{ R_TAG.next_action }}s vencidas. La ejecución está bien alineada con la planificación semanal.</div>
           {% endif %}
 
           {% if en_espera_tasks|length + en_espera_projects|length > 0 %}

@@ -1279,6 +1279,10 @@ document.addEventListener("keydown", function(e){
   if(key === "i"){
     window.location.href = "{{ url_for('home') }}";
   }
+
+  if(key === "e"){
+    window.location.href = "{{ url_for('inbox_process', restart=1) }}";
+  }
   
   if(key === "q"){
     var si = document.querySelector('.sidebar-search-input');

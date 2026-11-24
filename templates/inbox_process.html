@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  .ip-wrap { max-width: 760px; }
+  .ip-progress { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
+  .ip-title-input { font-size: 18px; font-weight: 600; }
+  .ip-meta { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+  .ip-notes { white-space: pre-wrap; margin-top:10px; color: var(--muted); font-size: 14px; }
+  .ip-actions { display:grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap:8px; margin-top:14px; }
+  .ip-actions .btn { display:flex; justify-content:space-between; align-items:center; gap:8px; text-align:left; }
+  .ip-key { font-family: ui-monospace, monospace; font-size: 12px; border:1px solid currentColor; border-radius:4px; padding:0 5px; opacity:.65; }
+  .ip-fields { display:grid; grid-template-columns: 2fr 1fr; gap:10px; margin-top:12px; }
+  @media (max-width: 600px) { .ip-fields { grid-template-columns: 1fr; } }
+  .ip-question { font-size: 13px; color: var(--muted); margin-top: 14px; }
+</style>
+
+<div class="page-title">
+  <h1>Procesar Inbox 📥</h1>
+  <p class="subtitle">Una tarea cada vez: decide qué es y dónde va. Atajos de teclado entre [corchetes].</p>
+</div>
+
+<div class="ip-wrap">
+  <div class="card">
+    <div class="ip-progress">
+      <div>
+        {% if task %}
+          <b>{{ remaining }}</b> pendiente{{ '' if remaining == 1 else 's' }} por procesar
+        {% else %}
+          Nada pendiente
+        {% endif %}
+        {% if skipped_count %}<span class="muted"> · {{ skipped_count }} saltada{{ '' if skipped_count == 1 else 's' }}</span>{% endif %}
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        {% if skipped_count %}
+          <a class="btn btn-soft" href="{{ url_for('inbox_process', restart=1) }}">↺ Volver a empezar</a>
+        {% endif %}
+        <a class="btn btn-soft" href="{{ url_for('home') }}">Ver Inbox</a>
+      </div>
+    </div>
+  </div>
+
+  {% if not task %}
+    <div class="card">
+      <div class="empty">
+        {% if skipped_count %}
+          Has revisado todo. Quedan {{ skipped_count }} tarea{{ '' if skipped_count == 1 else 's' }} saltada{{ '' if skipped_count == 1 else 's' }} o sin destino en el Inbox.
+        {% else %}
+          🎉 Inbox a cero.
+        {% endif %}
+      </div>
+    </div>
+  {% else %}
+    <form class="card form" method="post" id="inboxProcessForm"
+          action="{{ url_for('inbox_process_action', task_id=task.id) }}">
+      <input type="hidden" name="action" id="ipAction" value="">
+      <input type="hidden" name="destination" id="ipDestination" value="">
+
+      <label class="label" for="ipTitle">Tarea</label>
+      <input class="input ip-title-input" id="ipTitle" name="title" value="{{ task.title }}" autocomplete="off">
+
+      <div class="ip-meta">
+        {% for tg in tags %}<a class="pill" href="{{ url_for('tag_detail', tag_id=tg.id) }}">@{{ tg.name }}</a>{% endfor %}
+        {% if task.due_date %}<span class="pill">📅 {{ task.due_date.strftime('%d-%m-%Y') }}{% if task.due_time %} {{ task.due_time }}{% endif %}</span>{% endif %}
+        {% if task.recurrence_rule %}<span class="pill">🔁 periódica</span>{% endif %}
+        {% if subtasks_count %}<span class="pill">☑ {{ subtasks_count.done }}/{{ subtasks_count.total }}</span>{% endif %}
+        {% if task.created_at %}<span class="pill" title="Capturada">🕓 {{ task.created_at.strftime('%d-%m-%Y') }}</span>{% endif %}
+        <a class="pill" href="{{ url_for('task_edit', task_id=task.id, next=url_for('inbox_process')) }}">✏️ Editar todo</a>
+      </div>
+      {% if task.location %}
+        <div class="ip-notes"><a href="{{ location_to_href(task.location) }}" target="_blank" rel="noopener">{{ task.location }}</a></div>
+      {% endif %}
+      {% if task.notes %}<div class="ip-notes">{{ task.notes }}</div>{% endif %}
+
+      <div class="ip-fields">
+        <div>
+          <label class="label" for="ipDestInput">Destino (proyecto o carpeta)</label>
+          <input class="input" id="ipDestInput" list="ipDestList" placeholder="Escribe para buscar…" autocomplete="off">
+          <datalist id="ipDestList">
+            {% for p in all_projects %}<option value="💼 {{ p.name }}" data-dest="project:{{ p.id }}"></option>{% endfor %}
+            {% for f in all_folders %}<option value="📂 {{ f.name }}" data-dest="folder:{{ f.id }}"></option>{% endfor %}
+          </datalist>
+          <div class="hint">Opcional para Acción siguiente, Delegar y Programar. Sin destino, la tarea sigue en el Inbox.</div>
+        </div>
+        <div>
+          <label class="label" for="ipDueDate">Fecha</label>
+          <input class="input" type="date" id="ipDueDate" name="due_date"
+                 value="{{ task.due_date.isoformat() if task.due_date else '' }}" min="{{ today.isoformat() }}">
+        </div>
+      </div>
+
+      <div class="ip-question">¿Requiere acción? ¿Lleva menos de 2 minutos?</div>
+      <div class="ip-actions">
+        <button class="btn btn-primary" type="submit" data-action="done">✅ Hecho (&lt;2 min) <span class="ip-key">h</span></button>
+        <button class="btn btn-soft" type="submit" data-action="next">⚡ @{{ R_TAG.next_action }} <span class="ip-key">n</span></button>
+        <button class="btn btn-soft" type="submit" data-action="delegate">👥 Delegar (@{{ R_TAG.waiting }}) <span class="ip-key">d</span></button>
+        <button class="btn btn-soft" type="submit" data-action="schedule" data-needs="date">📅 Programar <span class="ip-key">p</span></button>
+        <button class="btn btn-soft" type="submit" data-action="move" data-needs="dest">📂 Mover al destino <span class="ip-key">m</span></button>
+        <button class="btn btn-soft" type="submit" data-action="someday" {% if not someday_folder_exists %}disabled title="No existe la carpeta {{ R_FOLDER.someday }}"{% endif %}>💭 {{ R_FOLDER.someday }} <span class="ip-key">a</span></button>
+        <button class="btn btn-soft" type="submit" data-action="delete" data-confirm="¿Enviar la tarea a la papelera?">🗑️ Papelera <span class="ip-key">b</span></button>
+        <button class="btn btn-soft" type="submit" data-action="skip">⏭️ Saltar <span class="ip-key">s</span></button>
+      </div>
+      <div class="hint" style="margin-top:10px;">En un campo de texto, pulsa <b>Esc</b> para volver a usar los atajos.</div>
+    </form>
+  {% endif %}
+</div>
+
+{% if task %}
+<script>
+(function(){
+  const form = document.getElementById('inboxProcessForm');
+  const actionInput = document.getElementById('ipAction');
+  const destHidden = document.getElementById('ipDestination');
+  const destInput = document.getElementById('ipDestInput');
+  const dateInput = document.getElementById('ipDueDate');
+  const options = [...document.querySelectorAll('#ipDestList option')];
+
+  function syncDestination(){
+    const opt = options.find(o => o.value === destInput.value.trim());
+    destHidden.value = opt ? opt.dataset.dest : '';
+    destInput.setCustomValidity(destInput.value.trim() && !opt ? 'Elige un proyecto o carpeta de la lista' : '');
+  }
+  destInput.addEventListener('input', syncDestination);
+  destInput.addEventListener('change', syncDestination);
+
+  function run(btn){
+    if (!btn || btn.disabled) return false;
+    syncDestination();
+    if (destInput.value.trim() && !destHidden.value) { destInput.reportValidity(); destInput.focus(); return false; }
+    const needs = btn.dataset.needs;
+    if (needs === 'date' && !dateInput.value) { dateInput.focus(); if (dateInput.showPicker) { try { dateInput.showPicker(); } catch (e) {} } return false; }
+    if (needs === 'dest' && !destHidden.value) { destInput.focus(); return false; }
+    if (btn.dataset.confirm && !confirm(btn.dataset.confirm)) return false;
+    actionInput.value = btn.dataset.action;
+    return true;
+  }
+
+  form.querySelectorAll('button[data-action]').forEach(btn => {
+    btn.addEventListener('click', ev => { if (!run(btn)) ev.preventDefault(); });
+  });
+
+  // Enter en el título/destino/fecha no envía el formulario sin acción elegida
+  form.addEventListener('submit', ev => { if (!actionInput.value) ev.preventDefault(); });
+
+  const keyMap = { h:'done', n:'next', d:'delegate', p:'schedule', m:'move', a:'someday', b:'delete', s:'skip' };
+  // Captura: tiene prioridad sobre los atajos globales de navegación de base.html
+  window.addEventListener('keydown', ev => {
+    const tag = (ev.target.tagName || '').toLowerCase();
+    const inField = tag === 'input' || tag === 'textarea' || tag === 'select' || ev.target.isContentEditable;
+    if (inField) {
+      if (ev.key === 'Escape') { ev.target.blur(); ev.preventDefault(); }
+      // Enter en un campo dispararía el primer botón (Hecho): solo se sale del campo
+      if (ev.key === 'Enter' && tag === 'input') { ev.preventDefault(); ev.target.blur(); }
+      return;
+    }
+    if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+    const action = keyMap[ev.key.toLowerCase()];
+    if (!action) return;
+    ev.preventDefault();
+    ev.stopImmediatePropagation();
+    const btn = form.querySelector(`button[data-action="${action}"]`);
+    if (run(btn)) form.requestSubmit ? form.requestSubmit(btn) : form.submit();
+  }, true);
+})();
+</script>
+{% endif %}
+{% endblock %}

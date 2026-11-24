@@ -11,6 +11,7 @@ import math
 import secrets
 import unicodedata
 import pymysql
+import gtd_roles as _gtd_roles_mod
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from py_vapid import VapidException
@@ -1064,7 +1065,7 @@ def _create_task_from_calendar_event(ev: Dict[str, Any], calendar_id: str) -> Op
 
     # Etiquetas por defecto de importación Calendar.
     tag_calendar_id = get_or_create_tag("inbox.calendar")
-    tag_agenda_id = get_or_create_tag("agenda")
+    tag_agenda_id = get_or_create_tag(role_tag("agenda"))
     exec_sql(
         "INSERT IGNORE INTO task_tags(task_id, tag_id) VALUES(%s,%s)",
         (task_id, tag_calendar_id),
@@ -1748,25 +1749,33 @@ def ensure_schema_updates() -> None:
 
 def ensure_review_defaults() -> None:
     """Inserta etiquetas/carpetas necesarias para que review funcione con todos los bloques."""
-    required_tags = ["NextAction","EnSeguimiento","agenda","EnEspera"]
-    required_folders = ["✅ Checklists","ADTV","🔜 EstaSemanaNo","Agenda 🗃️"]
+    required_tags = [role_tag(r) for r in ("next_action", "following", "agenda", "waiting")]
+    required_folders = [role_folder(r) for r in ("checklists", "adtv", "not_this_week", "agenda")]
 
-    legacy_agenda = q1(
-        "SELECT id FROM folders WHERE name=%s AND parent_id IS NULL",
-        ("🗃️ Agenda",),
-    )
+    # Si existe la carpeta de Agenda con un alias antiguo (p.ej. "🗃️ Agenda"), renombrarla al canónico.
+    agenda_names = role_folder_names("agenda")
+    agenda_canonical = agenda_names[0]
     renamed_agenda = q1(
         "SELECT id FROM folders WHERE name=%s AND parent_id IS NULL",
-        ("Agenda 🗃️",),
+        (agenda_canonical,),
     )
-    if legacy_agenda and not renamed_agenda:
-        exec_sql("UPDATE folders SET name=%s WHERE id=%s", ("Agenda 🗃️", legacy_agenda["id"]))
+    if not renamed_agenda:
+        for legacy_name in agenda_names[1:]:
+            legacy_agenda = q1(
+                "SELECT id FROM folders WHERE name=%s AND parent_id IS NULL",
+                (legacy_name,),
+            )
+            if legacy_agenda:
+                exec_sql("UPDATE folders SET name=%s WHERE id=%s", (agenda_canonical, legacy_agenda["id"]))
+                break
 
     for t in required_tags:
-        exec_sql("INSERT IGNORE INTO tags(name) VALUES(%s)", (t,))
+        if not tag_exists(t):
+            exec_sql("INSERT IGNORE INTO tags(name) VALUES(%s)", (t,))
 
     for f in required_folders:
-        exec_sql("INSERT IGNORE INTO folders(name, parent_id) VALUES(%s,%s)", (f, None))
+        if not folder_exists(f):
+            exec_sql("INSERT IGNORE INTO folders(name, parent_id) VALUES(%s,%s)", (f, None))
 
 
 def exec_sql(sql: str, params: Tuple[Any, ...] = ()) -> int:
@@ -1802,6 +1811,109 @@ def get_folder_tree_ids(parent_id, include_self=True):
         result.update(get_folder_tree_ids(child['id'], include_self=False))
     return result
 
+
+# --- Roles GTD (etiquetas/carpetas especiales configurables, ver gtd_roles.py) ---
+def gtd_roles() -> Dict[str, Dict[str, List[str]]]:
+    """Roles resueltos desde config.json (cacheados por petición)."""
+    try:
+        cached = getattr(g, "_gtd_roles", None)
+        if cached is None:
+            cached = _gtd_roles_mod.resolve_roles(load_config())
+            g._gtd_roles = cached
+        return cached
+    except RuntimeError:  # fuera de contexto de petición
+        return _gtd_roles_mod.resolve_roles(load_config())
+
+
+def role_tag_names(role: str) -> List[str]:
+    return gtd_roles()["tags"][role]
+
+
+def role_tag(role: str) -> str:
+    """Nombre canónico de la etiqueta asociada al rol (p.ej. 'NextAction')."""
+    return role_tag_names(role)[0]
+
+
+def role_tag_sql_names(role: str) -> List[str]:
+    """Nombres en minúsculas (con y sin tildes) para `LOWER(tg.name) IN (...)`."""
+    return _gtd_roles_mod.sql_name_variants(role_tag_names(role))
+
+
+def role_folder_names(role: str) -> List[str]:
+    return gtd_roles()["folders"][role]
+
+
+def role_folder(role: str) -> str:
+    """Nombre canónico de la carpeta asociada al rol (p.ej. 'Sometime')."""
+    return role_folder_names(role)[0]
+
+
+def role_folder_rows(role: str) -> List[Dict[str, Any]]:
+    """Carpetas cuyo nombre coincide (sin distinguir mayúsculas) con el rol, en el orden configurado."""
+    names = role_folder_names(role)
+    rows = q(
+        "SELECT id, name, parent_id FROM folders WHERE LOWER(name) IN ("
+        + ",".join(["LOWER(%s)"] * len(names)) + ")",
+        tuple(names),
+    ) or []
+    rank = {n.lower(): i for i, n in enumerate(names)}
+    return sorted(rows, key=lambda r: (rank.get((r.get("name") or "").lower(), len(names)), r["id"]))
+
+
+def role_folder_row(role: str) -> Optional[Dict[str, Any]]:
+    rows = role_folder_rows(role)
+    return rows[0] if rows else None
+
+
+def role_folder_exists(role: str) -> bool:
+    return role_folder_row(role) is not None
+
+
+def role_folder_tree_ids(role: str) -> set:
+    """IDs de todas las carpetas del rol y sus subcarpetas."""
+    ids: set = set()
+    for row in role_folder_rows(role):
+        ids.update(get_folder_tree_ids(int(row["id"])))
+    return ids
+
+
+def non_active_project_folder_ids() -> set:
+    """Carpetas (con subcarpetas) cuyos proyectos no cuentan como activos en dashboard/búsqueda."""
+    names = {
+        normalize_tag_key(n)
+        for role in _gtd_roles_mod.NON_ACTIVE_PROJECT_FOLDER_ROLES
+        for n in role_folder_names(role)
+    }
+    folder_rows = q("SELECT id, parent_id, name FROM folders") or []
+    children_by_parent: Dict[Optional[int], List[int]] = {}
+    excluded: set = set()
+    for fr in folder_rows:
+        children_by_parent.setdefault(fr.get("parent_id"), []).append(int(fr["id"]))
+        if normalize_tag_key(fr.get("name") or "") in names:
+            excluded.add(int(fr["id"]))
+    stack = list(excluded)
+    while stack:
+        fid = stack.pop()
+        for ch_id in children_by_parent.get(fid, []):
+            if ch_id not in excluded:
+                excluded.add(ch_id)
+                stack.append(ch_id)
+    return excluded
+
+
+def task_has_role_tag(task_id: int, role: str) -> bool:
+    return q1(
+        "SELECT 1 AS ok FROM task_tags tt JOIN tags tg ON tg.id=tt.tag_id "
+        "WHERE tt.task_id=%s AND LOWER(tg.name)=LOWER(%s) LIMIT 1",
+        (task_id, role_tag(role)),
+    ) is not None
+
+
+def role_tag_id(role: str) -> int:
+    """ID de la etiqueta del rol (la crea si no existe)."""
+    row = q1("SELECT id FROM tags WHERE LOWER(name)=LOWER(%s) ORDER BY id ASC LIMIT 1", (role_tag(role),))
+    return int(row["id"]) if row else get_or_create_tag(role_tag(role))
+
 subdb = SubDB(q=q, q1=q1, exec_sql=exec_sql, commit=commit, rollback=rollback)
 register_subtask_routes(app, subdb)
 
@@ -1827,7 +1939,7 @@ def normalize_tag_key(tag_name: str) -> str:
 
 def is_periodic_tag_name(tag_name: str) -> bool:
     key = normalize_tag_key(tag_name)
-    return key in {"periodica", "periodicas"}
+    return key in {normalize_tag_key(n) for n in role_tag_names("periodic")}
     
     
 DATE_TOKEN_RE = re.compile(
@@ -3248,6 +3360,9 @@ def inject_common():
         "periodic_occurrences_badge": periodic_occurrences_badge,
         "reminder_badge": reminder_badge,
         "notification_csrf": session["notification_csrf"],
+        # Nombres canónicos de los roles GTD (ver gtd_roles.py), p.ej. {{ R_TAG.next_action }}
+        "R_TAG": {role: names[0] for role, names in gtd_roles()["tags"].items()},
+        "R_FOLDER": {role: names[0] for role, names in gtd_roles()["folders"].items()},
     }
 
 @app.context_processor
@@ -3258,7 +3373,7 @@ def inject_sidebar_counts():
         recurring_due_join, effective_due_expr = recurring_effective_due_sql("t")
         
         
-        next_tag = q1("SELECT id FROM tags WHERE name=%s", ("NextAction",))
+        next_tag = q1("SELECT id FROM tags WHERE name=%s", (role_tag("next_action"),))
 
         if next_tag:
             next_count = int((q1(
@@ -3387,6 +3502,187 @@ def home():
         sub_map=sub_map,
         orphan_projects=orphan_projects
     )
+
+# ---------------- Procesar Inbox (GTD: aclarar y organizar, una tarea cada vez) ----------------
+
+INBOX_PROCESS_SKIP_KEY = "inbox_process_skip"
+INBOX_PROCESS_ACTIONS = {"done", "next", "delegate", "schedule", "move", "someday", "delete", "skip"}
+
+
+def _inbox_process_skipped() -> List[int]:
+    raw = session.get(INBOX_PROCESS_SKIP_KEY) or []
+    return [int(x) for x in raw if str(x).isdigit()]
+
+
+def _inbox_process_pending_sql(skipped: List[int]) -> Tuple[str, Tuple[Any, ...]]:
+    where = (
+        "WHERE t.project_id IS NULL AND t.folder_id IS NULL AND t.archived=0 "
+        "AND t.deleted_at IS NULL AND t.completed_at IS NULL "
+    )
+    params: Tuple[Any, ...] = ()
+    if skipped:
+        where += "AND t.id NOT IN (" + ",".join(["%s"] * len(skipped)) + ") "
+        params = tuple(skipped)
+    return where, params
+
+
+@app.route("/inbox/process")
+def inbox_process():
+    if request.args.get("restart"):
+        session.pop(INBOX_PROCESS_SKIP_KEY, None)
+        return redirect(url_for("inbox_process"))
+
+    skipped = _inbox_process_skipped()
+    where, params = _inbox_process_pending_sql(skipped)
+    recurring_due_join, effective_due_expr = recurring_effective_due_sql("t")
+
+    remaining = int((q1(f"SELECT COUNT(*) AS c FROM tasks t {where}", params) or {}).get("c", 0))
+    task = q1(
+        f"SELECT t.id, t.title, t.notes, t.location, t.priority, t.due_time, t.recurrence_rule, t.created_at, "
+        f"{effective_due_expr} AS due_date "
+        f"FROM tasks t {recurring_due_join}"
+        f"{where}"
+        "ORDER BY t.id ASC LIMIT 1",
+        params,
+    )
+    tags = load_tags_map([int(task["id"])]).get(int(task["id"]), []) if task else []
+    subtasks_count = load_subtask_counts(subdb, [int(task["id"])]).get(int(task["id"])) if task else None
+
+    return render_template(
+        "inbox_process.html",
+        task=task,
+        tags=tags,
+        subtasks_count=subtasks_count,
+        remaining=remaining,
+        skipped_count=len(skipped),
+        today=_today_madrid(),
+        someday_folder_exists=role_folder_exists("someday"),
+    )
+
+
+@app.route("/inbox/process/<int:task_id>", methods=["POST"])
+def inbox_process_action(task_id: int):
+    action = (request.form.get("action") or "").strip().lower()
+    if action not in INBOX_PROCESS_ACTIONS:
+        flash("Acción no válida.", "error")
+        return redirect(url_for("inbox_process"))
+
+    task = q1(
+        "SELECT t.id, t.title, t.completed_at, t.due_date, t.recurrence_rule, t.max_occurrences, "
+        "t.project_id, t.folder_id, t.archived, rr.last_next_due_date "
+        "FROM tasks t "
+        "LEFT JOIN (SELECT task_id, MAX(next_due_date) AS last_next_due_date "
+        "FROM recurring_task_runs GROUP BY task_id) rr ON rr.task_id=t.id "
+        "WHERE t.id=%s AND t.deleted_at IS NULL",
+        (task_id,),
+    )
+    if not task:
+        flash("La tarea ya no existe.", "error")
+        return redirect(url_for("inbox_process"))
+
+    def skip_task() -> None:
+        skipped = _inbox_process_skipped()
+        if task_id not in skipped:
+            skipped.append(task_id)
+        session[INBOX_PROCESS_SKIP_KEY] = skipped
+
+    if action == "skip":
+        skip_task()
+        return redirect(url_for("inbox_process"))
+
+    # Destino opcional: "project:ID" o "folder:ID"
+    dest_type, dest_id = None, None
+    dest_raw = (request.form.get("destination") or "").strip()
+    if ":" in dest_raw:
+        kind, _, raw_id = dest_raw.partition(":")
+        if kind in ("project", "folder") and raw_id.isdigit():
+            dest_type, dest_id = kind, int(raw_id)
+
+    due_date_value: Optional[date] = None
+    if action == "schedule":
+        try:
+            due_date_value = date.fromisoformat((request.form.get("due_date") or "").strip())
+        except ValueError:
+            flash("Indica una fecha para programar la tarea.", "error")
+            return redirect(url_for("inbox_process"))
+    if action == "move" and not dest_type:
+        flash("Elige un proyecto o carpeta de destino.", "error")
+        return redirect(url_for("inbox_process"))
+    if action == "someday":
+        someday = role_folder_row("someday")
+        if not someday:
+            flash(f"No existe la carpeta «{role_folder('someday')}». Créala o configúrala en Admin.", "error")
+            return redirect(url_for("inbox_process"))
+        dest_type, dest_id = "folder", int(someday["id"])
+
+    if dest_type == "project" and not q1(
+        "SELECT id FROM projects WHERE id=%s AND archived=0 AND deleted_at IS NULL", (dest_id,)
+    ):
+        flash("Proyecto destino no válido.", "error")
+        return redirect(url_for("inbox_process"))
+    if dest_type == "folder" and not q1("SELECT id FROM folders WHERE id=%s", (dest_id,)):
+        flash("Carpeta destino no válida.", "error")
+        return redirect(url_for("inbox_process"))
+
+    new_title = (request.form.get("title") or "").strip()
+    messages = {
+        "done": "Tarea completada.",
+        "next": f"Marcada como @{role_tag('next_action')}.",
+        "delegate": f"Delegada: etiquetada @{role_tag('waiting')}.",
+        "schedule": "Tarea programada.",
+        "move": "Tarea movida.",
+        "someday": f"Movida a «{role_folder('someday')}».",
+        "delete": "Tarea enviada a la papelera.",
+    }
+
+    try:
+        if new_title and new_title != task["title"] and action != "delete":
+            exec_sql("UPDATE tasks SET title=%s WHERE id=%s", (new_title, task_id))
+
+        if action == "delete":
+            exec_sql(
+                "UPDATE tasks SET deleted_prev_archived=%s, deleted_at=NOW(), archived=1, "
+                "archived_at=COALESCE(archived_at, NOW()) WHERE id=%s",
+                (int(task.get("archived") or 0), task_id),
+            )
+        elif action == "done":
+            now = datetime.now(ZoneInfo("Europe/Madrid")).replace(tzinfo=None)
+            if task.get("recurrence_rule") and task.get("due_date"):
+                complete_recurring_task_run(task_id, task, now, None)
+            else:
+                complete_nonrecurring_task(task_id, task, now)
+        else:
+            if action == "next":
+                exec_sql("INSERT IGNORE INTO task_tags(task_id, tag_id) VALUES(%s,%s)",
+                         (task_id, role_tag_id("next_action")))
+            elif action == "delegate":
+                exec_sql("INSERT IGNORE INTO task_tags(task_id, tag_id) VALUES(%s,%s)",
+                         (task_id, role_tag_id("waiting")))
+            elif action == "schedule":
+                exec_sql("UPDATE tasks SET due_date=%s WHERE id=%s", (due_date_value, task_id))
+
+            if dest_type == "project":
+                exec_sql(
+                    "UPDATE tasks SET project_id=%s, folder_id=NULL, sort_order=%s WHERE id=%s",
+                    (dest_id, next_project_task_sort_order(dest_id), task_id),
+                )
+            elif dest_type == "folder":
+                exec_sql("UPDATE tasks SET folder_id=%s, project_id=NULL WHERE id=%s", (dest_id, task_id))
+
+        _mark_task_calendar_dirty(task_id)
+        commit()
+    except Exception as e:
+        rollback()
+        app.logger.exception("inbox_process_action failed for task_id=%s action=%s", task_id, action)
+        flash(f"No se pudo procesar la tarea: {e}", "error")
+        return redirect(url_for("inbox_process"))
+
+    # Si sigue en el Inbox (p.ej. NextAction sin destino), no volver a mostrarla en esta sesión.
+    if action in ("next", "delegate", "schedule") and not dest_type:
+        skip_task()
+    flash(messages[action], "ok")
+    return redirect(url_for("inbox_process"))
+
 
 @app.route("/agenda")
 def agenda_legacy():
@@ -3988,8 +4284,9 @@ def _kanban_subcard_definitions() -> List[Dict[str, str]]:
             suffix += 1
         used_keys.add(key)
         folder_name = str(item.get("folder_name") or "").strip()
-        if folder_name == "🗃️ Agenda":
-            folder_name = "Agenda 🗃️"
+        agenda_folder_names = role_folder_names("agenda")
+        if folder_name in agenda_folder_names[1:]:
+            folder_name = agenda_folder_names[0]
         definitions.append({
             "key": key,
             "label": label,
@@ -4072,8 +4369,8 @@ def kanban():
     for group in folder_group_definitions:
         folder_name = (group.get("folder_name") or "").replace("@", "")
         folder_names = [folder_name]
-        if folder_name == "Agenda 🗃️":
-            folder_names.append("🗃️ Agenda")
+        if folder_name in role_folder_names("agenda"):
+            folder_names = [folder_name] + [n for n in role_folder_names("agenda") if n != folder_name]
         root_folder = q1(
             "SELECT id FROM folders WHERE LOWER(REPLACE(name, '@', '')) IN "
             "(" + ",".join(["LOWER(%s)"] * len(folder_names)) + ") "
@@ -4689,24 +4986,8 @@ def projects():
 
     # Scope opcional usado por el KPI del dashboard: excluye ciertos árboles de carpetas.
     if status == "active" and scope == "dashboard_active":
-        excluded_root_names = {"rutinas", "agenda", normalize_tag_key("🗃️ Agenda"), normalize_tag_key("Agenda 🗃️"), "sometime", "adtv", "seguimiento"}
-        folder_rows = q("SELECT id, parent_id, name FROM folders")
-        children_by_parent: Dict[Optional[int], List[int]] = {}
-        excluded_folder_ids: set[int] = set()
-
-        for fr in folder_rows:
-            parent_id = fr.get("parent_id")
-            children_by_parent.setdefault(parent_id, []).append(int(fr["id"]))
-            if normalize_tag_key(fr.get("name") or "") in excluded_root_names:
-                excluded_folder_ids.add(int(fr["id"]))
-
-        stack = list(excluded_folder_ids)
-        while stack:
-            fid = stack.pop()
-            for ch_id in children_by_parent.get(fid, []):
-                if ch_id not in excluded_folder_ids:
-                    excluded_folder_ids.add(ch_id)
-                    stack.append(ch_id)
+        # Rutinas/Agenda/Sometime/ADTV/Seguimiento (roles GTD) y sus subcarpetas.
+        excluded_folder_ids: set[int] = non_active_project_folder_ids()
 
         if excluded_folder_ids:
             placeholders = ",".join(["%s"] * len(excluded_folder_ids))
@@ -5575,10 +5856,10 @@ def periodic_history():
         # Acceso directo sin id: usa la primera etiqueta periódica disponible.
         tag = q1(
             "SELECT id, name FROM tags "
-            "WHERE LOWER(name) IN (%s, %s, %s, %s) "
+            "WHERE LOWER(name) IN (" + ",".join(["%s"] * len(role_tag_sql_names("periodic"))) + ") "
             "ORDER BY id ASC "
             "LIMIT 1",
-            ("periodica", "periódica", "periodicas", "periódicas"),
+            tuple(role_tag_sql_names("periodic")),
         )
 
     if not tag:
@@ -5831,25 +6112,8 @@ def dashboard():
     trash_tasks = q1("SELECT COUNT(*) AS c FROM tasks WHERE deleted_at IS NOT NULL")["c"]
     archived_tasks_cnt = q1("SELECT COUNT(*) AS c FROM tasks WHERE archived=1 AND deleted_at IS NULL")["c"]
 
-    # Proyectos activos excluyendo las carpetas Rutinas/Agenda/Sometime/ADTV/Seguimiento y sus subdirectorios.
-    excluded_root_names = {"rutinas", "agenda", normalize_tag_key("🗃️ Agenda"), normalize_tag_key("Agenda 🗃️"), "sometime", "adtv", "seguimiento"}
-    folder_rows = q("SELECT id, parent_id, name FROM folders")
-    children_by_parent: Dict[Optional[int], List[int]] = {}
-    excluded_folder_ids: set[int] = set()
-
-    for fr in folder_rows:
-        parent_id = fr.get("parent_id")
-        children_by_parent.setdefault(parent_id, []).append(int(fr["id"]))
-        if normalize_tag_key(fr.get("name") or "") in excluded_root_names:
-            excluded_folder_ids.add(int(fr["id"]))
-
-    stack = list(excluded_folder_ids)
-    while stack:
-        fid = stack.pop()
-        for ch_id in children_by_parent.get(fid, []):
-            if ch_id not in excluded_folder_ids:
-                excluded_folder_ids.add(ch_id)
-                stack.append(ch_id)
+    # Proyectos activos excluyendo las carpetas Rutinas/Agenda/Sometime/ADTV/Seguimiento (roles GTD) y sus subcarpetas.
+    excluded_folder_ids: set[int] = non_active_project_folder_ids()
 
     if excluded_folder_ids:
         placeholders = ",".join(["%s"] * len(excluded_folder_ids))
@@ -6345,24 +6609,8 @@ def dashboard_pending_active():
         page = 1
     page = max(page, 1)
 
-    excluded_root_names = {"rutinas", "agenda", normalize_tag_key("🗃️ Agenda"), normalize_tag_key("Agenda 🗃️"), "sometime", "adtv", "seguimiento"}
-    folder_rows = q("SELECT id, parent_id, name FROM folders")
-    children_by_parent: Dict[Optional[int], List[int]] = {}
-    excluded_folder_ids: set[int] = set()
-
-    for fr in folder_rows:
-        parent_id = fr.get("parent_id")
-        children_by_parent.setdefault(parent_id, []).append(int(fr["id"]))
-        if normalize_tag_key(fr.get("name") or "") in excluded_root_names:
-            excluded_folder_ids.add(int(fr["id"]))
-
-    stack = list(excluded_folder_ids)
-    while stack:
-        fid = stack.pop()
-        for ch_id in children_by_parent.get(fid, []):
-            if ch_id not in excluded_folder_ids:
-                excluded_folder_ids.add(ch_id)
-                stack.append(ch_id)
+    # Rutinas/Agenda/Sometime/ADTV/Seguimiento (roles GTD) y sus subcarpetas.
+    excluded_folder_ids: set[int] = non_active_project_folder_ids()
 
     base_from_sql = (
         "FROM tasks t "
@@ -7231,6 +7479,57 @@ def task_postpone(task_id: int):
     return redirect(safe_next_url(request.form.get("next"), "home"))
 
 
+def complete_nonrecurring_task(task_id: int, task: Dict[str, Any], now: datetime) -> None:
+    """Marca como hecha una tarea no recurrente.
+
+    Si tenía la etiqueta del rol `next_action`, se le quita y (si la promoción está
+    activa, global o por proyecto) se etiqueta la siguiente tarea activa del proyecto.
+    No hace commit.
+    """
+    next_tag_name = role_tag("next_action")
+    has_nextaction = task_has_role_tag(task_id, "next_action")
+
+    # Quitar la NextAction antes de completar (en cualquier variante de mayúsculas/minúsculas)
+    if has_nextaction:
+        exec_sql(
+            "DELETE tt FROM task_tags tt "
+            "JOIN tags tg ON tg.id=tt.tag_id "
+            "WHERE tt.task_id=%s AND LOWER(tg.name)=LOWER(%s)",
+            (task_id, next_tag_name),
+        )
+
+    exec_sql("UPDATE tasks SET completed_at=%s WHERE id=%s", (now, task_id))
+    _project_board_status_for_task(task_id, task.get("project_id"), "done")
+
+    if not (has_nextaction and task.get("project_id")):
+        return
+
+    promote_nextaction = cfg_bool(["app", "behavior", "promote_nextaction_on_complete"], default=True)
+    # Override a nivel de proyecto (si está definido) tiene prioridad sobre el global
+    proj_promo = q1("SELECT auto_promote_nextaction FROM projects WHERE id=%s", (task["project_id"],))
+    if proj_promo and proj_promo.get("auto_promote_nextaction") is not None:
+        promote_nextaction = bool(proj_promo["auto_promote_nextaction"])
+    if not promote_nextaction:
+        return
+
+    next_task = q1(
+        "SELECT id "
+        "FROM tasks "
+        "WHERE project_id=%s "
+        "AND archived=0 "
+        "AND completed_at IS NULL "
+        "AND id<>%s "
+        "ORDER BY (sort_order IS NULL) ASC, sort_order ASC, (due_date IS NULL) ASC, due_date ASC, id ASC "
+        "LIMIT 1",
+        (task["project_id"], task_id),
+    )
+    if next_task and not task_has_role_tag(int(next_task["id"]), "next_action"):
+        exec_sql(
+            "INSERT IGNORE INTO task_tags(task_id, tag_id) VALUES(%s,%s)",
+            (next_task["id"], role_tag_id("next_action")),
+        )
+
+
 @app.route("/tasks/<int:task_id>/toggle", methods=["POST"])
 def task_toggle(task_id: int):
     task = q1(
@@ -7264,73 +7563,7 @@ def task_toggle(task_id: int):
 
             else:
                 # CASO 2: tarea no recurrente
-                has_nextaction = q1(
-                    "SELECT 1 AS ok "
-                    "FROM task_tags tt "
-                    "JOIN tags tg ON tg.id=tt.tag_id "
-                    "WHERE tt.task_id=%s AND LOWER(tg.name)=LOWER(%s) "
-                    "LIMIT 1",
-                    (task_id, "NextAction"),
-                ) is not None
-
-                # Si tenía NextAction, quitársela antes de completar (en cualquier variante de mayúsculas/minúsculas)
-                if has_nextaction:
-                    exec_sql(
-                        "DELETE tt FROM task_tags tt "
-                        "JOIN tags tg ON tg.id=tt.tag_id "
-                        "WHERE tt.task_id=%s AND LOWER(tg.name)=LOWER(%s)",
-                        (task_id, "NextAction"),
-                    )
-
-                # Marcar como hecha
-                exec_sql("UPDATE tasks SET completed_at=%s WHERE id=%s", (now, task_id))
-                _project_board_status_for_task(task_id, task.get("project_id"), "done")
-
-                # Si tenía NextAction y pertenece a un proyecto, promocionar la siguiente
-                promote_nextaction = cfg_bool(
-                    ["app", "behavior", "promote_nextaction_on_complete"],
-                    default=True,
-                )
-                # Override a nivel de proyecto (si está definido) tiene prioridad sobre el global
-                if has_nextaction and task.get("project_id"):
-                    _proj_promo = q1(
-                        "SELECT auto_promote_nextaction FROM projects WHERE id=%s",
-                        (task["project_id"],),
-                    )
-                    if _proj_promo and _proj_promo.get("auto_promote_nextaction") is not None:
-                        promote_nextaction = bool(_proj_promo["auto_promote_nextaction"])
-
-                if promote_nextaction and has_nextaction and task.get("project_id"):
-                    next_task = q1(
-                        "SELECT id "
-                        "FROM tasks "
-                        "WHERE project_id=%s "
-                        "AND archived=0 "
-                        "AND completed_at IS NULL "
-                        "AND id<>%s "
-                        "ORDER BY (sort_order IS NULL) ASC, sort_order ASC, (due_date IS NULL) ASC, due_date ASC, id ASC "
-                        "LIMIT 1",
-                        (task["project_id"], task_id),
-                    )
-                    if next_task:
-                        next_has_nextaction = q1(
-                            "SELECT 1 AS ok "
-                            "FROM task_tags tt "
-                            "JOIN tags tg ON tg.id=tt.tag_id "
-                            "WHERE tt.task_id=%s AND LOWER(tg.name)=LOWER(%s) "
-                            "LIMIT 1",
-                            (next_task["id"], "NextAction"),
-                        ) is not None
-                        if not next_has_nextaction:
-                            next_tag = q1(
-                                "SELECT id FROM tags WHERE LOWER(name)=LOWER(%s) ORDER BY id ASC LIMIT 1",
-                                ("NextAction",),
-                            )
-                            next_tag_id = int(next_tag["id"]) if next_tag else get_or_create_tag("NextAction")
-                            exec_sql(
-                                "INSERT IGNORE INTO task_tags(task_id, tag_id) VALUES(%s,%s)",
-                                (next_task["id"], next_tag_id),
-                            )
+                complete_nonrecurring_task(task_id, task, now)
 
         _mark_task_calendar_dirty(task_id)
         commit()
@@ -7781,7 +8014,8 @@ def folder_purge_tasks(folder_id: int):
 
 @app.route("/inbox/archive_completed_tasks", methods=["POST"])
 def inbox_archive_completed_tasks():
-    periodic_names = ("periodica", "periódica", "periodicas", "periódicas")
+    periodic_names = tuple(role_tag_sql_names("periodic"))
+    periodic_ph = ",".join(["LOWER(%s)"] * len(periodic_names))
     try:
         total_row = q1(
             "SELECT COUNT(*) AS c "
@@ -7796,7 +8030,7 @@ def inbox_archive_completed_tasks():
             "  SELECT 1 FROM task_tags tt "
             "  JOIN tags tg ON tg.id=tt.tag_id "
             "  WHERE tt.task_id=t.id "
-            "  AND LOWER(tg.name) IN (LOWER(%s), LOWER(%s), LOWER(%s), LOWER(%s))"
+            "  AND LOWER(tg.name) IN (" + periodic_ph + ")"
             ")",
             periodic_names,
         )
@@ -7820,7 +8054,7 @@ def inbox_archive_completed_tasks():
                 "      SELECT 1 FROM task_tags tt "
                 "      JOIN tags tg ON tg.id=tt.tag_id "
                 "      WHERE tt.task_id=t.id "
-                "      AND LOWER(tg.name) IN (LOWER(%s), LOWER(%s), LOWER(%s), LOWER(%s))"
+                "      AND LOWER(tg.name) IN (" + periodic_ph + ")"
                 "    )"
                 "  ) AS eligible"
                 ")",
@@ -7876,7 +8110,8 @@ def folder_archive_completed_tasks(folder_id: int):
     folder = q1("SELECT id, name FROM folders WHERE id=%s", (folder_id,))
     if not folder:
         abort(404)
-    periodic_names = ("periodica", "periódica", "periodicas", "periódicas")
+    periodic_names = tuple(role_tag_sql_names("periodic"))
+    periodic_ph = ",".join(["LOWER(%s)"] * len(periodic_names))
 
     try:
         total_row = q1(
@@ -7892,7 +8127,7 @@ def folder_archive_completed_tasks(folder_id: int):
             "  SELECT 1 FROM task_tags tt "
             "  JOIN tags tg ON tg.id=tt.tag_id "
             "  WHERE tt.task_id=t.id "
-            "  AND LOWER(tg.name) IN (LOWER(%s), LOWER(%s), LOWER(%s), LOWER(%s))"
+            "  AND LOWER(tg.name) IN (" + periodic_ph + ")"
             ")",
             (folder_id, *periodic_names),
         )
@@ -7916,7 +8151,7 @@ def folder_archive_completed_tasks(folder_id: int):
                 "      SELECT 1 FROM task_tags tt "
                 "      JOIN tags tg ON tg.id=tt.tag_id "
                 "      WHERE tt.task_id=t.id "
-                "      AND LOWER(tg.name) IN (LOWER(%s), LOWER(%s), LOWER(%s), LOWER(%s))"
+                "      AND LOWER(tg.name) IN (" + periodic_ph + ")"
                 "    )"
                 "  ) AS eligible"
                 ")",
@@ -10276,6 +10511,25 @@ def admin():
             flash(f"Subcard «{label}» guardada.", "ok")
             return redirect(url_for("admin", subcard=key))
 
+        if action == "save_gtd_roles":
+            cfg = load_config()
+            section: Dict[str, Dict[str, List[str]]] = {"tags": {}, "folders": {}}
+            for kind, prefix, defs in (
+                ("tags", "tag__", _gtd_roles_mod.TAG_ROLES),
+                ("folders", "folder__", _gtd_roles_mod.FOLDER_ROLES),
+            ):
+                for role, defaults, _label, _desc in defs:
+                    names = _gtd_roles_mod.parse_names(request.form.get(prefix + role, ""))
+                    if names and names != list(defaults):
+                        section[kind][role] = names
+            if section["tags"] or section["folders"]:
+                cfg["gtd_roles"] = section
+            else:
+                cfg.pop("gtd_roles", None)
+            save_config(cfg)
+            flash("Etiquetas y carpetas GTD guardadas.", "ok")
+            return redirect(url_for("admin") + "#gtd-roles")
+
         if action == "save_nextaction_behavior":
             cfg = load_config()
             appcfg = cfg.setdefault("app", {})
@@ -10367,7 +10621,8 @@ def admin():
                 return redirect(url_for("admin"))
 
             days = int(days_raw)
-            periodic_names = ("periodica", "periódica", "periodicas", "periódicas")
+            periodic_names = tuple(role_tag_sql_names("periodic"))
+            periodic_ph = ",".join(["LOWER(%s)"] * len(periodic_names))
 
             try:
                 exec_sql(
@@ -10381,7 +10636,7 @@ def admin():
                     "  SELECT 1 FROM task_tags tt "
                     "  JOIN tags tg ON tg.id=tt.tag_id "
                     "  WHERE tt.task_id=t.id "
-                    "  AND LOWER(tg.name) IN (LOWER(%s), LOWER(%s), LOWER(%s), LOWER(%s))"
+                    "  AND LOWER(tg.name) IN (" + periodic_ph + ")"
                     ")",
                     (days, *periodic_names),
                 )
@@ -10398,7 +10653,7 @@ def admin():
                     "  SELECT 1 FROM task_tags tt "
                     "  JOIN tags tg ON tg.id=tt.tag_id "
                     "  WHERE tt.task_id=t.id "
-                    "  AND LOWER(tg.name) IN (LOWER(%s), LOWER(%s), LOWER(%s), LOWER(%s))"
+                    "  AND LOWER(tg.name) IN (" + periodic_ph + ")"
                     ")",
                     (days, *periodic_names),
                 )
@@ -10415,7 +10670,8 @@ def admin():
             if not admin_required():
                 flash("No autorizado.", "error")
                 return redirect(url_for("admin"))
-            periodic_names = ("periodica", "periódica", "periodicas", "periódicas")
+            periodic_names = tuple(role_tag_sql_names("periodic"))
+            periodic_ph = ",".join(["LOWER(%s)"] * len(periodic_names))
 
             try:
                 total_row = q1(
@@ -10431,7 +10687,7 @@ def admin():
                     "  SELECT 1 FROM task_tags tt "
                     "  JOIN tags tg ON tg.id=tt.tag_id "
                     "  WHERE tt.task_id=t.id "
-                    "  AND LOWER(tg.name) IN (LOWER(%s), LOWER(%s), LOWER(%s), LOWER(%s))"
+                    "  AND LOWER(tg.name) IN (" + periodic_ph + ")"
                     ")",
                     periodic_names,
                 )
@@ -10455,7 +10711,7 @@ def admin():
                         "      SELECT 1 FROM task_tags tt "
                         "      JOIN tags tg ON tg.id=tt.tag_id "
                         "      WHERE tt.task_id=t.id "
-                        "      AND LOWER(tg.name) IN (LOWER(%s), LOWER(%s), LOWER(%s), LOWER(%s))"
+                        "      AND LOWER(tg.name) IN (" + periodic_ph + ")"
                         "    )"
                         "  ) AS eligible"
                         ")",
@@ -10566,7 +10822,8 @@ def admin():
             google_token_status = "expired"
 
     if admin_required():
-        periodic_names = ("periodica", "periódica", "periodicas", "periódicas")
+        periodic_names = tuple(role_tag_sql_names("periodic"))
+        periodic_ph = ",".join(["LOWER(%s)"] * len(periodic_names))
         api_tokens = q(
             "SELECT id, device_name, token, created_at, last_used_at, active FROM api_tokens WHERE user_id=%s ORDER BY created_at DESC",
             (get_api_token_owner_user_id(),),
@@ -10587,7 +10844,7 @@ def admin():
             "  SELECT 1 FROM task_tags tt "
             "  JOIN tags tg ON tg.id=tt.tag_id "
             "  WHERE tt.task_id=t.id "
-            "  AND LOWER(tg.name) IN (LOWER(%s), LOWER(%s), LOWER(%s), LOWER(%s))"
+            "  AND LOWER(tg.name) IN (" + periodic_ph + ")"
             ") "
             "AND t.completed_at < (NOW() - INTERVAL 7 DAY) "
             "ORDER BY t.completed_at ASC, t.id ASC "
@@ -10626,6 +10883,8 @@ def admin():
         "admin.html",
         cfg=cfg,
         admin_panel_order=_admin_panel_order(cfg),
+        gtd_role_defs={"tags": _gtd_roles_mod.TAG_ROLES, "folders": _gtd_roles_mod.FOLDER_ROLES},
+        gtd_roles_current=_gtd_roles_mod.resolve_roles(cfg),
         kanban_subcards=_kanban_subcard_definitions(),
         selected_kanban_subcard=request.args.get("subcard", ""),
         is_admin=admin_required(),
@@ -10653,6 +10912,7 @@ ADMIN_PANEL_KEYS = (
     "backups",
     "initialize",
     "nextaction",
+    "gtd-roles",
     "kanban-subcards",
     "sql",
     "pagination",
@@ -11727,19 +11987,17 @@ def review():
 
     # Proyectos en Seguimiento y subcarpetas
     projects_seguimiento = []
-    seguimiento_folder = q1("SELECT id FROM folders WHERE name='Seguimiento'")
-    if seguimiento_folder and seguimiento_folder.get("id") is not None:
-        seguimiento_ids = get_folder_tree_ids(int(seguimiento_folder["id"]))
-        if seguimiento_ids:
-            placeholders = ",".join(["%s"] * len(seguimiento_ids))
-            projects_seguimiento = q(
-                f"SELECT p.id, p.name, p.description, p.archived, f.name AS folder_name "
-                f"FROM projects p "
-                f"LEFT JOIN folders f ON f.id=p.folder_id "
-                f"WHERE p.archived=0 AND p.deleted_at IS NULL AND p.folder_id IN ({placeholders}) "
-                f"ORDER BY p.name",
-                tuple(seguimiento_ids),
-            ) or []
+    seguimiento_ids = role_folder_tree_ids("following")
+    if seguimiento_ids:
+        placeholders = ",".join(["%s"] * len(seguimiento_ids))
+        projects_seguimiento = q(
+            f"SELECT p.id, p.name, p.description, p.archived, f.name AS folder_name "
+            f"FROM projects p "
+            f"LEFT JOIN folders f ON f.id=p.folder_id "
+            f"WHERE p.archived=0 AND p.deleted_at IS NULL AND p.folder_id IN ({placeholders}) "
+            f"ORDER BY p.name",
+            tuple(seguimiento_ids),
+        ) or []
 
     # 1) Inbox
     inbox = q(
@@ -11769,12 +12027,10 @@ def review():
     ) or []
 
     # 2) NextActions
-    nextaction_exists = tag_exists("NextAction")
+    nextaction_tag = role_tag("next_action")
+    nextaction_exists = tag_exists(nextaction_tag)
 
-    sometime_review_folder_ids = set()
-    sometime_folder_row = q1("SELECT id FROM folders WHERE LOWER(name)=LOWER(%s)", ("Sometime",))
-    if sometime_folder_row and sometime_folder_row.get("id") is not None:
-        sometime_review_folder_ids = get_folder_tree_ids(int(sometime_folder_row["id"]))
+    sometime_review_folder_ids = role_folder_tree_ids("someday")
 
     nextaction_folder_clause = ""
     nextaction_folder_params: Tuple[Any, ...] = ()
@@ -11800,7 +12056,7 @@ def review():
         + nextaction_folder_clause +
         "AND (t.project_id IS NULL OR p.archived = 0) "
         f"ORDER BY ({effective_due_expr} IS NULL) ASC, {effective_due_expr} ASC, t.id DESC",
-        ("NextAction",) + nextaction_folder_params
+        (nextaction_tag,) + nextaction_folder_params
     ) if nextaction_exists else []
 
     nextactions_overdue = q(
@@ -11821,12 +12077,14 @@ def review():
         + nextaction_folder_clause +
         "AND (t.project_id IS NULL OR p.archived = 0) "
         f"ORDER BY {effective_due_expr} ASC, t.id DESC",
-        ("NextAction",) + nextaction_folder_params
+        (nextaction_tag,) + nextaction_folder_params
     ) if nextaction_exists else []
 
     # 3) Agenda futura
-    en_seguimiento_exists = tag_exists("EnSeguimiento")
-    agenda_exists = tag_exists("agenda")
+    en_seguimiento_tag = role_tag("following")
+    agenda_tag = role_tag("agenda")
+    en_seguimiento_exists = tag_exists(en_seguimiento_tag)
+    agenda_exists = tag_exists(agenda_tag)
 
     upcoming_7 = q(
         f"SELECT t.id, t.title, t.location, t.notes, {effective_due_expr} AS due_date, t.completed_at, t.recurrence_rule, t.priority, "
@@ -11846,7 +12104,7 @@ def review():
         f"AND {effective_due_expr} <= DATE_ADD(CURDATE(), INTERVAL 7 DAY) "
         "AND (t.project_id IS NULL OR p.archived = 0) "
         f"ORDER BY {effective_due_expr} ASC, t.id DESC",
-        ("agenda",)
+        (agenda_tag,)
     ) if agenda_exists else []
 
     en_seguimiento_now = q(
@@ -11866,7 +12124,7 @@ def review():
         f"AND {effective_due_expr} <= CURDATE() "
         "AND (t.project_id IS NULL OR p.archived = 0) "
         f"ORDER BY ({effective_due_expr} IS NULL) ASC, {effective_due_expr} ASC, t.id DESC",
-        ("EnSeguimiento",)
+        (en_seguimiento_tag,)
     ) if en_seguimiento_exists else []
 
     en_seguimiento_next_15 = q(
@@ -11887,7 +12145,7 @@ def review():
         f"AND {effective_due_expr} <= DATE_ADD(CURDATE(), INTERVAL 15 DAY) "
         "AND (t.project_id IS NULL OR p.archived = 0) "
         f"ORDER BY {effective_due_expr} ASC, t.id DESC",
-        ("EnSeguimiento",)
+        (en_seguimiento_tag,)
     ) if en_seguimiento_exists else []
 
     # 4) Agenda pasada
@@ -11910,18 +12168,16 @@ def review():
         f"AND {effective_due_expr} < CURDATE() "
         "AND (t.project_id IS NULL OR p.archived = 0) "
         f"ORDER BY {effective_due_expr} ASC, t.id DESC",
-        ("agenda",)
+        (agenda_tag,)
     ) if agenda_exists else []
 
     # 5) EnEspera
-    en_espera_exists = tag_exists("EnEspera")
-    en_espera_folder_exists = folder_exists("EnEspera")
+    en_espera_tag = role_tag("waiting")
+    en_espera_exists = tag_exists(en_espera_tag)
+    en_espera_folder_row = role_folder_row("waiting")
+    en_espera_folder_exists = en_espera_folder_row is not None
 
-    # Excluir tareas de proyectos en Seguimiento o subcarpetas
-    seguimiento_folder = q1("SELECT id FROM folders WHERE name='Seguimiento'")
-    seguimiento_ids = []
-    if seguimiento_folder and seguimiento_folder.get("id") is not None:
-        seguimiento_ids = get_folder_tree_ids(int(seguimiento_folder["id"]))
+    # Excluir tareas de proyectos en Seguimiento o subcarpetas (seguimiento_ids calculado arriba)
     seguimiento_clause = ""
     seguimiento_params = ()
     if seguimiento_ids:
@@ -11947,15 +12203,12 @@ def review():
         + seguimiento_clause +
         "AND (t.project_id IS NULL OR p.archived = 0) "
         f"ORDER BY ({effective_due_expr} IS NULL) ASC, {effective_due_expr} ASC, t.id DESC",
-        ("EnEspera",) + seguimiento_params
+        (en_espera_tag,) + seguimiento_params
     ) if en_espera_exists else []
 
     en_espera_projects = []
     if en_espera_folder_exists:
-        en_espera_folder = q1(
-            "SELECT id FROM folders WHERE LOWER(name)=LOWER(%s)",
-            ("EnEspera",),
-        )
+        en_espera_folder = en_espera_folder_row
         if en_espera_folder and en_espera_folder.get("id") is not None:
             en_espera_projects = q(
                 "SELECT p.id, p.name, p.description, p.archived, f.name AS folder_name "
@@ -11971,26 +12224,8 @@ def review():
     # 6) Proyectos (excluyendo Sometime y sus subcarpetas)
 
     excluded_folder_ids = set()
-
-    sometime_folder = q1("SELECT id FROM folders WHERE name='Sometime'")
-    if sometime_folder:
-        excluded_folder_ids.update(get_folder_tree_ids(sometime_folder['id']))
-
-    agenda_folders = q(
-        "SELECT id FROM folders WHERE name IN (%s, %s)",
-        ("Agenda 🗃️", "🗃️ Agenda"),
-    ) or []
-    for agenda_folder in agenda_folders:
-        excluded_folder_ids.update(get_folder_tree_ids(agenda_folder["id"]))
-
-
-    en_espera_folder = q1("SELECT id FROM folders WHERE name='EnEspera'")
-    if en_espera_folder:
-        excluded_folder_ids.update(get_folder_tree_ids(en_espera_folder['id']))
-
-    seguimiento_folder = q1("SELECT id FROM folders WHERE name='Seguimiento'")
-    if seguimiento_folder:
-        excluded_folder_ids.update(get_folder_tree_ids(seguimiento_folder['id']))
+    for excluded_role in ("someday", "agenda", "waiting", "following"):
+        excluded_folder_ids.update(role_folder_tree_ids(excluded_role))
 
     if excluded_folder_ids:
         ids_placeholder = ','.join(str(fid) for fid in excluded_folder_ids)
@@ -12040,10 +12275,7 @@ def review():
             "ORDER BY p.name"
         ) or []
 
-    rutinas_root = q1("SELECT id FROM folders WHERE name=%s", ("♲ Rutinas",))
-    if not rutinas_root:
-        rutinas_root = q1("SELECT id FROM folders WHERE LOWER(name)=LOWER(%s)", ("Rutinas",))
-
+    rutinas_root = role_folder_row("routines")
     rutinas_folder_ids = set()
     if rutinas_root and rutinas_root.get("id") is not None:
         rutinas_folder_ids = get_folder_tree_ids(int(rutinas_root["id"]))
@@ -12062,14 +12294,13 @@ def review():
     empty_projects = [p for p in empty_projects if p.get("folder_name")]
 
     # 7) ADTV / SomeTime
-    sometime_folder_exists = folder_exists("Sometime")
-    adtv_folder_exists = folder_exists("ADTV")
-    esta_semana_no_folder_exists = folder_exists("🔜 EstaSemanaNo")
+    sometime_folder_exists = role_folder_exists("someday")
+    adtv_folder_exists = role_folder_exists("adtv")
+    esta_semana_no_folder_exists = role_folder_exists("not_this_week")
 
     sometime_tasks_no_project = []
-    sometime_folder_row = q1("SELECT id FROM folders WHERE LOWER(name)=LOWER(%s)", ("Sometime",))
-    if sometime_folder_row and sometime_folder_row.get("id") is not None:
-        sometime_ids = get_folder_tree_ids(int(sometime_folder_row["id"]))
+    if sometime_folder_exists:
+        sometime_ids = role_folder_tree_ids("someday")
         if sometime_ids:
             placeholders = ",".join(["%s"] * len(sometime_ids))
             sometime_tasks_no_project = q(
@@ -12087,27 +12318,27 @@ def review():
         "SELECT p.id, p.name, p.description, p.archived, f.name AS folder_name "
         "FROM projects p "
         "JOIN folders f ON f.id=p.folder_id "
-        "WHERE p.archived=0 AND p.deleted_at IS NULL AND f.name=%s "
+        "WHERE p.archived=0 AND p.deleted_at IS NULL AND f.id=%s "
         "ORDER BY p.name",
-        ("ADTV",)
+        (role_folder_row("adtv")["id"],)
     ) if adtv_folder_exists else []
 
     esta_semana_no_projects = q(
         "SELECT p.id, p.name, p.description, p.archived, f.name AS folder_name "
         "FROM projects p "
         "JOIN folders f ON f.id=p.folder_id "
-        "WHERE p.archived=0 AND p.deleted_at IS NULL AND f.name=%s "
+        "WHERE p.archived=0 AND p.deleted_at IS NULL AND f.id=%s "
         "ORDER BY p.name",
-        ("🔜 EstaSemanaNo",)
+        (role_folder_row("not_this_week")["id"],)
     ) if esta_semana_no_folder_exists else []
 
     # 8) Checklists
-    checklists_folder_exists = folder_exists("✅ Checklists")
+    checklists_folder = role_folder_row("checklists")
+    checklists_folder_exists = checklists_folder is not None
     checklist_tasks = []
     checklist_projects = []
 
     if checklists_folder_exists:
-        checklists_folder = q1("SELECT id FROM folders WHERE name='✅ Checklists'")
         if checklists_folder:
             checklists_folder_id = checklists_folder['id']
             # Tareas directas en la carpeta (sin proyecto)
@@ -12202,7 +12433,7 @@ def next_actions():
         page = 1
     page = max(page, 1)
 
-    tag = q1("SELECT id FROM tags WHERE name='NextAction'")
+    tag = q1("SELECT id FROM tags WHERE name=%s", (role_tag("next_action"),))
 
     if not tag:
         rows = []
@@ -12315,7 +12546,7 @@ def api_extension_tasks():
             "AND (t.project_id IS NULL OR p.archived = 0) "
             "ORDER BY (t.priority IS NULL) ASC, t.priority ASC, "
             "(t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC",
-            ("nextaction",),
+            (role_tag("next_action").lower(),),
         )
         next_items = []
         for r in next_rows:
@@ -12421,71 +12652,8 @@ def api_extension_task_toggle(task_id: int):
                 )
                 completed = False
             else:
-                has_nextaction = q1(
-                    "SELECT 1 AS ok "
-                    "FROM task_tags tt "
-                    "JOIN tags tg ON tg.id=tt.tag_id "
-                    "WHERE tt.task_id=%s AND LOWER(tg.name)=LOWER(%s) "
-                    "LIMIT 1",
-                    (task_id, "NextAction"),
-                ) is not None
-
-                if has_nextaction:
-                    exec_sql(
-                        "DELETE tt FROM task_tags tt "
-                        "JOIN tags tg ON tg.id=tt.tag_id "
-                        "WHERE tt.task_id=%s AND LOWER(tg.name)=LOWER(%s)",
-                        (task_id, "NextAction"),
-                    )
-
-                exec_sql("UPDATE tasks SET completed_at=%s WHERE id=%s", (now, task_id))
-                _project_board_status_for_task(task_id, task.get("project_id"), "done")
+                complete_nonrecurring_task(task_id, task, now)
                 completed = True
-
-                promote_nextaction = cfg_bool(
-                    ["app", "behavior", "promote_nextaction_on_complete"],
-                    default=True,
-                )
-                # Override a nivel de proyecto (si está definido) tiene prioridad sobre el global
-                if has_nextaction and task.get("project_id"):
-                    _proj_promo = q1(
-                        "SELECT auto_promote_nextaction FROM projects WHERE id=%s",
-                        (task["project_id"],),
-                    )
-                    if _proj_promo and _proj_promo.get("auto_promote_nextaction") is not None:
-                        promote_nextaction = bool(_proj_promo["auto_promote_nextaction"])
-
-                if promote_nextaction and has_nextaction and task.get("project_id"):
-                    next_task = q1(
-                        "SELECT id "
-                        "FROM tasks "
-                        "WHERE project_id=%s "
-                        "AND archived=0 "
-                        "AND completed_at IS NULL "
-                        "AND id<>%s "
-                        "ORDER BY (sort_order IS NULL) ASC, sort_order ASC, (due_date IS NULL) ASC, due_date ASC, id ASC "
-                        "LIMIT 1",
-                        (task["project_id"], task_id),
-                    )
-                    if next_task:
-                        next_has_nextaction = q1(
-                            "SELECT 1 AS ok "
-                            "FROM task_tags tt "
-                            "JOIN tags tg ON tg.id=tt.tag_id "
-                            "WHERE tt.task_id=%s AND LOWER(tg.name)=LOWER(%s) "
-                            "LIMIT 1",
-                            (next_task["id"], "NextAction"),
-                        ) is not None
-                        if not next_has_nextaction:
-                            next_tag = q1(
-                                "SELECT id FROM tags WHERE LOWER(name)=LOWER(%s) ORDER BY id ASC LIMIT 1",
-                                ("NextAction",),
-                            )
-                            next_tag_id = int(next_tag["id"]) if next_tag else get_or_create_tag("NextAction")
-                            exec_sql(
-                                "INSERT IGNORE INTO task_tags(task_id, tag_id) VALUES(%s,%s)",
-                                (next_task["id"], next_tag_id),
-                            )
 
         _mark_task_calendar_dirty(task_id)
         commit()
@@ -13120,7 +13288,7 @@ def calendar_import_to_inbox():
             return redirect(next_url)
 
         tag_calendar_id = get_or_create_tag("inbox.calendar")
-        tag_agenda_id = get_or_create_tag("agenda")
+        tag_agenda_id = get_or_create_tag(role_tag("agenda"))
 
         created = 0
         skipped = 0

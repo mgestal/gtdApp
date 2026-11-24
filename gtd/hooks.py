@@ -1,4 +1,4 @@
-"""Login (auth.py), before_request (config, esquema, autosync de Calendar), PWA y errores."""
+"""Login (auth.py), before_request (config, migraciones, autosync de Calendar), PWA y errores."""
 from __future__ import annotations
 
 import json

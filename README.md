@@ -572,6 +572,8 @@ gtdApp/
 ├── app.py                    # Punto de entrada (registra todo el paquete gtd/)
 ├── gtd/                      # Código de la app por capas (ver gtd/__init__.py)
 │   └── views/                # Rutas, un módulo por área
+├── migrations/               # Migraciones de esquema versionadas (NNNN_*.py)
+├── migrate.py                # CLI de migraciones: status | up | new "descripción"
 ├── calendar_import.py        # Importación Google Calendar
 ├── gmail_import.py           # Importación Gmail
 ├── send_today.py             # Envío resumen diario por Telegram

@@ -6,6 +6,13 @@ from unittest.mock import patch
 
 import app as application
 import pymysql
+from flask import session
+from reminders import utc_now
+from tests.support import patch_all
+from gtd import db
+from gtd import schema
+from gtd.views import admin as admin_views
+from gtd.views import notifications as notifications_views
 
 
 class NotificationCenterTests(unittest.TestCase):
@@ -20,10 +27,10 @@ class NotificationCenterTests(unittest.TestCase):
                  "read_at_utc": when, "channel": "Telegram", "device": None}]
         cfg = {"app": {"timezone": "Europe/Madrid", "notifications": {"history_days": 1}}}
         with application.app.test_request_context("/api/notifications", environ_overrides={"SCRIPT_NAME": "/gtd"}), \
-             patch.object(application, "load_config", return_value=cfg), \
-             patch.object(application, "utc_now", return_value=datetime(2026, 11, 12, 12)), \
-             patch.object(application, "q", return_value=rows) as query:
-            response = application.notification_history()
+             patch_all("load_config", return_value=cfg), \
+             patch_all("utc_now", return_value=datetime(2026, 11, 12, 12)), \
+             patch_all("q", return_value=rows) as query:
+            response = notifications_views.notification_history()
         items = response.get_json()["notifications"]
         self.assertEqual(len(items), 2)
         self.assertEqual(items[0]["channels"], ["Telegram", "Navegador: Móvil", "Navegador: Portátil"])
@@ -34,34 +41,34 @@ class NotificationCenterTests(unittest.TestCase):
         self.assertEqual(response.headers["Cache-Control"], "no-store")
 
     def test_history_days_validation(self):
-        self.assertEqual(application.notification_history_days({}), 1)
+        self.assertEqual(notifications_views.notification_history_days({}), 1)
         for value in (0, 366, "1", True):
             with self.subTest(value=value), self.assertRaises(ValueError):
-                application.notification_history_days({"app": {"notifications": {"history_days": value}}})
+                notifications_views.notification_history_days({"app": {"notifications": {"history_days": value}}})
 
     def test_mark_read_requires_csrf_valid_data_and_sent_delivery(self):
         payload = {"reminder_id": 2, "scheduled_at": "2026-11-11T12:00:00"}
         with application.app.test_request_context("/api/notifications/read", method="POST", json=payload):
             with self.assertRaises(application.app.aborter.mapping[403]):
-                application.notification_mark_read()
+                notifications_views.notification_mark_read()
         headers = {"X-GTD-Notification-CSRF": "token"}
         for value in ("bad", "2026-11-11T12:00:00+00:00"):
             with application.app.test_request_context("/api/notifications/read", method="POST",
                     headers=headers, json={**payload, "scheduled_at": value}):
-                application.session["notification_csrf"] = "token"
-                response, status = application.notification_mark_read()
+                session["notification_csrf"] = "token"
+                response, status = notifications_views.notification_mark_read()
                 self.assertEqual(status, 400)
         with application.app.test_request_context("/api/notifications/read", method="POST", headers=headers, json=payload), \
-             patch.object(application, "q1", return_value=None):
-            application.session["notification_csrf"] = "token"
-            response, status = application.notification_mark_read()
+             patch_all("q1", return_value=None):
+            session["notification_csrf"] = "token"
+            response, status = notifications_views.notification_mark_read()
             self.assertEqual(status, 404)
         with application.app.test_request_context("/api/notifications/read", method="POST", headers=headers, json=payload), \
-             patch.object(application, "q1", return_value={"sent": 1}), \
-             patch.object(application, "exec_sql") as execute, \
-             patch.object(application, "commit") as commit:
-            application.session["notification_csrf"] = "token"
-            self.assertTrue(application.notification_mark_read().get_json()["ok"])
+             patch_all("q1", return_value={"sent": 1}), \
+             patch_all("exec_sql") as execute, \
+             patch_all("commit") as commit:
+            session["notification_csrf"] = "token"
+            self.assertTrue(notifications_views.notification_mark_read().get_json()["ok"])
             self.assertEqual(execute.call_args.args[1][:2], (2, datetime(2026, 11, 11, 12)))
             commit.assert_called_once()
 
@@ -69,17 +76,17 @@ class NotificationCenterTests(unittest.TestCase):
         for raw in ("0", "366", "1.5", ""):
             with self.subTest(raw=raw), application.app.test_request_context("/admin", method="POST", data={
                     "action": "save_notification_history", "history_days": raw}), \
-                 patch.object(application, "admin_required", return_value=True), \
-                 patch.object(application, "save_config") as save:
-                application.admin()
+                 patch_all("admin_required", return_value=True), \
+                 patch_all("save_config") as save:
+                admin_views.admin()
                 save.assert_not_called()
         cfg = {"app": {"notifications": {}}}
         with application.app.test_request_context("/admin", method="POST", data={
                 "action": "save_notification_history", "history_days": "12"}), \
-             patch.object(application, "admin_required", return_value=True), \
-             patch.object(application, "load_config", return_value=cfg), \
-             patch.object(application, "save_config") as save:
-            application.admin()
+             patch_all("admin_required", return_value=True), \
+             patch_all("load_config", return_value=cfg), \
+             patch_all("save_config") as save:
+            admin_views.admin()
             self.assertEqual(cfg["app"]["notifications"]["history_days"], 12)
             save.assert_called_once_with(cfg)
 
@@ -95,18 +102,18 @@ class NotificationCenterDatabaseTests(unittest.TestCase):
 
         self.connect = connect
         self.patches = [
-            patch.object(application, "get_db_conn", side_effect=connect),
-            patch.object(application, "load_config", return_value={"app": {"timezone": "Europe/Madrid"}}),
-            patch.object(application, "maybe_run_calendar_autosync"),
+            patch_all("get_db_conn", side_effect=connect),
+            patch_all("load_config", return_value={"app": {"timezone": "Europe/Madrid"}}),
+            patch_all("maybe_run_calendar_autosync"),
         ]
         for item in self.patches:
             item.start()
-        application._schema_bootstrapped = False
+        schema._schema_bootstrapped = False
         with application.app.app_context():
-            application.ensure_schema_updates()
-            application.db().close()
+            schema.ensure_schema_updates()
+            db.db().close()
         self.conn = connect()
-        self.now = application.utc_now().replace(microsecond=0)
+        self.now = utc_now().replace(microsecond=0)
         with self.conn.cursor() as cur:
             cur.execute("INSERT INTO tasks(title) VALUES('Prueba campana')")
             self.task_id = cur.lastrowid
@@ -145,7 +152,7 @@ class NotificationCenterDatabaseTests(unittest.TestCase):
         second = application.app.test_client()
         with first.session_transaction() as session:
             session["notification_csrf"] = "test-token"
-        with patch.object(application, "push_test_within_hours", return_value=True):
+        with patch_all("push_test_within_hours", return_value=True):
             locations = first.get("/api/location-alerts").get_json()["locations"]
         self.assertIn(self.task_id, next(item for item in locations if item["id"] == self.tag_id)["task_ids"])
         items = first.get("/api/notifications").get_json()["notifications"]

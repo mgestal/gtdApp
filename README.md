@@ -569,7 +569,9 @@ sudo systemctl reload apache2
 
 ```
 gtdApp/
-├── app.py                    # Aplicación Flask principal
+├── app.py                    # Punto de entrada (registra todo el paquete gtd/)
+├── gtd/                      # Código de la app por capas (ver gtd/__init__.py)
+│   └── views/                # Rutas, un módulo por área
 ├── calendar_import.py        # Importación Google Calendar
 ├── gmail_import.py           # Importación Gmail
 ├── send_today.py             # Envío resumen diario por Telegram

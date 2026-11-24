@@ -12,6 +12,11 @@ import pymysql
 from reminders import (local_to_utc, notification_hours, run_worker, scheduled_at,
                        within_notification_hours)
 from browser_push import public_key, send_browser_push, validate_subscription
+from tests.support import patch_all
+from gtd import config
+from gtd import db
+from gtd import schema
+from gtd.views import notifications as notifications_views
 
 
 def example_subscription(endpoint="https://fcm.googleapis.com/fcm/send/test"):
@@ -31,12 +36,12 @@ class BrowserPushTests(unittest.TestCase):
         subscription = {"id": 1, "scope_path": "/gtdApp"}
         with application.app.test_request_context(
             "/admin/push/test", method="POST", json={"endpoint": "https://fcm.googleapis.com/test"}
-        ), patch.object(application, "require_push_admin"), \
-             patch.object(application, "load_config", return_value={}), \
-             patch.object(application, "within_notification_hours", return_value=True), \
-             patch.object(application, "q1", return_value=subscription), \
-             patch.object(application, "send_browser_push") as send:
-            response = application.admin_push_test()
+        ), patch_all("require_push_admin"), \
+             patch_all("load_config", return_value={}), \
+             patch_all("within_notification_hours", return_value=True), \
+             patch_all("q1", return_value=subscription), \
+             patch_all("send_browser_push") as send:
+            response = notifications_views.admin_push_test()
             self.assertTrue(response.get_json()["ok"])
             self.assertEqual(send.call_args.args[1]["tag"], "gtd-push-test")
             self.assertIs(send.call_args.args[1]["renotify"], True)
@@ -55,15 +60,15 @@ class BrowserPushTests(unittest.TestCase):
         expired = Response()
         expired.status_code = 410
         with application.app.test_request_context("/admin/push/test-all", method="POST"), \
-             patch.object(application, "require_push_admin"), \
-             patch.object(application, "push_test_within_hours", return_value=True), \
-             patch.object(application, "q", return_value=subscriptions) as query, \
-             patch.object(application, "exec_sql") as update, \
-             patch.object(application, "commit") as commit, \
-             patch.object(application, "send_browser_push",
+             patch_all("require_push_admin"), \
+             patch_all("push_test_within_hours", return_value=True), \
+             patch_all("q", return_value=subscriptions) as query, \
+             patch_all("exec_sql") as update, \
+             patch_all("commit") as commit, \
+             patch_all("send_browser_push",
                           side_effect=[None, WebPushException("expired", response=expired),
                                        OSError("failure")]) as send:
-            response = application.admin_push_test_all().get_json()
+            response = notifications_views.admin_push_test_all().get_json()
             self.assertTrue(response["ok"])
             self.assertEqual([r["id"] for r in response["results"]], [1, 2, 3])
             self.assertIsNone(response["results"][0]["error"])
@@ -80,28 +85,28 @@ class BrowserPushTests(unittest.TestCase):
         import app as application
 
         with application.app.test_request_context("/admin/push/test-all", method="POST"), \
-             patch.object(application, "require_push_admin"), \
-             patch.object(application, "q", return_value=[]) as query, \
-             patch.object(application, "push_test_within_hours", return_value=False):
-            response, status = application.admin_push_test_all()
+             patch_all("require_push_admin"), \
+             patch_all("q", return_value=[]) as query, \
+             patch_all("push_test_within_hours", return_value=False):
+            response, status = notifications_views.admin_push_test_all()
             self.assertEqual(status, 400)
             self.assertIn("horario", response.get_json()["error"])
             query.assert_not_called()
         with application.app.test_request_context("/admin/push/test-all", method="POST"), \
-             patch.object(application, "require_push_admin"), \
-             patch.object(application, "q", return_value=[]), \
-             patch.object(application, "push_test_within_hours", return_value=True):
-            response, status = application.admin_push_test_all()
+             patch_all("require_push_admin"), \
+             patch_all("q", return_value=[]), \
+             patch_all("push_test_within_hours", return_value=True):
+            response, status = notifications_views.admin_push_test_all()
             self.assertEqual(status, 400)
             self.assertIn("No hay dispositivos", response.get_json()["error"])
         devices = [{"id": 1, "device_name": "Uno", "scope_path": ""},
                    {"id": 2, "device_name": "Dos", "scope_path": ""}]
         with application.app.test_request_context("/admin/push/test-all", method="POST"), \
-             patch.object(application, "require_push_admin"), \
-             patch.object(application, "q", return_value=devices), \
-             patch.object(application, "push_test_within_hours", side_effect=[True, True, False]), \
-             patch.object(application, "send_browser_push") as send:
-            response = application.admin_push_test_all().get_json()
+             patch_all("require_push_admin"), \
+             patch_all("q", return_value=devices), \
+             patch_all("push_test_within_hours", side_effect=[True, True, False]), \
+             patch_all("send_browser_push") as send:
+            response = notifications_views.admin_push_test_all().get_json()
             self.assertIsNone(response["results"][0]["error"])
             self.assertIn("horario", response["results"][1]["error"])
             send.assert_called_once()
@@ -109,8 +114,8 @@ class BrowserPushTests(unittest.TestCase):
     def test_push_test_all_requires_admin_and_csrf(self):
         import app as application
 
-        with patch.object(application, "ensure_schema_updates"), \
-             patch.object(application, "maybe_run_calendar_autosync"), \
+        with patch_all("ensure_schema_updates"), \
+             patch_all("maybe_run_calendar_autosync"), \
              patch.dict(os.environ, {"GTD_ADMIN_PASSWORD": "test"}), \
              application.app.test_client() as client:
             self.assertEqual(client.post("/admin/push/test-all").status_code, 403)
@@ -118,8 +123,8 @@ class BrowserPushTests(unittest.TestCase):
                 session["is_admin"] = True
                 session["push_csrf"] = "expected"
             self.assertEqual(client.post("/admin/push/test-all").status_code, 403)
-            with patch.object(application, "push_test_within_hours", return_value=True), \
-                 patch.object(application, "q", return_value=[]):
+            with patch_all("push_test_within_hours", return_value=True), \
+                 patch_all("q", return_value=[]):
                 response = client.post("/admin/push/test-all",
                                        headers={"X-GTD-Push-CSRF": "expected"})
                 self.assertEqual(response.status_code, 400)
@@ -416,7 +421,7 @@ class WebIntegrationTests(unittest.TestCase):
         import app as application
 
         self.application = application
-        config = copy.deepcopy(application.DEFAULT_CONFIG)
+        config = copy.deepcopy(config.DEFAULT_CONFIG)
         config.setdefault("app", {})["timezone"] = "Europe/Madrid"
         socket = os.environ["GTD_REMINDER_TEST_SOCKET"]
 
@@ -426,18 +431,18 @@ class WebIntegrationTests(unittest.TestCase):
 
         self.connect = connect
         self.patches = [
-            patch.object(application, "get_db_conn", side_effect=connect),
-            patch.object(application, "load_config", return_value=config),
-            patch.object(application, "maybe_run_calendar_autosync"),
-            patch.object(application, "gmail_token_path", return_value=application.BASE_DIR / "missing-test-token"),
+            patch_all("get_db_conn", side_effect=connect),
+            patch_all("load_config", return_value=config),
+            patch_all("maybe_run_calendar_autosync"),
+            patch_all("gmail_token_path", return_value=config.BASE_DIR / "missing-test-token"),
             patch.dict(os.environ, {"GTD_ADMIN_PASSWORD": "testing"}),
         ]
         for item in self.patches:
             item.start()
         with application.app.app_context():
-            application._schema_bootstrapped = False
-            application.ensure_schema_updates()
-            application.db().close()
+            schema._schema_bootstrapped = False
+            schema.ensure_schema_updates()
+            db.db().close()
         self.conn = connect()
         with self.conn.cursor() as cur:
             cur.execute("INSERT INTO tasks(title, due_date) VALUES('Tarea de prueba', '2099-01-03')")

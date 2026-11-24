@@ -8,7 +8,10 @@ from zoneinfo import ZoneInfo
 
 from flask import g
 
-from app import app, db, ensure_schema_updates, load_config
+from gtd.config import load_config
+from gtd.core import app
+from gtd.db import db
+from gtd.schema import ensure_schema_updates
 from reminders import load_reminder_token, notification_hours, run_worker
 from telegram_gtdAppbot import load_chat_id
 

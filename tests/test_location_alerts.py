@@ -4,14 +4,18 @@ from unittest.mock import patch
 from jinja2 import ChoiceLoader, DictLoader, Environment, FileSystemLoader, select_autoescape
 
 import app as application
+from tests.support import patch_all
+from gtd import context as template_context
+from gtd.views import notifications as notifications_views
+from gtd.views import tags as tags_views
 
 
 class LocationAlertTests(unittest.TestCase):
     def test_outside_hours_still_returns_locations_for_existing_matches(self):
         with application.app.test_request_context("/api/location-alerts"), \
-             patch.object(application, "push_test_within_hours", return_value=False), \
-             patch.object(application, "q", return_value=[]) as query:
-            response = application.location_alerts()
+             patch_all("push_test_within_hours", return_value=False), \
+             patch_all("q", return_value=[]) as query:
+            response = notifications_views.location_alerts()
         self.assertEqual(response.get_json(), {"within_hours": False, "locations": []})
         self.assertEqual(response.headers["Cache-Control"], "no-store")
         query.assert_called_once()
@@ -20,9 +24,9 @@ class LocationAlertTests(unittest.TestCase):
         row = {"id": 5, "name": "Casa", "latitude": 42.0, "longitude": -8.0,
                "radius_m": 200.0, "task_id": 12}
         with application.app.test_request_context("/api/location-alerts", environ_overrides={"SCRIPT_NAME": "/gtd"}), \
-             patch.object(application, "push_test_within_hours", return_value=True), \
-             patch.object(application, "q", return_value=[row]) as query:
-            response = application.location_alerts()
+             patch_all("push_test_within_hours", return_value=True), \
+             patch_all("q", return_value=[row]) as query:
+            response = notifications_views.location_alerts()
         data = response.get_json()
         self.assertEqual(data["locations"][0]["url"], "/gtd/tags/5?location_pending=1")
         sql = query.call_args.args[0]
@@ -32,11 +36,11 @@ class LocationAlertTests(unittest.TestCase):
 
     def post_tag(self, values):
         with application.app.test_request_context("/tags/5/edit", method="POST", data=values), \
-             patch.object(application, "q1", side_effect=[{"id": 5, "name": "Casa", "type": None}, None]), \
-             patch.object(application, "q", return_value=[]), \
-             patch.object(application, "exec_sql") as execute, \
-             patch.object(application, "commit") as commit:
-            response = application.tag_edit(5)
+             patch_all("q1", side_effect=[{"id": 5, "name": "Casa", "type": None}, None]), \
+             patch_all("q", return_value=[]), \
+             patch_all("exec_sql") as execute, \
+             patch_all("commit") as commit:
+            response = tags_views.tag_edit(5)
         return response, execute, commit
 
     def test_save_and_disable_location(self):
@@ -62,16 +66,16 @@ class LocationAlertTests(unittest.TestCase):
 
     def test_location_link_filters_even_when_sidebar_includes_done_and_archived(self):
         with application.app.test_request_context("/tags/5?location_pending=1"), \
-             patch.object(application, "q1", side_effect=[{"id": 5, "name": "Casa"}, {"c": 0}]) as query_one, \
-             patch.object(application, "q", return_value=[]) as query, \
-             patch.object(application, "cfg_int", return_value=25), \
-             patch.object(application, "load_config", return_value={"sidebar": {"tag_task_visibility": {
+             patch_all("q1", side_effect=[{"id": 5, "name": "Casa"}, {"c": 0}]) as query_one, \
+             patch_all("q", return_value=[]) as query, \
+             patch_all("cfg_int", return_value=25), \
+             patch_all("load_config", return_value={"sidebar": {"tag_task_visibility": {
                  "completed": True, "archived": True}}}), \
-             patch.object(application, "load_tags_map", return_value={}), \
-             patch.object(application, "load_subtask_counts", return_value={}), \
-             patch.object(application, "load_subtasks_map", return_value={}), \
-             patch.object(application, "render_template", side_effect=lambda name, **context: context):
-            context = application.tag_detail(5)
+             patch_all("load_tags_map", return_value={}), \
+             patch_all("load_subtask_counts", return_value={}), \
+             patch_all("load_subtasks_map", return_value={}), \
+             patch_all("render_template", side_effect=lambda name, **context: context):
+            context = tags_views.tag_detail(5)
         self.assertTrue(context["location_pending"])
         for sql in (query_one.call_args.args[0], query.call_args.args[0]):
             for condition in ("t.completed_at IS NULL", "t.archived=0", "t.deleted_at IS NULL",
@@ -84,11 +88,11 @@ class LocationAlertTests(unittest.TestCase):
             {"id": 6, "name": "Trabajo", "type": None, "task_count": 1, "has_location": 0},
         ]
         with application.app.test_request_context("/tags"), \
-             patch.object(application, "q1", return_value={"c": 2}), \
-             patch.object(application, "q", side_effect=[rows, []]) as query, \
-             patch.object(application, "cfg_int", return_value=25), \
-             patch.object(application, "render_template", side_effect=lambda name, **context: context):
-            context = application.tags()
+             patch_all("q1", return_value={"c": 2}), \
+             patch_all("q", side_effect=[rows, []]) as query, \
+             patch_all("cfg_int", return_value=25), \
+             patch_all("render_template", side_effect=lambda name, **context: context):
+            context = tags_views.tags()
             sql = query.call_args_list[0].args[0]
             self.assertIn("LEFT JOIN tag_locations loc ON loc.tag_id=tg.id", sql)
             self.assertIn("COUNT(t.id) AS task_count", sql)
@@ -103,15 +107,15 @@ class LocationAlertTests(unittest.TestCase):
         self.assertIn("1 tareas", html)
 
         with application.app.test_request_context("/tags"), \
-             patch.object(application, "load_config", return_value={}), \
-             patch.object(application, "q", return_value=rows) as query:
-            ordered = application._sidebar_tags_ordered()
+             patch_all("load_config", return_value={}), \
+             patch_all("q", return_value=rows) as query:
+            ordered = template_context._sidebar_tags_ordered()
             self.assertIn("LEFT JOIN tag_locations loc ON loc.tag_id=tg.id", query.call_args.args[0])
         with application.app.test_request_context("/tags"), \
-             patch.object(application, "load_config", return_value={}), \
-             patch.object(application, "_sidebar_filters_ordered", return_value=[]), \
-             patch.object(application, "_sidebar_tags_ordered", return_value=ordered):
-            groups = application.inject_sidebar_filters()["sidebar_tag_groups"]
+             patch_all("load_config", return_value={}), \
+             patch_all("_sidebar_filters_ordered", return_value=[]), \
+             patch_all("_sidebar_tags_ordered", return_value=ordered):
+            groups = template_context.inject_sidebar_filters()["sidebar_tag_groups"]
         sidebar_tags = {tag["name"]: tag for group in groups for tag in group["tags"]}
         self.assertTrue(sidebar_tags["Casa"]["has_location"])
         self.assertFalse(sidebar_tags["Trabajo"]["has_location"])

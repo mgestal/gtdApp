@@ -2,6 +2,10 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 import app as application
+import os
+from flask import session
+from tests.support import patch_all
+from gtd.views import admin as admin_views
 
 
 class OAuthRedirectTests(unittest.TestCase):
@@ -10,7 +14,7 @@ class OAuthRedirectTests(unittest.TestCase):
             "/admin", base_url="https://example.test/gtdApp/"
         ):
             self.assertEqual(
-                application.google_oauth_redirect_uri({}),
+                admin_views.google_oauth_redirect_uri({}),
                 "https://example.test/gtdApp/admin/google_oauth/callback",
             )
 
@@ -22,7 +26,7 @@ class OAuthRedirectTests(unittest.TestCase):
                 return {"app": {"google_oauth": {"redirect_uri": uri}}}
 
             valid = "https://example.test/gtdApp/admin/google_oauth/callback"
-            self.assertEqual(application.google_oauth_redirect_uri(configured(valid)), valid)
+            self.assertEqual(admin_views.google_oauth_redirect_uri(configured(valid)), valid)
             for uri in (
                 "http://example.test/gtdApp/admin/google_oauth/callback",
                 "https://other.test/gtdApp/admin/google_oauth/callback",
@@ -31,7 +35,7 @@ class OAuthRedirectTests(unittest.TestCase):
                 "https://user@example.test/gtdApp/admin/google_oauth/callback",
             ):
                 with self.subTest(uri=uri), self.assertRaises(ValueError):
-                    application.google_oauth_redirect_uri(configured(uri))
+                    admin_views.google_oauth_redirect_uri(configured(uri))
 
     def test_callback_reuses_exact_session_redirect_uri(self):
         redirect_uri = "https://example.test/gtdApp/admin/google_oauth/callback"
@@ -41,13 +45,13 @@ class OAuthRedirectTests(unittest.TestCase):
             "/admin/google_oauth/callback?state=state123&code=abc",
             base_url="http://example.test/gtdApp/",
         ):
-            application.session["google_oauth_state"] = "state123"
-            application.session["google_oauth_redirect_uri"] = redirect_uri
-            with patch.object(application, "_build_admin_google_flow", return_value=mock_flow) as build, \
-                 patch.object(application, "gmail_token_path") as token_path, \
-                 patch.object(application.os, "chmod"), \
-                 patch.object(application, "admin_required", return_value=True):
-                application.admin_google_oauth_callback()
+            session["google_oauth_state"] = "state123"
+            session["google_oauth_redirect_uri"] = redirect_uri
+            with patch_all("_build_admin_google_flow", return_value=mock_flow) as build, \
+                 patch_all("gmail_token_path") as token_path, \
+                 patch.object(os, "chmod"), \
+                 patch_all("admin_required", return_value=True):
+                admin_views.admin_google_oauth_callback()
                 build.assert_called_once_with(redirect_uri)
                 mock_flow.fetch_token.assert_called_once_with(
                     authorization_response=redirect_uri + "?state=state123&code=abc"
@@ -62,17 +66,17 @@ class OAuthRedirectTests(unittest.TestCase):
             "/admin", base_url="https://example.test/gtdApp/",
             method="POST", data={"action": "renew_google_token"},
         ):
-            with patch.object(application, "admin_required", return_value=True), \
-                 patch.object(application, "gmail_credentials_path") as credentials, \
-                 patch.object(application, "load_config", return_value={}), \
-                 patch.object(application, "_build_admin_google_flow", return_value=mock_flow) as build:
+            with patch_all("admin_required", return_value=True), \
+                 patch_all("gmail_credentials_path") as credentials, \
+                 patch_all("load_config", return_value={}), \
+                 patch_all("_build_admin_google_flow", return_value=mock_flow) as build:
                 credentials.return_value.exists.return_value = True
-                response = application.admin()
+                response = admin_views.admin()
                 redirect_uri = "https://example.test/gtdApp/admin/google_oauth/callback"
                 build.assert_called_once_with(redirect_uri)
                 self.assertEqual(response.location, "https://accounts.example/authorize")
-                self.assertEqual(application.session["google_oauth_redirect_uri"], redirect_uri)
-                self.assertEqual(application.session["google_oauth_state"], "state123")
+                self.assertEqual(session["google_oauth_redirect_uri"], redirect_uri)
+                self.assertEqual(session["google_oauth_state"], "state123")
 
 
 if __name__ == "__main__":

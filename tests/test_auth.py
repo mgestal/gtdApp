@@ -4,6 +4,8 @@ from unittest.mock import patch
 
 import app as application
 import auth
+from tests.support import patch_all
+from gtd.views import search as search_views
 
 PASSWORD = "una-contraseña-larga"
 SECRET = auth.new_totp_secret()
@@ -50,8 +52,8 @@ class LoginFlowTests(unittest.TestCase):
             patch.object(auth, "record_attempt", side_effect=lambda ip, ok, c=None: self.attempts.append((ip, ok, c))),
             patch.object(auth, "notify"),
             # Evita tocar la BD en el before_request general de la app
-            patch.object(application, "ensure_schema_updates"),
-            patch.object(application, "maybe_run_calendar_autosync"),
+            patch_all("ensure_schema_updates"),
+            patch_all("maybe_run_calendar_autosync"),
         ]
         for p in patches:
             p.start()
@@ -89,12 +91,12 @@ class LoginFlowTests(unittest.TestCase):
         with self.client.session_transaction() as s:
             self.assertTrue(s["auth_ok"])
             self.assertTrue(s.permanent)
-        with patch.object(application, "search", return_value="ok") as view:
+        with patch_all("search", return_value="ok") as view:
             application.app.view_functions["search"] = view
             try:
                 self.assertEqual(self.client.get("/search").status_code, 200)
             finally:
-                application.app.view_functions["search"] = application.search
+                application.app.view_functions["search"] = search_views.search
 
     def test_wrong_password_or_code(self):
         self.assertEqual(self.login(password="mala").status_code, 401)
@@ -142,12 +144,12 @@ class LoginFlowTests(unittest.TestCase):
     def test_disabled_auth_is_open(self):
         with patch.object(auth, "get_auth_cfg", return_value={}):
             self.assertEqual(self.client.get("/login").status_code, 302)
-            with patch.object(application, "search", return_value="ok") as view:
+            with patch_all("search", return_value="ok") as view:
                 application.app.view_functions["search"] = view
                 try:
                     self.assertEqual(self.client.get("/search").status_code, 200)
                 finally:
-                    application.app.view_functions["search"] = application.search
+                    application.app.view_functions["search"] = search_views.search
 
     def test_enabled_without_credentials_fails_closed(self):
         with patch.object(auth, "get_auth_cfg", return_value={"enabled": True}):

@@ -6,6 +6,9 @@ from unittest.mock import patch
 from jinja2 import ChoiceLoader, DictLoader, Environment, FileSystemLoader, select_autoescape
 
 import app as application
+from flask import request
+from tests.support import patch_all
+from gtd.views import tags as tags_views
 
 
 class TagDetailTimeTests(unittest.TestCase):
@@ -17,15 +20,15 @@ class TagDetailTimeTests(unittest.TestCase):
             {"id": 4, "title": "Sin fecha", "due_date": None, "due_time_text": None},
         ]
         with application.app.test_request_context("/tags/2"), \
-             patch.object(application, "q1", side_effect=[{"id": 2, "name": "agenda"}, {"c": len(rows)}]), \
-             patch.object(application, "q", return_value=rows) as query, \
-             patch.object(application, "cfg_int", return_value=25), \
-             patch.object(application, "load_config", return_value={}), \
-             patch.object(application, "load_tags_map", return_value={}), \
-             patch.object(application, "load_subtask_counts", return_value={}), \
-             patch.object(application, "load_subtasks_map", return_value={}), \
-             patch.object(application, "render_template", side_effect=lambda name, **context: context):
-            context = application.tag_detail(2)
+             patch_all("q1", side_effect=[{"id": 2, "name": "agenda"}, {"c": len(rows)}]), \
+             patch_all("q", return_value=rows) as query, \
+             patch_all("cfg_int", return_value=25), \
+             patch_all("load_config", return_value={}), \
+             patch_all("load_tags_map", return_value={}), \
+             patch_all("load_subtask_counts", return_value={}), \
+             patch_all("load_subtasks_map", return_value={}), \
+             patch_all("render_template", side_effect=lambda name, **context: context):
+            context = tags_views.tag_detail(2)
             self.assertIn("TIME_FORMAT(t.due_time, '%%H:%%i') AS due_time_text", query.call_args.args[0])
 
             env = Environment(
@@ -38,7 +41,7 @@ class TagDetailTimeTests(unittest.TestCase):
             env.globals.update(
                 url_for=lambda endpoint, **kwargs: "/",
                 reminder_badge=lambda task_id: "",
-                request=application.request,
+                request=request,
             )
             html = env.get_template("tag_detail.html").render(**context)
 

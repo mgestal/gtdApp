@@ -16,20 +16,14 @@ from gtd.core import app
 from gtd.db import commit, exec_sql, q, q1, rollback
 from gtd.lookups import find_folder_by_name, find_project_by_name_active, get_or_create_tag
 from gtd.quick_entry import (
-    _first_unquoted_match,
-    _remove_unquoted_matches,
-    _unquote_title,
-    _unquoted_matches,
     extract_due_date_from_quick,
     extract_due_time_from_quick,
     extract_priority_from_quick,
     extract_recurrence_from_quick,
-    FOLDER_RE,
     parse_due_time_token,
+    parse_quick_entry,
     parse_tags_csv,
     parse_task_quick_entry,
-    PROJ_RE,
-    QUICK_TAG_RE,
     RECURRENCE_PATTERNS,
 )
 from gtd.kanban_board import _project_board_is_initialized, _project_board_status_for_task
@@ -46,8 +40,6 @@ from gtd.tasks_ops import complete_nonrecurring_task
 
 @app.route("/tasks/create", methods=["POST"])
 def task_create():
-    import re
-
     raw = (request.form.get("quick") or "").strip()
     due = request.form.get("due_date") or None
     due_time_raw = (request.form.get("due_time") or "").strip()
@@ -58,49 +50,14 @@ def task_create():
         flash("El nombre de la tarea es obligatorio.", "error")
         return redirect(request.referrer or url_for("home"))
 
-    raw_work = raw
-
-    # 1) Extraer etiquetas tipo @etiqueta
-    tags = [match.group(1) for match in _unquoted_matches(QUICK_TAG_RE, raw_work)]
-    # 2) Extraer fecha desde texto rápido
-    detected_due_date = None
-    detected_due_time = None
-    detected_priority = None
     try:
-        detected_priority, raw_work = extract_priority_from_quick(raw_work)
-        if not due:
-            detected_due_date, raw_work = extract_due_date_from_quick(raw_work)
-        if not due_time_raw:
-            detected_due_time, raw_work = extract_due_time_from_quick(raw_work)
+        entry = parse_quick_entry(raw, parse_date=not due, parse_time=not due_time_raw, recurrence=recurrence)
     except ValueError as e:
         flash(str(e), "error")
         return redirect(request.referrer or url_for("home"))
-
-    # 3) Extraer recurrencia desde texto natural y quitarla del título.
-    recurrence, raw_work = extract_recurrence_from_quick(raw_work, recurrence)
-
-    # 4) Extraer posible proyecto desde #texto o #"texto con espacios"
-    project_name = None
-    m_proj = _first_unquoted_match(PROJ_RE, raw_work)
-    if m_proj:
-        candidate_name = (m_proj.group(1) or m_proj.group(2) or '').strip()
-        if not re.fullmatch(r'\d{2}-\d{2}-\d{4}', candidate_name):
-            project_name = candidate_name
-
-    # 4b) Extraer posible carpeta desde f:texto o f:"texto con espacios"
-    folder_name_quick = None
-    m_folder = _first_unquoted_match(FOLDER_RE, raw_work)
-    if m_folder:
-        folder_name_quick = (m_folder.group(1) or m_folder.group(2) or '').strip()
-
-    # 5) Limpiar el texto para obtener el título real
-    title = raw_work
-    title = _remove_unquoted_matches(title, QUICK_TAG_RE)
-    # title = re.sub(r'#\d{2}-\d{2}-\d{4}\b', '', title)
-    title = _remove_unquoted_matches(title, PROJ_RE)
-    title = _remove_unquoted_matches(title, FOLDER_RE)
-    title = _unquote_title(title)
-    title = re.sub(r'\s+', ' ', title).strip(" -_,.;:")
+    tags, title, recurrence = entry.tags, entry.title, entry.recurrence
+    project_name, folder_name_quick = entry.project, entry.folder
+    detected_due_date, detected_due_time, detected_priority = entry.due_date, entry.due_time, entry.priority
 
     if not title:
         flash("No se detectó un título válido tras extraer etiquetas, fecha, recurrencia y proyecto.", "error")

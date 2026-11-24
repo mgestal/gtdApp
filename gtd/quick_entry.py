@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 from typing import List, Optional, Tuple
 
@@ -299,3 +300,64 @@ def parse_tags_csv(tags_csv: str) -> List[str]:
             tags.append(normalize_name(m.group(1)))
 
     return tags
+
+
+@dataclass
+class QuickEntry:
+    """Resultado de interpretar una línea de entrada rápida."""
+    title: str
+    tags: List[str] = field(default_factory=list)
+    project: Optional[str] = None
+    folder: Optional[str] = None
+    due_date: Optional[date] = None
+    due_time: Optional[time] = None
+    priority: Optional[int] = None
+    recurrence: Optional[str] = None
+
+
+_DATE_LIKE_PROJECT_RE = re.compile(r"\d{2}-\d{2}-\d{4}")
+
+
+def parse_quick_entry(raw: str, *, parse_date: bool = True, parse_time: bool = True,
+                      recurrence: Optional[str] = None) -> QuickEntry:
+    """Interpreta ``Tarea @etiqueta #proyecto f:carpeta *fecha HH:MM ^prioridad cada …``.
+
+    Es la sintaxis del Inbox (``/tasks/create``). Orden de extracción:
+    etiquetas (sobre el texto original) → prioridad → fecha → hora → recurrencia →
+    proyecto → carpeta → título. El texto entre comillas no se interpreta.
+
+    ``parse_date``/``parse_time`` a False cuando el formulario ya trae fecha/hora
+    (el token queda entonces en el título). ``recurrence`` es la regla del formulario,
+    que prevalece sobre ``cada …``. Lanza ``ValueError`` si una fecha u hora es inválida.
+    """
+    work = raw or ""
+    tags = [match.group(1) for match in _unquoted_matches(QUICK_TAG_RE, work)]
+
+    priority, work = extract_priority_from_quick(work)
+    due_date = due_time = None
+    if parse_date:
+        due_date, work = extract_due_date_from_quick(work)
+    if parse_time:
+        due_time, work = extract_due_time_from_quick(work)
+    recurrence, work = extract_recurrence_from_quick(work, recurrence)
+
+    project = None
+    m_proj = _first_unquoted_match(PROJ_RE, work)
+    if m_proj:
+        candidate = (m_proj.group(1) or m_proj.group(2) or "").strip()
+        if not _DATE_LIKE_PROJECT_RE.fullmatch(candidate):
+            project = candidate
+
+    folder = None
+    m_folder = _first_unquoted_match(FOLDER_RE, work)
+    if m_folder:
+        folder = (m_folder.group(1) or m_folder.group(2) or "").strip()
+
+    title = _remove_unquoted_matches(work, QUICK_TAG_RE)
+    title = _remove_unquoted_matches(title, PROJ_RE)
+    title = _remove_unquoted_matches(title, FOLDER_RE)
+    title = _unquote_title(title)
+    title = re.sub(r"\s+", " ", title).strip(" -_,.;:")
+
+    return QuickEntry(title=title, tags=tags, project=project, folder=folder, due_date=due_date,
+                      due_time=due_time, priority=priority, recurrence=recurrence)

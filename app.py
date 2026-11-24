@@ -27,6 +27,7 @@ from reminders import (REMINDER_SCHEMA, db_time, load_reminder_token, local_to_u
                        notification_hours, scheduled_at, send_telegram, utc_now,
                        within_notification_hours)
 from browser_push import KEY_PATH, PUSH_SCHEMA, WebPushException, endpoint_hash, public_key, send_browser_push, validate_subscription
+from browser_push import DEFAULT_PUSH_DURATION, PUSH_DURATIONS, push_expiry, push_usable_sql
 
 from flask import Flask, abort, flash, g, redirect, render_template, request, session, url_for, send_file, jsonify, make_response
 from markupsafe import Markup, escape as html_escape
@@ -1536,6 +1537,7 @@ def ensure_schema_updates() -> None:
     exec_sql("ALTER TABLE task_reminders ADD COLUMN IF NOT EXISTS send_browser TINYINT(1) NOT NULL DEFAULT 0")
     for statement in PUSH_SCHEMA:
         exec_sql(statement)
+    exec_sql("ALTER TABLE push_subscriptions ADD COLUMN IF NOT EXISTS expires_at_utc DATETIME NULL AFTER active")
     exec_sql(
         "CREATE TABLE IF NOT EXISTS tag_locations ("
         "tag_id INT NOT NULL PRIMARY KEY, latitude DOUBLE NOT NULL, "
@@ -9944,15 +9946,19 @@ def admin_push_subscribe():
             raise ValueError("La ruta base es demasiado larga.")
         public_key()
         now = utc_now()
+        expires_at = push_expiry(data.get("duration", DEFAULT_PUSH_DURATION), now)
         exec_sql(
-            "INSERT INTO push_subscriptions(endpoint_hash,endpoint,p256dh,auth_key,device_name,scope_path,origin,created_at_utc,updated_at_utc) "
-            "VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE "
+            "INSERT INTO push_subscriptions(endpoint_hash,endpoint,p256dh,auth_key,device_name,scope_path,origin,"
+            "expires_at_utc,created_at_utc,updated_at_utc) "
+            "VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE "
             "p256dh=VALUES(p256dh),auth_key=VALUES(auth_key),device_name=VALUES(device_name),"
-            "scope_path=VALUES(scope_path),origin=VALUES(origin),active=1,updated_at_utc=VALUES(updated_at_utc)",
-            (endpoint_hash(endpoint), endpoint, p256dh, auth_key, name.strip(), scope_path, origin, now, now),
+            "scope_path=VALUES(scope_path),origin=VALUES(origin),active=1,"
+            "expires_at_utc=VALUES(expires_at_utc),updated_at_utc=VALUES(updated_at_utc)",
+            (endpoint_hash(endpoint), endpoint, p256dh, auth_key, name.strip(), scope_path, origin,
+             expires_at, now, now),
         )
         commit()
-        return jsonify({"ok": True})
+        return jsonify({"ok": True, "expires_at_utc": expires_at.isoformat() if expires_at else None})
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     except (pymysql.MySQLError, OSError) as exc:
@@ -9978,8 +9984,21 @@ def admin_push_status():
     data = request.get_json(silent=True)
     if not isinstance(data, dict) or not isinstance(data.get("endpoint"), str):
         return jsonify({"ok": False, "error": "Suscripción no válida."}), 400
-    row = q1("SELECT id, device_name FROM push_subscriptions WHERE endpoint_hash=%s AND active=1", (endpoint_hash(data["endpoint"]),))
-    return jsonify({"ok": True, "registered": bool(row), "name": row["device_name"] if row else None})
+    row = q1("SELECT id, device_name, expires_at_utc, " + push_usable_sql() + " AS usable "
+             "FROM push_subscriptions WHERE endpoint_hash=%s AND active=1", (endpoint_hash(data["endpoint"]),))
+    if row and not row["usable"]:
+        return jsonify({"ok": True, "registered": False, "expired": True, "name": row["device_name"],
+                        "expires_at": push_expiry_local(row["expires_at_utc"])})
+    return jsonify({"ok": True, "registered": bool(row), "name": row["device_name"] if row else None,
+                    "expires_at": push_expiry_local(row["expires_at_utc"]) if row else None})
+
+
+def push_expiry_local(expires_at_utc: Optional[datetime]) -> Optional[str]:
+    """Caducidad en hora local (dd-mm-aaaa HH:MM) o None si no caduca."""
+    if not expires_at_utc:
+        return None
+    tz = ZoneInfo(load_config().get("app", {}).get("timezone", "Europe/Madrid"))
+    return expires_at_utc.replace(tzinfo=ZoneInfo("UTC")).astimezone(tz).strftime("%d-%m-%Y %H:%M")
 
 
 @app.route("/admin/push/<int:subscription_id>/delete", methods=["POST"])
@@ -9998,9 +10017,10 @@ def admin_push_test():
         return jsonify({"ok": False, "error": "Suscripción no válida."}), 400
     if not push_test_within_hours():
         return jsonify({"ok": False, "error": "La prueba no se envía fuera del horario de notificaciones."}), 400
-    subscription = q1("SELECT * FROM push_subscriptions WHERE endpoint_hash=%s AND active=1", (endpoint_hash(data["endpoint"]),))
+    subscription = q1("SELECT * FROM push_subscriptions WHERE endpoint_hash=%s AND " + push_usable_sql(),
+                      (endpoint_hash(data["endpoint"]),))
     if not subscription:
-        return jsonify({"ok": False, "error": "Este dispositivo no está suscrito."}), 404
+        return jsonify({"ok": False, "error": "Este dispositivo no está suscrito o su activación ha expirado."}), 404
     error, code = send_push_test(subscription)
     if error:
         return jsonify({"ok": False, "error": error}), code
@@ -10036,7 +10056,7 @@ def admin_push_test_all():
     require_push_admin()
     if not push_test_within_hours():
         return jsonify({"ok": False, "error": "La prueba no se envía fuera del horario de notificaciones."}), 400
-    subscriptions = q("SELECT * FROM push_subscriptions WHERE active=1 ORDER BY id")
+    subscriptions = q("SELECT * FROM push_subscriptions WHERE " + push_usable_sql() + " ORDER BY id")
     if not subscriptions:
         return jsonify({"ok": False, "error": "No hay dispositivos activos suscritos."}), 400
     results = []
@@ -10117,7 +10137,14 @@ def load_notification_status(cfg):
         "end_time": end_time.strftime("%H:%M"),
         "within_hours": within_notification_hours(utc_now(), ZoneInfo(timezone_name), start_time, end_time),
         "timezone": timezone_name,
-        "devices": q("SELECT id, device_name, active, created_at_utc, updated_at_utc FROM push_subscriptions ORDER BY id"),
+        "devices": [
+            dict(device, expires_local=push_expiry_local(device["expires_at_utc"]),
+                 expired=bool(device["expires_at_utc"] and device["expires_at_utc"] <= utc_now()))
+            for device in q("SELECT id, device_name, active, expires_at_utc, created_at_utc, updated_at_utc "
+                            "FROM push_subscriptions ORDER BY id")
+        ],
+        "push_durations": [(key, label) for key, (label, _delta) in PUSH_DURATIONS.items()],
+        "push_default_duration": DEFAULT_PUSH_DURATION,
         "push_csrf": session["push_csrf"],
         "push_errors": push_errors[:10],
     }

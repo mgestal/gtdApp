@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import tempfile
+from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -27,6 +28,7 @@ PUSH_SCHEMA = (
         scope_path VARCHAR(255) NOT NULL,
         origin VARCHAR(255) NOT NULL,
         active TINYINT(1) NOT NULL DEFAULT 1,
+        expires_at_utc DATETIME DEFAULT NULL,
         created_at_utc DATETIME NOT NULL,
         updated_at_utc DATETIME NOT NULL,
         UNIQUE KEY uq_push_endpoint (endpoint_hash)
@@ -55,6 +57,33 @@ PUSH_SCHEMA = (
             REFERENCES push_subscriptions(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
 )
+
+
+# Duración de la activación de un dispositivo (None = sin caducidad).
+PUSH_DURATIONS: dict[str, tuple[str, timedelta | None]] = {
+    "1d": ("1 día", timedelta(days=1)),
+    "1m": ("1 mes (30 días)", timedelta(days=30)),
+    "forever": ("Para siempre", None),
+}
+DEFAULT_PUSH_DURATION = "forever"
+
+# Condición SQL de suscripción utilizable (alias opcional, p.ej. "s.").
+def push_usable_sql(alias: str = "") -> str:
+    return (f"{alias}active=1 AND ({alias}expires_at_utc IS NULL "
+            f"OR {alias}expires_at_utc > UTC_TIMESTAMP())")
+
+
+def push_expiry(duration: object, now_utc: datetime) -> datetime | None:
+    """Fecha UTC de caducidad para la duración elegida; ValueError si no es válida."""
+    if duration not in PUSH_DURATIONS:
+        raise ValueError("Duración de activación no válida.")
+    delta = PUSH_DURATIONS[duration][1]
+    return None if delta is None else now_utc + delta
+
+
+def push_expired(subscription: dict, now_utc: datetime) -> bool:
+    expires = subscription.get("expires_at_utc")
+    return expires is not None and expires <= now_utc
 
 
 def public_key(create: bool = False) -> str:

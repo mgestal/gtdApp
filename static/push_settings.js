@@ -3,6 +3,7 @@
   if (!root) return;
   const status = document.getElementById("browser-notification-status");
   const name = document.getElementById("push-device-name");
+  const duration = document.getElementById("push-duration");
   const results = document.getElementById("push-test-results");
   const supported = window.isSecureContext && "serviceWorker" in navigator &&
     "PushManager" in window && "Notification" in window;
@@ -48,7 +49,13 @@
       return;
     }
     const data = await post(root.dataset.statusUrl, {endpoint: subscription.endpoint});
-    status.textContent = data.registered ? "Suscrito: " + data.name : "Suscripción local no registrada en el servidor.";
+    if (data.expired) {
+      status.textContent = "La activación de " + data.name + " expiró el " + data.expires_at + "; vuelve a activarla.";
+    } else if (data.registered) {
+      status.textContent = "Suscrito: " + data.name + (data.expires_at ? " (hasta " + data.expires_at + ")" : " (sin caducidad)");
+    } else {
+      status.textContent = "Suscripción local no registrada en el servidor.";
+    }
   }
 
   function showError(error) {
@@ -68,13 +75,15 @@
       let subscription = await worker.pushManager.getSubscription();
       if (subscription) {
         const existing = await post(root.dataset.statusUrl, {endpoint: subscription.endpoint});
-        if (!existing.registered) {
+        // Si solo expiró la activación, se reutiliza la suscripción y el servidor renueva la caducidad.
+        if (!existing.registered && !existing.expired) {
           if (!await subscription.unsubscribe()) throw new Error("No se pudo renovar la suscripción anterior.");
           subscription = null;
         }
       }
       if (!subscription) subscription = await worker.pushManager.subscribe({userVisibleOnly: true, applicationServerKey});
-      await post(root.dataset.subscribeUrl, {subscription: subscription.toJSON(), name: name.value.trim(), origin: location.origin});
+      await post(root.dataset.subscribeUrl, {subscription: subscription.toJSON(), name: name.value.trim(),
+                                            origin: location.origin, duration: duration ? duration.value : "forever"});
       location.reload();
     } catch (error) {
       showError(error);

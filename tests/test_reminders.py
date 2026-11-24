@@ -125,6 +125,18 @@ class BrowserPushTests(unittest.TestCase):
                 self.assertEqual(response.status_code, 400)
                 self.assertIn("No hay dispositivos", response.get_json()["error"])
 
+    def test_push_expiry_durations(self):
+        from browser_push import push_expired, push_expiry
+        now = datetime(2026, 11, 24, 10, 0)
+        self.assertEqual(push_expiry("1d", now), datetime(2026, 11, 25, 10, 0))
+        self.assertEqual(push_expiry("1m", now), now + timedelta(days=30))
+        self.assertIsNone(push_expiry("forever", now))
+        with self.assertRaises(ValueError):
+            push_expiry("1y", now)
+        self.assertFalse(push_expired({"expires_at_utc": None}, now))
+        self.assertTrue(push_expired({"expires_at_utc": now}, now))
+        self.assertFalse(push_expired({"expires_at_utc": now + timedelta(seconds=1)}, now))
+
     def test_validate_subscription_rejects_non_push_endpoints_and_bad_keys(self):
         self.assertEqual(validate_subscription(example_subscription())[0],
                          "https://fcm.googleapis.com/fcm/send/test")
@@ -308,13 +320,26 @@ class WorkerIntegrationTests(unittest.TestCase):
             self.assertEqual(self.scan(send)["sent"], 1)
             send.assert_called_once()
 
-    def add_push_device(self, name):
+    def add_push_device(self, name, expires_at=None):
         with self.conn.cursor() as cur:
             cur.execute("INSERT INTO push_subscriptions(endpoint_hash,endpoint,p256dh,auth_key,device_name,"
-                        "scope_path,origin,created_at_utc,updated_at_utc) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                        "scope_path,origin,expires_at_utc,created_at_utc,updated_at_utc) "
+                        "VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                         (name, f"https://fcm.googleapis.com/{name}", "key", "auth", name,
-                         "/gtdApp", "https://example.test", self.now, self.now))
+                         "/gtdApp", "https://example.test", expires_at, self.now, self.now))
         self.conn.commit()
+
+    def test_expired_device_activation_is_skipped(self):
+        self.add_push_device("test-device-expired", expires_at=self.now - timedelta(minutes=1))
+        self.add_push_device("test-device-valid", expires_at=self.now + timedelta(days=1))
+        self.add_reminder("fixed", when=self.now - timedelta(minutes=1))
+        with self.conn.cursor() as cur:
+            cur.execute("UPDATE task_reminders SET send_telegram=0,send_browser=1 WHERE task_id=%s", (self.task_id,))
+        self.conn.commit()
+        with patch("reminders.send_telegram") as telegram, patch("reminders.send_browser_push") as push:
+            self.scan(telegram)
+            push.assert_called_once()
+            self.assertEqual(push.call_args.args[0]["device_name"], "test-device-valid")
 
     def test_channels_and_device_retry_are_independent(self):
         from requests.exceptions import ConnectionError
@@ -524,6 +549,20 @@ class WebIntegrationTests(unittest.TestCase):
         self.assertEqual(row["scope_path"], "")
         self.assertEqual(self.client.post("/admin/push/status", json={"endpoint": subscription["endpoint"]},
                                           headers=headers).get_json()["registered"], True)
+        with patch.object(self.application, "public_key", return_value="key"):
+            result = self.client.post("/admin/push/subscribe", json=dict(payload, duration="1d"),
+                                      headers=headers, base_url="https://localhost")
+        self.assertIsNotNone(result.get_json()["expires_at_utc"])
+        with self.conn.cursor() as cur:
+            cur.execute("UPDATE push_subscriptions SET expires_at_utc=UTC_TIMESTAMP() - INTERVAL 1 MINUTE "
+                        "WHERE device_name='Mi navegador'")
+        self.conn.commit()
+        status = self.client.post("/admin/push/status", json={"endpoint": subscription["endpoint"]},
+                                  headers=headers).get_json()
+        self.assertEqual((status["registered"], status["expired"]), (False, True))
+        bad = self.client.post("/admin/push/subscribe", json=dict(payload, duration="1y"),
+                               headers=headers, base_url="https://localhost")
+        self.assertEqual(bad.status_code, 400)
         self.assertEqual(self.client.post(f"/admin/push/{row['id']}/delete", json={}, headers=headers).status_code, 200)
 
     def test_reminder_requires_at_least_one_channel(self):

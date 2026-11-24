@@ -98,6 +98,13 @@
             <p><strong>Notificaciones del navegador:</strong> <span id="browser-notification-status" role="status">No se ha cargado la configuración. Comprueba la conexión y recarga la página.</span></p>
             <label class="label" for="push-device-name">Nombre de este dispositivo</label>
             <input class="input" id="push-device-name" maxlength="100" placeholder="Por ejemplo: móvil personal">
+            <label class="label" for="push-duration">Duración de la activación</label>
+            <select class="input" id="push-duration">
+              {% for key, label in notification_status.push_durations %}
+                <option value="{{ key }}" {% if key == notification_status.push_default_duration %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+            <div class="hint">Pasado ese tiempo el dispositivo deja de recibir avisos. Para ampliarlo, vuelve a pulsar «Activar en este dispositivo» y elige otra duración.</div>
             <div class="row">
               <button type="button" class="btn btn-soft" id="push-enable">Activar en este dispositivo</button>
                <button type="button" class="btn btn-soft" id="push-disable">Desactivar en este dispositivo</button>
@@ -112,7 +119,12 @@
             {% if notification_status.devices %}
               <ul>
               {% for device in notification_status.devices %}
-                <li>{{ device.device_name }} — {{ 'activo' if device.active else 'suscripción caducada; volver a activar' }} — registrado {{ device.created_at_utc.strftime('%d-%m-%Y %H:%M') }} UTC
+                <li>{{ device.device_name }} —
+                  {% if not device.active %}suscripción caducada; volver a activar
+                  {% elif device.expired %}activación expirada el {{ device.expires_local }}; volver a activar
+                  {% elif device.expires_local %}activo hasta {{ device.expires_local }}
+                  {% else %}activo sin caducidad{% endif %}
+                  — registrado {{ device.created_at_utc.strftime('%d-%m-%Y %H:%M') }} UTC
                   <button type="button" class="btn btn-soft js-push-remove" data-url="{{ url_for('admin_push_delete', subscription_id=device.id) }}" data-name="{{ device.device_name }}">Eliminar</button>
                 </li>
               {% endfor %}
@@ -125,7 +137,7 @@
               {% endfor %}</ul>
             {% endif %}
           </div>
-          <script src="{{ url_for('static', filename='push_settings.js', v='2') }}"></script>
+          <script src="{{ url_for('static', filename='push_settings.js', v='3') }}"></script>
         </div>
 
         <div class="card" id="ubicacion" style="margin-top:14px;">

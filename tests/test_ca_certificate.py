@@ -86,7 +86,7 @@ class NotificationCertificateTests(unittest.TestCase):
              patch.object(application, "load_folder_tree", return_value=[]), \
              patch.object(application, "load_notification_status", return_value=status):
             page = application.admin_notifications()
-            self.assertIn("/static/push_settings.js?v=2", page)
+            self.assertIn("/static/push_settings.js?v=3", page)
             self.assertIn('id="push-test-all"', page)
 
 

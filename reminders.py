@@ -5,7 +5,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
-from browser_push import PUSH_SCHEMA, WebPushException, send_browser_push
+from browser_push import PUSH_SCHEMA, WebPushException, push_expired, send_browser_push
 from py_vapid import VapidException
 from requests.exceptions import RequestException
 
@@ -152,7 +152,9 @@ def send_push_occurrence(conn: Any, reminder: dict[str, Any], scheduled: datetim
             return
         if occurrence["status"] in ("pending", "no_devices"):
             cur.execute("INSERT INTO push_deliveries(occurrence_id,subscription_id,status,updated_at_utc) "
-                        "SELECT %s,id,'pending',%s FROM push_subscriptions WHERE active=1", (occurrence["id"], now))
+                        "SELECT %s,id,'pending',%s FROM push_subscriptions "
+                        "WHERE active=1 AND (expires_at_utc IS NULL OR expires_at_utc > %s)",
+                        (occurrence["id"], now, now))
             if cur.rowcount:
                 cur.execute("UPDATE push_occurrences SET status='initialized' WHERE id=%s", (occurrence["id"],))
         cur.execute("SELECT id FROM push_deliveries WHERE occurrence_id=%s AND status IN ('pending','failed')",
@@ -181,6 +183,11 @@ def send_push_occurrence(conn: Any, reminder: dict[str, Any], scheduled: datetim
             if row and not row["active"] and row["status"] in ("pending", "failed"):
                 cur.execute("UPDATE push_deliveries SET status='invalid',updated_at_utc=%s,last_error=%s WHERE id=%s",
                             (utc_now(), "Suscripción caducada; vuelve a activar el dispositivo.", delivery_id))
+                conn.commit()
+                continue
+            if row and push_expired(row, utc_now()) and row["status"] in ("pending", "failed"):
+                cur.execute("UPDATE push_deliveries SET status='expired',updated_at_utc=%s,last_error=%s WHERE id=%s",
+                            (utc_now(), "Activación del dispositivo expirada.", delivery_id))
                 conn.commit()
                 continue
             if (not row or row["status"] not in ("pending", "failed") or not row["send_browser"]

@@ -313,8 +313,14 @@ def init_auth(app: Flask, *, load_config, q1, exec_sql, commit) -> None:
     _hooks.update(load_config=load_config, q1=q1, exec_sql=exec_sql, commit=commit)
 
     auth = get_auth_cfg()
-    if auth.get("secret_key") and not app.config.get("GTD_SECRET_FROM_ENV"):
+    # La clave aleatoria de config.json manda sobre GTD_SECRET_KEY del entorno
+    # (que puede ser débil, p. ej. la de /etc/apache2/envvars).
+    if auth.get("secret_key"):
         app.config["SECRET_KEY"] = auth["secret_key"]
+    elif auth_enabled(auth):
+        weak = {"", "CHANGE_ME_IN_PROD", "1234567890"}
+        if str(app.config.get("SECRET_KEY") or "") in weak or len(str(app.config["SECRET_KEY"])) < 32:
+            raise RuntimeError("Login activado con SECRET_KEY débil: ejecuta manage_auth.py setup")
     app.config["SESSION_COOKIE_NAME"] = "gtdapp_session"
     app.config["SESSION_COOKIE_HTTPONLY"] = True
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"

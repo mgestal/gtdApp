@@ -2,7 +2,8 @@
 
 Sintaxis: ``Tarea @etiqueta #proyecto f:carpeta *fecha HH:MM ^prioridad cada …``.
 ``parse_quick_entry`` es la cadena completa que usa el Inbox (/tasks/create);
-``parse_task_quick_entry`` es la que usa /tasks/quick_add tras extraer fecha/hora.
+``parse_task_quick_entry`` es su último paso (etiquetas/proyecto/carpeta/título), que también
+usan editar tarea y la importación de Gmail/Calendar.
 """
 import unittest
 from datetime import date, time
@@ -176,14 +177,23 @@ class QuickAddAndTagsCsvTests(QuickEntryTestCase):
         self.assertEqual(qe.parse_task_quick_entry("Leer https://example.com/a#b @web"),
                          ("Leer https://example.com/a#b", ["web"], None, None))
 
-    def test_parse_task_quick_entry_stops_tags_at_punctuation(self):
-        # /tasks/quick_add usa TAG_RE (más estricta que la del Inbox)
-        self.assertEqual(qe.parse_task_quick_entry("Comprar @casa, pan")[1], ["casa"])
+    def test_parse_task_quick_entry_uses_inbox_rules(self):
+        # Mismas reglas que el Inbox: puntuación fuera, emojis y puntos internos dentro,
+        # "#dd-mm-aaaa" no es proyecto y el título se limpia de separadores finales.
+        self.assertEqual(qe.parse_task_quick_entry("Comprar @casa, pan @📞llamar @inbox.calendar #12-12-2026 -"),
+                         ("Comprar pan", ["casa", "📞llamar", "inbox.calendar"], None, None))
+
+    def test_inbox_and_quick_add_parse_the_same(self):
+        text = "Llamar (@finde) @📞llamar #\"Mi proyecto\" *+1 10:00 ^media cada mes"
+        entry = self.parse(text)
+        self.assertEqual(qe.parse_task_quick_entry(text.replace("*+1 10:00 ^media cada mes", "")),
+                         (entry.title, entry.tags, entry.project, entry.folder))
 
     def test_parse_tags_csv(self):
         self.assertEqual(qe.parse_tags_csv("@NextAction, @Casa"), ["NextAction", "Casa"])
         self.assertEqual(qe.parse_tags_csv("next casa"), ["next", "casa"])
         self.assertEqual(qe.parse_tags_csv("  "), [])
+        self.assertEqual(qe.parse_tags_csv("@📞llamar, casa."), ["📞llamar", "casa"])
 
 
 if __name__ == "__main__":

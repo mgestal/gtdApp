@@ -18,8 +18,6 @@ from gtd.lookups import find_folder_by_name, find_project_by_name_active, get_or
 from gtd.quick_entry import (
     extract_due_date_from_quick,
     extract_due_time_from_quick,
-    extract_priority_from_quick,
-    extract_recurrence_from_quick,
     parse_due_time_token,
     parse_quick_entry,
     parse_tags_csv,
@@ -184,11 +182,7 @@ def task_quick_add():
         return redirect(request.form.get("next") or request.referrer or url_for("home"))
 
     try:
-        detected_priority, raw = extract_priority_from_quick(raw)
-        due_date, raw = extract_due_date_from_quick(raw)
-        detected_due_time = None
-        if not due_time_raw:
-            detected_due_time, raw = extract_due_time_from_quick(raw)
+        entry = parse_quick_entry(raw, parse_time=not due_time_raw)
     except ValueError as e:
         flash(str(e), "error")
         return redirect(request.form.get("next") or request.referrer or url_for("home"))
@@ -201,14 +195,13 @@ def task_quick_add():
             flash("Hora inválida. Usa formato HH:MM.", "error")
             return redirect(request.form.get("next") or request.referrer or url_for("home"))
     else:
-        due_time = detected_due_time
+        due_time = entry.due_time
 
-    if detected_priority is not None:
-        priority = detected_priority
+    if entry.priority is not None:
+        priority = entry.priority
 
-    recurrence, raw = extract_recurrence_from_quick(raw)
-
-    title, tags, quick_project_name, quick_folder_name = parse_task_quick_entry(raw)
+    title, tags, due_date, recurrence = entry.title, entry.tags, entry.due_date, entry.recurrence
+    quick_project_name, quick_folder_name = entry.project, entry.folder
     
     if not title:
         flash("No se detectó un título válido (deja texto fuera de @etiquetas, #proyecto y f:carpeta).", "error")

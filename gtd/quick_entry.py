@@ -19,7 +19,15 @@ RECURRENCE_PATTERNS = {
 }
 
 
+# URLs literales: nada dentro de ellas es un token (#fragmento, @usuario, 12:30, 2026/11…).
+URL_RE = re.compile(r'(?:https?://|www\.)[^\s"<>]+', re.IGNORECASE)
+
+
 def _mask_quoted_text(raw_text: str) -> str:
+    """Copia del texto con lo que no debe interpretarse (comillas y URLs) cambiado por espacios.
+
+    Mantiene las posiciones, así que una coincidencia en la copia sirve para recortar el original.
+    """
     chars = list(raw_text or "")
     in_quotes = False
     for index, char in enumerate(chars):
@@ -28,6 +36,8 @@ def _mask_quoted_text(raw_text: str) -> str:
             chars[index] = " "
         elif in_quotes:
             chars[index] = " "
+    for match in URL_RE.finditer(raw_text or ""):
+        chars[match.start():match.end()] = " " * (match.end() - match.start())
     return "".join(chars)
 
 
@@ -67,7 +77,9 @@ def extract_recurrence_from_quick(raw_text: str, recurrence: Optional[str] = Non
 
 
 TAG_RE = re.compile(r"@([A-Za-z0-9_.\-áéíóúÁÉÍÓÚñÑ]+)")
-QUICK_TAG_RE = re.compile(r'@([^\s@#]+)')
+# Etiqueta del Inbox: cualquier carácter salvo espacio, @ y #; la puntuación final
+# (",", ".", ";", ":", "!", "?", ")") no forma parte del nombre pero sí del token.
+QUICK_TAG_RE = re.compile(r'@([^\s@#]+?)[,.;:!?)\]]*(?=\s|$|[@#])')
 # Grupo 1 = nombre entrecomillado (con espacios), grupo 2 = nombre sin comillas (sin espacios)
 PROJ_RE = re.compile(r'#(?:"([^"]+)"|([A-Za-z0-9_\-áéíóúÁÉÍÓÚñÑ][A-Za-z0-9_\-áéíóúÁÉÍÓÚñÑ]*))')
 FOLDER_RE = re.compile(r'(?<![a-zA-Z])f:(?:"([^"]+)"|([A-Za-z0-9_\-áéíóúÁÉÍÓÚñÑ][A-Za-z0-9_\-áéíóúÁÉÍÓÚñÑ]*))')

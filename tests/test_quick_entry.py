@@ -72,14 +72,28 @@ class FullEntryTests(QuickEntryTestCase):
         with self.assertRaises(ValueError):
             self.parse("Tarea 25:00")
 
-    @unittest.expectedFailure  # Bug conocido: el fragmento de la URL se toma como #proyecto
     def test_url_fragment_is_not_a_project(self):
-        entry = self.parse("Leer https://example.com/a#seccion")
-        self.assertEqual((entry.title, entry.project), ("Leer https://example.com/a#seccion", None))
+        entry = self.parse("Leer https://example.com/a#seccion #Lecturas")
+        self.assertEqual((entry.title, entry.project), ("Leer https://example.com/a#seccion", "Lecturas"))
 
-    @unittest.expectedFailure  # Bug conocido: la puntuación queda dentro de la etiqueta ("casa,")
+    def test_markdown_link_with_fragment_is_kept(self):
+        entry = self.parse("Leer [artículo](https://example.com/a#b) @web")
+        self.assertEqual((entry.title, entry.project, entry.tags),
+                         ("Leer [artículo](https://example.com/a#b)", None, ["web"]))
+
+    def test_nothing_inside_urls_is_a_token(self):
+        text = "Ver www.example.com/@autor/2026/11/24?t=12:30&f:x cada semana"
+        entry = self.parse(text)
+        self.assertEqual(entry, qe.QuickEntry(title="Ver www.example.com/@autor/2026/11/24?t=12:30&f:x",
+                                              recurrence="FREQ=WEEKLY;INTERVAL=1"))
+
     def test_tag_does_not_include_trailing_punctuation(self):
-        self.assertEqual(self.parse("Comprar @casa, pan").tags, ["casa"])
+        entry = self.parse("Comprar @casa, @super. pan")
+        self.assertEqual((entry.tags, entry.title), (["casa", "super"], "Comprar pan"))
+        self.assertEqual(self.parse("Llamar (@finde) @tarde! @noche?").tags, ["finde", "tarde", "noche"])
+
+    def test_tag_keeps_inner_dots_and_symbols(self):
+        self.assertEqual(self.parse("Revisar @inbox.calendar @📞llamar").tags, ["inbox.calendar", "📞llamar"])
 
 
 class DueDateTests(QuickEntryTestCase):
@@ -157,6 +171,10 @@ class QuickAddAndTagsCsvTests(QuickEntryTestCase):
     def test_parse_task_quick_entry(self):
         self.assertEqual(qe.parse_task_quick_entry('Llamar @NextAction #"Mi proyecto" f:Casa'),
                          ("Llamar", ["NextAction"], "Mi proyecto", "Casa"))
+
+    def test_parse_task_quick_entry_ignores_urls(self):
+        self.assertEqual(qe.parse_task_quick_entry("Leer https://example.com/a#b @web"),
+                         ("Leer https://example.com/a#b", ["web"], None, None))
 
     def test_parse_task_quick_entry_stops_tags_at_punctuation(self):
         # /tasks/quick_add usa TAG_RE (más estricta que la del Inbox)

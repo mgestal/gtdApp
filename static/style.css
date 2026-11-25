@@ -2118,3 +2118,9 @@ hr{
   line-height: 1;
   text-decoration: none;
 }
+
+/* Fecha/hora de realización de la subtarea en las listas desplegadas */
+.subtask-done-at{
+  font-size: 11px;
+  white-space: nowrap;
+}

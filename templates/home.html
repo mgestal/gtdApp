@@ -122,6 +122,7 @@
                       </form>
 
                       <span style="font-size:13px;">{{ s.title }}</span>
+                    {% if s.completed_at %}<span class="muted subtask-done-at" title="Realizada">✓ {{ s.completed_at.strftime('%d-%m-%Y %H:%M') }}</span>{% endif %}
                     </div>
                   {% endfor %}
                 </div>
@@ -249,27 +250,6 @@
 
 
 <script>
-  function toggleSubtasks(taskId){
-    const el = document.getElementById('subtasks-' + taskId);
-    const icon = document.getElementById('subtasks-icon-' + taskId);
-    if(!el || !icon) return;
-    if(el.style.display === 'none'){
-      el.style.display = 'block';
-      icon.textContent = '▾';
-    } else {
-      el.style.display = 'none';
-      icon.textContent = '▸';
-    }
-  }
-
-  document.addEventListener('click', (ev) => {
-    const btn = ev.target.closest('.js-subtasks-toggle');
-    if(!btn) return;
-    const taskId = btn.getAttribute('data-task-id');
-    if(!taskId) return;
-    toggleSubtasks(taskId);
-  });
-
   // --- Drag & Drop Inbox -> Sidebar/Proyectos ---
   const _TASK_MOVE_URL  = "{{ url_for('api_task_move', task_id=0) }}";
   const _PROJ_MOVE_URL  = "{{ url_for('api_project_move', project_id=0) }}";

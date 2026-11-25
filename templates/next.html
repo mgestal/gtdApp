@@ -235,6 +235,7 @@
                     <span style="font-size:13px;">
                       {{ s.title }}
                     </span>
+                    {% if s.completed_at %}<span class="muted subtask-done-at" title="Realizada">✓ {{ s.completed_at.strftime('%d-%m-%Y %H:%M') }}</span>{% endif %}
                   </div>
                 {% endfor %}
               </div>
@@ -328,15 +329,5 @@
 
 </div>
 
-<script>
-  function toggleSubtasks(taskId){
-    const el = document.getElementById('subtasks-' + taskId);
-    const icon = document.getElementById('subtasks-icon-' + taskId);
-    if (!el) return;
-    const isHidden = (el.style.display === 'none' || !el.style.display);
-    el.style.display = isHidden ? 'block' : 'none';
-    if (icon) icon.textContent = isHidden ? '▾' : '▸';
-  }
-</script>
 
 {% endblock %}

@@ -540,6 +540,7 @@
                       <span style="font-size:13px;">
                         {{ s.title }}
                       </span>
+                    {% if s.completed_at %}<span class="muted subtask-done-at" title="Realizada">✓ {{ s.completed_at.strftime('%d-%m-%Y %H:%M') }}</span>{% endif %}
                     </div>
                   {% endfor %}
                 </div>
@@ -715,12 +716,6 @@
     });
     function openPurgeModal(){ document.getElementById('purgeModal').style.display='block'; }
     function closePurgeModal(){ document.getElementById('purgeModal').style.display='none'; }
-    function toggleSubtasks(taskId){
-      const el = document.getElementById('subtasks-'+taskId);
-      const icon = document.getElementById('subtasks-icon-'+taskId);
-      if(el.style.display === 'none'){ el.style.display='block'; icon.textContent='▾'; }
-      else { el.style.display='none'; icon.textContent='▸'; }
-    }
     function startProjectImport(){ document.getElementById('importFile').click(); }
 
     (function setupProjectBoard(){

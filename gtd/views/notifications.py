@@ -54,6 +54,7 @@ from gtd.utils import safe_next_url
 from gtd.core import app
 from gtd.db import commit, exec_sql, q, q1, rollback
 from gtd.common import admin_required
+from gtd.role_alerts import all_role_alert_settings, ALERT_ROLES, bell_items, mark_bell_item_read
 
 
 @app.route("/api/location-alerts")
@@ -121,6 +122,14 @@ def notification_history():
         if label not in item["channels"]:
             item["channels"].append(label)
         item["updated_at"] = max(item["updated_at"], row["updated_at_utc"])
+    # Avisos automáticos por etiqueta (EnSeguimiento, Agenda) con el canal «App» activado
+    for alert in bell_items(cutoff):
+        grouped[("alert", alert["id"])] = {
+            "alert_id": alert["id"], "title": f"{alert['label']} · {alert['title']}",
+            "url": url_for("task_edit", task_id=alert["task_id"]),
+            "read": alert["read_at_utc"] is not None, "channels": alert["channels"],
+            "updated_at": alert["updated_at_utc"],
+        }
     result = sorted(grouped.values(), key=lambda item: item["updated_at"], reverse=True)
     for item in result:
         item["updated_at"] = item["updated_at"].replace(tzinfo=ZoneInfo("UTC")).astimezone(zone).strftime("%d-%m-%Y %H:%M")
@@ -136,6 +145,13 @@ def notification_mark_read():
     if not expected or not hmac.compare_digest(supplied, expected):
         abort(403)
     data = request.get_json(silent=True)
+    if isinstance(data, dict) and "alert_id" in data:  # aviso automático por etiqueta
+        if type(data["alert_id"]) is not int or data["alert_id"] <= 0:
+            return jsonify({"error": "Aviso no válido."}), 400
+        if not mark_bell_item_read(data["alert_id"]):
+            return jsonify({"error": "No se encontró el aviso."}), 404
+        commit()
+        return jsonify({"ok": True})
     if not isinstance(data, dict) or type(data.get("reminder_id")) is not int or data["reminder_id"] <= 0:
         return jsonify({"error": "Recordatorio no válido."}), 400
     try:
@@ -534,7 +550,8 @@ def admin_notifications():
             app.logger.warning("No se pudo cargar el certificado de CA: %s", type(exc).__name__)
             ca_status["error"] = "No se puede leer un certificado de CA válido; revisa la configuración y los permisos."
     return render_template("admin_notifications.html", cfg=cfg, notification_status=load_notification_status(cfg),
-                           ca_status=ca_status)
+                           ca_status=ca_status, role_alerts=all_role_alert_settings(cfg),
+                           role_alert_roles=ALERT_ROLES)
 
 
 def load_notification_ca_certificate(cfg: Dict[str, Any]) -> x509.Certificate:

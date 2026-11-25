@@ -136,7 +136,9 @@
     const response = await fetch(center.dataset.readUrl, {
       method: "POST", credentials: "same-origin",
       headers: {"Content-Type": "application/json", "X-GTD-Notification-CSRF": center.dataset.csrf},
-      body: JSON.stringify({reminder_id: notification.reminder_id, scheduled_at: notification.scheduled_at})
+      body: JSON.stringify(notification.alert_id
+        ? {alert_id: notification.alert_id}  // aviso automático por etiqueta (EnSeguimiento, Agenda)
+        : {reminder_id: notification.reminder_id, scheduled_at: notification.scheduled_at})
     });
     if (!response.ok) throw new Error("No se pudo marcar el recordatorio como leído.");
     historyVersion++;

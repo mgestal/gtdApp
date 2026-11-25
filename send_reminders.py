@@ -11,6 +11,7 @@ from flask import g
 from gtd.config import load_config
 from gtd.core import app
 from gtd.db import db
+from gtd.role_alerts import run_role_alerts
 from gtd.schema import ensure_schema_updates
 from reminders import load_reminder_token, notification_hours, run_worker
 from telegram_gtdAppbot import load_chat_id
@@ -22,12 +23,17 @@ def main() -> int:
             ensure_schema_updates()
             cfg = load_config().get("app", {})
             start, end = notification_hours(cfg)
+            tz = ZoneInfo(cfg.get("timezone", "Europe/Madrid"))
             counts = run_worker(
-                db(), ZoneInfo(cfg.get("timezone", "Europe/Madrid")),
+                db(), tz,
                 load_reminder_token, load_chat_id, cfg.get("public_url", ""), start, end,
             )
             print(f"Recordatorios: {counts}")
-            return 1 if counts["failed"] else 0
+            role_counts = run_role_alerts(
+                tz, start, end, load_reminder_token, load_chat_id, cfg.get("public_url", ""),
+            )
+            print(f"Avisos por etiqueta: {role_counts}")
+            return 1 if counts["failed"] or role_counts["failed"] else 0
         except Exception as exc:
             print(f"No se pudo ejecutar el envío de recordatorios ({type(exc).__name__}): {exc}",
                   file=sys.stderr)

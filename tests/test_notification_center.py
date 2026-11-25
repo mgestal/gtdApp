@@ -29,7 +29,8 @@ class NotificationCenterTests(unittest.TestCase):
         with application.app.test_request_context("/api/notifications", environ_overrides={"SCRIPT_NAME": "/gtd"}), \
              patch_all("load_config", return_value=cfg), \
              patch_all("utc_now", return_value=datetime(2026, 11, 12, 12)), \
-             patch_all("q", return_value=rows) as query:
+             patch_all("q", return_value=rows) as query, \
+             patch_all("bell_items", return_value=[]):  # sin avisos automáticos por etiqueta
             response = notifications_views.notification_history()
         items = response.get_json()["notifications"]
         self.assertEqual(len(items), 2)

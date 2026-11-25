@@ -217,9 +217,15 @@ Al abrir o recargar GTDApp se comprueban las etiquetas con tareas pendientes, de
 
 La comparación se realiza en el dispositivo y su posición no se envía al servidor ni se almacena como historial. Las ubicaciones configuradas de las etiquetas sí se guardan en la base de datos. Para evitar falsos positivos, la zona de incertidumbre indicada por el navegador debe quedar completamente dentro del radio; si la precisión es insuficiente no se mostrará ese aviso. Un portátil sin GPS puede necesitar un radio mayor. Si el permiso se deniega, falla la ubicación o no hay conexión, se informa en la aplicación. La función no detecta llegadas mientras GTDApp está cerrada.
 
+### Avisos automáticos por etiqueta (EnSeguimiento y Agenda)
+
+Las tareas pendientes con la etiqueta **EnSeguimiento** o **Agenda** (roles `following` y `agenda`, incluidos sus alias) avisan sin necesidad de crear un recordatorio: al menos 10 minutos antes de la hora de la tarea (adelantado a la pasada de 15 minutos anterior del proceso: una tarea a las 10:30 avisa a las 10:15) o, si no tiene hora, el día de su fecha a la hora configurada para esa etiqueta (09:00 por defecto). En **Admin → Notificaciones → Avisos automáticos por etiqueta** cada etiqueta tiene un interruptor para activarla (por defecto EnSeguimiento activada y Agenda desactivada), su hora y los canales: Telegram, navegador y app (campana). Se guarda en `config.json` → `app.notifications.following` / `app.notifications.agenda`.
+
+Los envía el mismo proceso `send_reminders.py`, dentro del horario de notificaciones. Cada fecha se avisa una vez por canal (registro en `role_alert_deliveries`) y, si se pospone la tarea, se avisa en la nueva fecha. Los fallos se reintentan hasta 24 horas.
+
 ### Campana de notificaciones
 
-La campana agrupa los avisos de ubicación y los recordatorios enviados por Telegram y navegador. El número suma las tareas nuevas por ubicación, sin duplicarlas si coinciden varias etiquetas, y los recordatorios enviados no leídos. Al pulsar un aviso se marca como leído y se abre su etiqueta o tarea; también se pueden marcar todos como leídos.
+La campana agrupa los avisos de ubicación, los recordatorios enviados por Telegram y navegador y los avisos automáticos por etiqueta con el canal «App». El número suma las tareas nuevas por ubicación, sin duplicarlas si coinciden varias etiquetas, y los recordatorios enviados no leídos. Al pulsar un aviso se marca como leído y se abre su etiqueta o tarea; también se pueden marcar todos como leídos.
 
 Los envíos del mismo recordatorio y momento se agrupan, mostrando sus canales y dispositivos. El historial se actualiza al abrir la campana, al volver a la aplicación y cada minuto mientras está visible. La lectura de estos envíos se comparte entre dispositivos, mientras que los avisos de ubicación y su lectura son locales al navegador. El historial conserva visibles los envíos leídos durante el periodo configurado en **Admin → Notificaciones → Historial de la campana** (por defecto, un día). Es una ventana de visualización, no borra el historial. Solo incluye registros de envío todavía disponibles: al borrar un recordatorio o una suscripción también pueden desaparecer sus registros. La aceptación de Telegram o del servicio push no garantiza que el aviso se haya mostrado en el dispositivo.
 

@@ -1,5 +1,18 @@
 {% extends "base.html" %}
 {% block content %}
+<style>
+  .toggle-switch { position: relative; display: inline-block; width: 42px; height: 24px; flex-shrink: 0; }
+  .toggle-switch input { opacity: 0; width: 0; height: 0; }
+  .toggle-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+                   background-color: #ccc; border-radius: 24px; transition: .3s; }
+  .toggle-slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px;
+                          background-color: white; border-radius: 50%; transition: .3s; }
+  .toggle-switch input:checked + .toggle-slider { background-color: var(--accent, #4a90d9); }
+  .toggle-switch input:checked + .toggle-slider:before { transform: translateX(18px); }
+  .role-alert-block { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+  .role-alert-toggle { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+  .role-alert-channels { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+</style>
   <div class="page-title">
     <h1>🔔 Notificaciones</h1>
     <p class="subtitle">Configura los canales, el horario y los dispositivos.</p>
@@ -46,6 +59,39 @@
               {% endfor %}
             </ul>
           {% endif %}
+        </div>
+
+        <div class="card" id="avisos-etiquetas" style="margin-top:14px;">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Avisos automáticos por etiqueta</div>
+              <div class="card-sub">Aviso el día de la fecha de las tareas pendientes con estas etiquetas (o sus alias), sin crear recordatorios.</div>
+            </div>
+          </div>
+          <form method="post" action="{{ url_for('admin') }}" class="form">
+            <input type="hidden" name="action" value="save_role_alerts">
+            {% for role, emoji, _default in role_alert_roles %}
+              {% set ra = role_alerts[role] %}
+              <div class="role-alert-block">
+                <label class="role-alert-toggle">
+                  <span class="toggle-switch">
+                    <input type="checkbox" name="{{ role }}_enabled" value="1" {% if ra.enabled %}checked{% endif %}>
+                    <span class="toggle-slider"></span>
+                  </span>
+                  <b>{{ emoji }} @{{ R_TAG[role] }}</b>
+                </label>
+                <label class="label" for="{{ role }}-time">Hora para tareas sin hora</label>
+                <input class="input" type="time" id="{{ role }}-time" name="{{ role }}_time" value="{{ ra.time.strftime('%H:%M') }}" required>
+                <div class="role-alert-channels">
+                  <label><input type="checkbox" name="{{ role }}_telegram" value="1" {% if ra.telegram %}checked{% endif %}> Telegram</label>
+                  <label><input type="checkbox" name="{{ role }}_browser" value="1" {% if ra.browser %}checked{% endif %}> Navegador (dispositivos activos)</label>
+                  <label><input type="checkbox" name="{{ role }}_app" value="1" {% if ra.app %}checked{% endif %}> App (campana)</label>
+                </div>
+              </div>
+            {% endfor %}
+            <div class="hint">Si la tarea tiene hora, se avisa al menos 10 minutos antes, en la pasada del proceso (cada 15 minutos) anterior a ese momento. Siempre dentro del horario de notificaciones; si cae fuera, se avisa al abrirse la franja (hasta 24 horas después). Se avisa una vez por fecha; si pospones la tarea, se vuelve a avisar en la nueva fecha.</div>
+            <button type="submit" class="btn btn-soft">Guardar avisos</button>
+          </form>
         </div>
 
         <div class="card" id="historial" style="margin-top:14px;">

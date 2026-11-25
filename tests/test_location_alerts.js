@@ -53,7 +53,8 @@ async function run(options = {}) {
       if (url.endsWith("/read")) {
         if (options.readError) return {ok: false};
         const body = JSON.parse(config.body);
-        state.history = state.history.map(item => item.reminder_id === body.reminder_id ? {...item, read: true} : item);
+        const matches = item => body.alert_id ? item.alert_id === body.alert_id : item.reminder_id === body.reminder_id;
+        state.history = state.history.map(item => matches(item) ? {...item, read: true} : item);
         return {ok: true};
       }
       const data = url.endsWith("location-alerts")
@@ -116,6 +117,18 @@ async function run(options = {}) {
   assert.equal(r.elements["notification-count"].hidden, true);
   assert.equal(r.state.history[0].read, true);
   assert.deepEqual(JSON.parse(r.local.getItem(prefix + "read_tasks")).sort(), [1, 2, 3]);
+
+  // Avisos automáticos por etiqueta (EnSeguimiento, Agenda): se marcan como leídos con alert_id
+  const alert = {alert_id: 11, title: "👀 EnSeguimiento · Llamar", url: "/gtd/tasks/5/edit", read: false,
+    channels: ["App", "Telegram"], updated_at: "25-11-2026 10:00"};
+  r = await run({locations: [], history: [reminder, alert]});
+  assert.equal(r.elements["notification-count"].textContent, "2");
+  list = r.elements["notification-list"].children;
+  assert.equal(list[2].children[0].textContent, "👀 EnSeguimiento · Llamar");
+  await r.elements["notification-read-all"].click();
+  const readBodies = r.calls.requests.filter(req => req.url.endsWith("/read")).map(req => JSON.parse(req.config.body));
+  assert.deepEqual(readBodies, [{reminder_id: 7, scheduled_at: "2026-11-11T12:00:00"}, {alert_id: 11}]);
+  assert.equal(r.elements["notification-count"].textContent, "0");
 
   r = await run({local: storage(), deferred: true, history: []});
   const enabling = r.elements["location-device-enable"].click();

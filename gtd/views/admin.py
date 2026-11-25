@@ -41,6 +41,7 @@ from gtd.views.trash_archive import (
     _load_trash_view_data,
 )
 from gtd.views.calendar_admin import _handle_calendar_conflicts_action
+from gtd.role_alerts import ROLE_KEYS
 
 
 def create_api_token(user_id: int, device_name: str) -> str:
@@ -208,6 +209,23 @@ def admin():
             except ValueError as exc:
                 flash(f"Horario no válido: {exc}", "error")
             return redirect(url_for("admin_notifications"))
+
+        if action == "save_role_alerts":
+            cfg = load_config()
+            notifications = cfg.setdefault("app", {}).setdefault("notifications", {})
+            for role in ROLE_KEYS:
+                time_raw = (request.form.get(f"{role}_time") or "").strip()
+                if not re.fullmatch(r"\d{2}:\d{2}", time_raw):
+                    flash("Indica la hora de los avisos en formato HH:MM.", "error")
+                    return redirect(url_for("admin_notifications") + "#avisos-etiquetas")
+                notifications[role] = {
+                    "enabled": request.form.get(f"{role}_enabled") == "1",
+                    "time": time_raw,
+                    **{channel: request.form.get(f"{role}_{channel}") == "1" for channel in ("telegram", "browser", "app")},
+                }
+            save_config(cfg)
+            flash("Avisos automáticos guardados.", "ok")
+            return redirect(url_for("admin_notifications") + "#avisos-etiquetas")
 
         if action == "save_notification_history":
             raw = (request.form.get("history_days") or "").strip()

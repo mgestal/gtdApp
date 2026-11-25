@@ -373,6 +373,12 @@
         <div class="hint">Selecciona Telegram, navegador o ambos; con ambos recibirás un aviso por cada canal. Los recordatorios nuevos seleccionan ambos por defecto; los anteriores conservan Telegram. En la tarea puedes consultar los estados y errores de envío.</div>
       </div></div>
       <div class="list-row"><div>
+        <div style="font-weight:600;">Avisos automáticos por etiqueta (@{{ R_TAG.following }} y @{{ R_TAG.agenda }})</div>
+        <div class="hint">Las tareas pendientes con la etiqueta <strong>{{ R_TAG.following }}</strong> o <strong>{{ R_TAG.agenda }}</strong> (o un alias configurado) avisan solas, sin crear recordatorios: al menos 10 minutos antes de la hora de la tarea (en la pasada del proceso de avisos, cada 15 minutos, anterior a ese momento; p. ej. una tarea a las 10:30 avisa a las 10:15) o, si no tiene hora, el día de su fecha a la hora indicada para esa etiqueta.</div>
+        <div class="hint">En <strong>Admin → Notificaciones → Avisos automáticos por etiqueta</strong> activa o desactiva cada una con su interruptor y elige dónde avisar: <strong>Telegram</strong>, <strong>Navegador</strong> (dispositivos activos) y/o <strong>App</strong> (la campana). Por defecto {{ R_TAG.following }} está activada y {{ R_TAG.agenda }} desactivada.</div>
+        <div class="hint">Se envían dentro del horario de notificaciones (si cae fuera, al abrirse la franja, hasta 24 horas después). Cada fecha se avisa una sola vez; si pospones la tarea, volverá a avisar en la nueva fecha. Las tareas completadas o archivadas no avisan. En la campana aparecen como «👀 {{ R_TAG.following }} · tarea» o «📅 {{ R_TAG.agenda }} · tarea» y se marcan como leídas igual que los recordatorios.</div>
+      </div></div>
+      <div class="list-row"><div>
         <div style="font-weight:600;">Configurar canales y horario</div>
         <div class="hint">En <strong>Admin → Abrir panel de notificaciones</strong> configura la franja de envío, consulta el proceso y los errores, y envía pruebas. Por defecto es de 08:00 a 20:00, ambos minutos incluidos, en la zona horaria de la aplicación; puede cruzar medianoche. También las pruebas respetan el horario.</div>
         <div class="hint"><strong>Telegram:</strong> configura el bot, autoriza al usuario y registra el chat con <code>/start</code>. En el panel puedes probar el envío y configurar opcionalmente la URL pública de GTDApp, incluida su ruta base, para añadir enlaces a las tareas. <a href="{{ url_for('manual_telegram') }}">Configuración de Telegram</a>.</div>

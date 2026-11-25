@@ -437,23 +437,33 @@ def admin():
             return redirect(url_for("admin", subcard=key))
 
         if action == "save_gtd_roles":
+            # Cada tarjeta (etiquetas / carpetas) guarda solo su parte y conserva la otra.
+            kinds = {
+                "tags": ("tag__", _gtd_roles_mod.TAG_ROLES, "Etiquetas GTD guardadas.", "#gtd-role-tags"),
+                "folders": ("folder__", _gtd_roles_mod.FOLDER_ROLES, "Carpetas GTD guardadas.", "#gtd-role-folders"),
+            }
+            kind = request.form.get("kind", "")
+            if kind not in kinds:
+                flash("Formulario de roles GTD no válido.", "error")
+                return redirect(url_for("admin"))
+            prefix, defs, message, anchor = kinds[kind]
             cfg = load_config()
-            section: Dict[str, Dict[str, List[str]]] = {"tags": {}, "folders": {}}
-            for kind, prefix, defs in (
-                ("tags", "tag__", _gtd_roles_mod.TAG_ROLES),
-                ("folders", "folder__", _gtd_roles_mod.FOLDER_ROLES),
-            ):
-                for role, defaults, _label, _desc in defs:
-                    names = _gtd_roles_mod.parse_names(request.form.get(prefix + role, ""))
-                    if names and names != list(defaults):
-                        section[kind][role] = names
+            current = cfg.get("gtd_roles") if isinstance(cfg.get("gtd_roles"), dict) else {}
+            section: Dict[str, Dict[str, List[str]]] = {
+                "tags": dict(current.get("tags") or {}), "folders": dict(current.get("folders") or {}),
+            }
+            section[kind] = {}
+            for role, defaults, _label, _desc in defs:
+                names = _gtd_roles_mod.parse_names(request.form.get(prefix + role, ""))
+                if names and names != list(defaults):
+                    section[kind][role] = names
             if section["tags"] or section["folders"]:
                 cfg["gtd_roles"] = section
             else:
                 cfg.pop("gtd_roles", None)
             save_config(cfg)
-            flash("Etiquetas y carpetas GTD guardadas.", "ok")
-            return redirect(url_for("admin") + "#gtd-roles")
+            flash(message, "ok")
+            return redirect(url_for("admin") + anchor)
 
         if action == "save_nextaction_behavior":
             cfg = load_config()
@@ -837,7 +847,8 @@ ADMIN_PANEL_KEYS = (
     "backups",
     "initialize",
     "nextaction",
-    "gtd-roles",
+    "gtd-role-tags",
+    "gtd-role-folders",
     "kanban-subcards",
     "sql",
     "pagination",

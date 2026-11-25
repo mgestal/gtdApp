@@ -84,7 +84,7 @@
                     <a href="{{ location_to_href(t.location) }}" target="_blank" rel="noopener noreferrer" title="{{ t.location }}" style="text-decoration:none; font-size:0.9rem; opacity:.75;">📍</a>
                   {% endif %}
                 </div>
-                <div class="task-tags" style="font-size:0.8rem; opacity:0.8; margin-top:2px;">
+                <div data-task-tags="{{ t.id }}" class="task-tags" style="font-size:0.8rem; opacity:0.8; margin-top:2px;">
                   {% for tag in tags_map.get(t.id, []) %}
                     <a class="tagchip taglink" href="{{ url_for('tag_detail', tag_id=tag.id) }}" style="margin-right:5px;">@{{ tag.name }}</a>
                   {% endfor %}

@@ -404,7 +404,7 @@
                 {% for task in project_tasks_by_status[column.key] %}
                   <div class="project-kanban-task {% if task.completed_at %}row-done{% endif %}" data-task-id="{{ task.id }}" draggable="true">
                     <a class="project-kanban-task-title" href="{{ url_for('task_edit', task_id=task.id, next=url_for('project_detail', project_id=project.id)) }}">{{ task.title }}</a>{{ reminder_badge(task.id) }}
-                    <div class="project-kanban-card-meta">
+                    <div data-task-tags="{{ task.id }}" data-tag-style="pill" class="project-kanban-card-meta">
                       {% if task.priority in [1, 2, 3] %}<span class="project-kanban-pill">{{ {1: 'Alta', 2: 'Media', 3: 'Baja'}[task.priority] }}</span>{% endif %}
                       {% for tag in tags_map.get(task.id, []) %}<span class="project-kanban-pill">@{{ tag.name }}</span>{% endfor %}
                       {% if task.due_date %}<span>{{ task.due_date }}</span>{% endif %}
@@ -493,7 +493,7 @@
                   {% endif %}
                 </div>
               </div>
-              <div style="display:flex; flex-wrap:wrap; gap:4px;">
+              <div data-task-tags="{{ t.id }}" style="display:flex; flex-wrap:wrap; gap:4px;">
                 {% if t.recurrence_rule %}<a class="pill taglink" style="font-size:10px;" href="{{ url_for('task_periodic_history', task_id=t.id, next=request.full_path) }}">⟲ periódica</a>{% set _pb = periodic_occurrences_badge(t) %}{% if _pb %}<span class="pill-progress">{{ _pb }}</span>{% endif %}{% endif %}
                 {% for tag in tags_map.get(t.id, []) %}
                   <a class="tagchip taglink" style="margin:0; font-size:9px;" href="{{ url_for('tag_detail', tag_id=tag.id) }}">@{{ tag.name }}</a>
@@ -643,7 +643,7 @@
               <div class="task-title-row" style="font-weight:600; margin-bottom:4px;">
                 <span class="task-title-text">{{ t.title | linkify_title }}{{ reminder_badge(t.id) }}</span>
               </div>
-              <div style="display:flex; flex-wrap:wrap; gap:4px;">
+              <div data-task-tags="{{ t.id }}" style="display:flex; flex-wrap:wrap; gap:4px;">
                 {% if t.recurrence_rule %}<a class="pill taglink" style="font-size:10px;" href="{{ url_for('task_periodic_history', task_id=t.id, next=request.full_path) }}">⟲ periódica</a>{% set _pb = periodic_occurrences_badge(t) %}{% if _pb %}<span class="pill-progress">{{ _pb }}</span>{% endif %}{% endif %}
                 {% for tag in tags_map.get(t.id, []) %}
                   <a class="tagchip taglink" style="margin:0; font-size:9px; opacity:0.6;" href="{{ url_for('tag_detail', tag_id=tag.id) }}">@{{ tag.name }}</a>
@@ -796,6 +796,42 @@
         });
       });
 
+      // Actualiza la tarjeta y las columnas tras moverla, sin recargar la página
+      function syncEmptyPlaceholder(cards) {
+        const empty = cards.querySelector(':scope > .project-kanban-empty');
+        const hasTasks = !!cards.querySelector('.project-kanban-task');
+        if (hasTasks && empty) empty.remove();
+        if (!hasTasks && !empty) {
+          const placeholder = document.createElement('div');
+          placeholder.className = 'project-kanban-empty';
+          placeholder.textContent = 'Sin tareas';
+          cards.appendChild(placeholder);
+        }
+      }
+
+      function moveBoardTask(task, column, data) {
+        const sourceCards = task.closest('.project-kanban-cards');
+        const targetCards = column.querySelector('.project-kanban-cards');
+        targetCards.appendChild(task);
+        syncEmptyPlaceholder(targetCards);
+        if (sourceCards) syncEmptyPlaceholder(sourceCards);
+        window.gtdLive.setTaskDone(task.dataset.taskId, data.completed);
+        const meta = task.querySelector('[data-task-tags]');
+        if (meta) {
+          meta.querySelectorAll('.project-kanban-pill').forEach((pill) => {
+            if (pill.textContent.trim().startsWith('@')) pill.remove();
+          });
+          const anchor = meta.querySelector(':scope > span:not(.project-kanban-pill)');  // la fecha va al final
+          (data.tags || []).forEach((name) => {
+            const pill = document.createElement('span');
+            pill.className = 'project-kanban-pill';
+            pill.textContent = '@' + name;
+            meta.insertBefore(pill, anchor);
+          });
+        }
+        window.gtdLive.setCounts(data.counts);
+      }
+
       board.querySelectorAll('.project-kanban-task').forEach((task) => {
         task.addEventListener('dragstart', (event) => {
           draggedTask = task;
@@ -822,10 +858,11 @@
           column.classList.remove('drag-over');
           try {
             if (draggedTask) {
-              await requestJson(taskUrl.replace('/0/', '/' + draggedTask.dataset.taskId + '/'), {
+              const task = draggedTask;
+              const data = await requestJson(taskUrl.replace('/0/', '/' + task.dataset.taskId + '/'), {
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: column.dataset.columnKey })
               });
-              window.location.reload();
+              moveBoardTask(task, column, data);
             } else if (draggedColumn && draggedColumn !== column) {
               board.insertBefore(draggedColumn, column);
               const keys = Array.from(board.querySelectorAll('.project-kanban-column')).map((item) => item.dataset.columnKey);

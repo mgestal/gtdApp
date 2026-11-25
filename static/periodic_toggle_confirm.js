@@ -154,6 +154,11 @@
     const ok = await maybeConfirmPeriodicChoice(form);
     if (!ok) return;
 
+    // Sin recargar la página (live_update.js); si no está cargado, envío clásico.
+    if (window.gtdLive) {
+      await window.gtdLive.submitToggle(form);
+      return;
+    }
     form.dataset.periodicConfirmHandled = "1";
     form.submit();
   });

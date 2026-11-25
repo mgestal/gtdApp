@@ -97,6 +97,18 @@ class ReviewStateLogicTests(unittest.TestCase):
         self.assertIsNone(state.last_finished_at)
 
 
+class ProjectsWithoutIssuesTests(unittest.TestCase):
+    def test_flagged_projects_are_removed_from_active(self):
+        active = [{"id": 1, "name": "A"}, {"id": 2, "name": "B"}, {"id": 3, "name": "C"}, {"id": 4, "name": "D"}]
+        without_next = [{"id": 2, "name": "B", "pending": 5}]
+        empty = [{"id": 4, "name": "D"}]
+        self.assertEqual([p["id"] for p in wr.projects_without_issues(active, without_next, empty)], [1, 3])
+
+    def test_no_flags_keeps_all(self):
+        active = [{"id": 1}, {"id": 2}]
+        self.assertEqual(wr.projects_without_issues(active, [], []), active)
+
+
 class ReviewRoutesTests(unittest.TestCase):
     def test_toggle_block(self):
         with application.app.test_request_context("/review/blocks/inbox", method="POST", json={"checked": True}), \

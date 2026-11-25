@@ -10,12 +10,12 @@ from gtd.roles import role_tag, role_tag_id, task_has_role_tag
 from gtd.kanban_board import _project_board_status_for_task
 
 
-def complete_nonrecurring_task(task_id: int, task: Dict[str, Any], now: datetime) -> None:
+def complete_nonrecurring_task(task_id: int, task: Dict[str, Any], now: datetime) -> bool:
     """Marca como hecha una tarea no recurrente.
 
     Si tenía la etiqueta del rol `next_action`, se le quita y (si la promoción está
     activa, global o por proyecto) se etiqueta la siguiente tarea activa del proyecto.
-    No hace commit.
+    Devuelve True si se promocionó otra tarea a NextAction. No hace commit.
     """
     next_tag_name = role_tag("next_action")
     has_nextaction = task_has_role_tag(task_id, "next_action")
@@ -33,7 +33,7 @@ def complete_nonrecurring_task(task_id: int, task: Dict[str, Any], now: datetime
     _project_board_status_for_task(task_id, task.get("project_id"), "done")
 
     if not (has_nextaction and task.get("project_id")):
-        return
+        return False
 
     promote_nextaction = cfg_bool(["app", "behavior", "promote_nextaction_on_complete"], default=True)
     # Override a nivel de proyecto (si está definido) tiene prioridad sobre el global
@@ -41,7 +41,7 @@ def complete_nonrecurring_task(task_id: int, task: Dict[str, Any], now: datetime
     if proj_promo and proj_promo.get("auto_promote_nextaction") is not None:
         promote_nextaction = bool(proj_promo["auto_promote_nextaction"])
     if not promote_nextaction:
-        return
+        return False
 
     next_task = q1(
         "SELECT id "
@@ -59,3 +59,5 @@ def complete_nonrecurring_task(task_id: int, task: Dict[str, Any], now: datetime
             "INSERT IGNORE INTO task_tags(task_id, tag_id) VALUES(%s,%s)",
             (next_task["id"], role_tag_id("next_action")),
         )
+        return True
+    return False

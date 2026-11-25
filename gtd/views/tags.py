@@ -15,6 +15,7 @@ from gtd.lookups import get_or_create_tag_type
 from gtd.quick_entry import is_periodic_tag_name
 from gtd.recurrence import recurring_effective_due_sql
 from gtd.common import load_tags_map, subdb
+from gtd.context import inject_sidebar_counts
 
 
 @app.route("/tags/<int:tag_id>/edit", methods=["GET", "POST"])
@@ -437,7 +438,8 @@ def api_task_add_tag(task_id: int):
         return jsonify({"ok": False, "error": "Etiqueta no válida"}), 400
     if not q1("SELECT id FROM tasks WHERE id=%s AND deleted_at IS NULL", (task_id,)):
         return jsonify({"ok": False, "error": "Tarea no encontrada"}), 404
-    if not q1("SELECT id FROM tags WHERE id=%s", (tag_id,)):
+    tag = q1("SELECT id, name FROM tags WHERE id=%s", (tag_id,))
+    if not tag:
         return jsonify({"ok": False, "error": "Etiqueta no encontrada"}), 404
     try:
         exec_sql("INSERT IGNORE INTO task_tags(task_id, tag_id) VALUES(%s,%s)", (task_id, tag_id))
@@ -445,7 +447,12 @@ def api_task_add_tag(task_id: int):
     except Exception as e:
         rollback()
         return jsonify({"ok": False, "error": str(e)}), 500
-    return jsonify({"ok": True})
+    # Datos para pintar la etiqueta en la fila sin recargar (live_update.js)
+    return jsonify({
+        "ok": True,
+        "tag": {"id": tag["id"], "name": tag["name"], "url": url_for("tag_detail", tag_id=tag["id"])},
+        "counts": inject_sidebar_counts()["sidebar_counts"],
+    })
 
 
 @app.route("/api/tasks/<int:task_id>/remove_tag", methods=["POST"])

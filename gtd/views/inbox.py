@@ -58,7 +58,9 @@ def home():
         tags_map=tags_map,
         sub_counts=sub_counts,
         sub_map=sub_map,
-        orphan_projects=orphan_projects
+        orphan_projects=orphan_projects,
+        # Qué ubicaciones muestra esta vista: al mover una tarea/proyecto fuera, live_update.js quita su fila.
+        view_scope={"task_folders": [], "task_projects": [], "project_folders": []},
     )
 
 # ---------------- Procesar Inbox (GTD: aclarar y organizar, una tarea cada vez) ----------------

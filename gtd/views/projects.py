@@ -29,6 +29,7 @@ from gtd.kanban_board import (
 )
 from gtd.recurrence import recurring_effective_due_sql
 from gtd.common import build_folder_breadcrumb, load_tags_map, subdb
+from gtd.context import inject_sidebar_counts
 
 
 @app.route("/projects")
@@ -180,6 +181,8 @@ def project_detail(project_id: int):
         promote_effective=promote_effective,
         project_kanban_columns=project_kanban_columns,
         project_tasks_by_status=project_tasks_by_status,
+        # Qué ubicaciones muestra esta vista: al mover una tarea/proyecto fuera, live_update.js quita su fila.
+        view_scope={"task_folders": [], "task_projects": [project_id], "project_folders": []},
     )
 
 
@@ -304,7 +307,10 @@ def api_project_board_task_status(project_id: int, task_id: int):
         elif was_in_progress:
             _remove_task_tag(task_id, "EnCurso")
         commit()
-        return jsonify({"ok": True, "status": status})
+        # Estado resultante para actualizar la tarjeta sin recargar
+        tags = [t["name"] for t in load_tags_map([task_id]).get(task_id, [])]
+        return jsonify({"ok": True, "status": status, "completed": status == "done", "tags": tags,
+                        "counts": inject_sidebar_counts()["sidebar_counts"]})
     except Exception as exc:
         rollback()
         return jsonify({"ok": False, "error": str(exc)}), 500

@@ -285,17 +285,17 @@
       <nav class="nav">
         <a class="nav-item nav-item-count" href="{{ url_for('home') }}">
           <span>[I] Inbox</span>
-          <span class="nav-count">{{ sidebar_counts.inbox }}</span>
+          <span class="nav-count" data-sidebar-count="inbox">{{ sidebar_counts.inbox }}</span>
         </a>
 
         <a class="nav-item nav-item-count" href="{{ url_for('today') }}">
           <span>[H] Hoy</span>
-          <span class="nav-count">{{ sidebar_counts.today }}</span>
+          <span class="nav-count" data-sidebar-count="today">{{ sidebar_counts.today }}</span>
         </a>
         
         <a class="nav-item nav-item-count" href="{{ url_for('week') }}">
           <span>[W] Esta semana</span>
-          <span class="nav-count">{{ sidebar_counts.week }}</span>
+          <span class="nav-count" data-sidebar-count="week">{{ sidebar_counts.week }}</span>
         </a>
 
         <a class="nav-item nav-item-count" href="{{ url_for('kanban') }}">
@@ -304,7 +304,7 @@
 
         <a class="nav-item nav-item-count" href="{{ url_for('next_actions') }}">
           <span>[N] NextActions</span>
-          <span class="nav-count">
+          <span class="nav-count" data-sidebar-count="next">
             {% if sidebar_counts.next == -1 %}
               !
             {% else %}
@@ -315,7 +315,7 @@
           
         <a class="nav-item nav-item-count" href="{{ url_for('proximo') }}">
           <span>[A] Próximo </span>
-          <span class="nav-count">{{ sidebar_counts.agenda }}</span>
+          <span class="nav-count" data-sidebar-count="agenda">{{ sidebar_counts.agenda }}</span>
         </a>
 
         <details class="nav-group" {% if request.endpoint in ['tags', 'filters_view', 'projects', 'folders'] %}open{% endif %}>
@@ -822,7 +822,8 @@
           });
           const data = await res.json().catch(() => ({}));
           if (!res.ok || !data.ok) throw new Error(data.error || 'No se pudo añadir la etiqueta');
-          window.location.reload();
+          window.gtdLive.addTag(t.id, data.tag);
+          window.gtdLive.setCounts(data.counts);
         } catch (e) {
           alert(e.message || 'No se pudo añadir la etiqueta');
         }
@@ -831,7 +832,7 @@
 
     (function initTagRemoveButtons(){
       const removeUrlBase = "{{ url_for('api_task_remove_tag', task_id=0) }}";
-      document.querySelectorAll('main a.taglink[href*="/tags/"]').forEach((a) => {
+      function attachTagRemove(a) {
         const row = a.closest('tr, .kanban-card, .project-kanban-task');
         if (!row) return;
         let taskId = Number(row.getAttribute('data-task-id'));
@@ -864,7 +865,9 @@
           }
         });
         a.appendChild(btn);
-      });
+      }
+      document.querySelectorAll('main a.taglink[href*="/tags/"]').forEach(attachTagRemove);
+      window.gtdAttachTagRemove = attachTagRemove;
     })();
 
     (function persistTagFolders(){
@@ -1065,22 +1068,32 @@
           ev.stopPropagation();
           el.classList.remove('dnd-drop-active');
 
+          const live = window.gtdLive;
+          const payload = dragPayload;
           try {
-            if (dragPayload.kind === 'task') {
-              await postJson(taskMoveUrlBase.replace('/0/', `/${dragPayload.id}/`), {
+            if (payload.kind === 'task') {
+              const data = await postJson(taskMoveUrlBase.replace('/0/', `/${payload.id}/`), {
                 target_type: dropType,
                 target_id: targetId,
               });
-            } else if (dragPayload.kind === 'project') {
-              await postJson(projectMoveUrlBase.replace('/0/', `/${dragPayload.id}/`), {
+              if (!live.taskStillFits(dropType, targetId)) live.removeTask(payload.id);
+              live.setCounts(data.counts);
+            } else if (payload.kind === 'project') {
+              await postJson(projectMoveUrlBase.replace('/0/', `/${payload.id}/`), {
                 folder_id: targetId,
               });
-            } else if (dragPayload.kind === 'folder') {
-              await postJson(folderMoveUrlBase.replace('/0/', `/${dragPayload.id}/`), {
+              if (!live.projectStillFits(targetId)) {
+                document.querySelectorAll(
+                  `main [data-project-id="${payload.id}"], main [data-drop-type="project"][data-target-id="${payload.id}"]`
+                ).forEach((row) => row.remove());
+              }
+              if (!live.moveProjectInTree(payload.id, targetId)) live.reload();
+            } else if (payload.kind === 'folder') {
+              await postJson(folderMoveUrlBase.replace('/0/', `/${payload.id}/`), {
                 parent_id: targetId,
               });
+              if (!live.moveFolderInTree(payload.id, targetId)) live.reload();
             }
-            window.location.reload();
           } catch (err) {
             window.alert(err && err.message ? err.message : 'Error al mover');
           }
@@ -1097,7 +1110,12 @@
 </script>
 
 <script src="{{ url_for('static', filename='tag_autocomplete.js') }}?v=5"></script>
-<script src="{{ url_for('static', filename='periodic_toggle_confirm.js') }}?v=4"></script>
+<script>
+  // Ubicaciones que muestra esta vista (Inbox, carpeta, proyecto); null = no filtra por ubicación.
+  window.GTD_VIEW_SCOPE = {{ (view_scope if view_scope is defined else none) | tojson }};
+</script>
+<script src="{{ url_for('static', filename='live_update.js') }}?v=1"></script>
+<script src="{{ url_for('static', filename='periodic_toggle_confirm.js') }}?v=5"></script>
 <script src="{{ url_for('static', filename='postpone.js') }}?v=3"></script>
 <script src="{{ url_for('static', filename='subtasks_toggle.js') }}?v=1"></script>
 

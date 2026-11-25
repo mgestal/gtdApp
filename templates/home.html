@@ -128,7 +128,7 @@
                 </div>
               {% endif %}
             </td>
-            <td>
+            <td data-task-tags="{{ t.id }}">
               {% if t.recurrence_rule %}
                 <a class="pill taglink" href="{{ url_for('task_periodic_history', task_id=t.id, next=request.full_path) }}">⟲ periodica</a>
                 {% set _pb = periodic_occurrences_badge(t) %}{% if _pb %}<span class="pill-progress">{{ _pb }}</span>{% endif %}
@@ -339,18 +339,23 @@
       ev.stopPropagation();
       el.classList.remove('dnd-drop-active');
 
+      const live = window.gtdLive;
+      const payload = dragPayload;
       try {
-        if (dragPayload.kind === 'task') {
-          await postJson(_TASK_MOVE_URL.replace('/0/', `/${dragPayload.id}/`), {
+        if (payload.kind === 'task') {
+          const data = await postJson(_TASK_MOVE_URL.replace('/0/', `/${payload.id}/`), {
             target_type: dropType,
             target_id: targetId,
           });
-        } else if (dragPayload.kind === 'project' && dropType === 'folder') {
-          await postJson(_PROJ_MOVE_URL.replace('/0/', `/${dragPayload.id}/`), {
+          live.removeTask(payload.id);  // ya no está en el Inbox
+          live.setCounts(data.counts);
+        } else if (payload.kind === 'project' && dropType === 'folder') {
+          await postJson(_PROJ_MOVE_URL.replace('/0/', `/${payload.id}/`), {
             folder_id: targetId,
           });
+          document.querySelectorAll(`main [data-project-id="${payload.id}"]`).forEach((row) => row.remove());
+          live.moveProjectInTree(payload.id, targetId);
         }
-        window.location.reload();
       } catch (err) {
         window.alert(err && err.message ? err.message : 'Error al mover');
       }

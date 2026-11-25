@@ -34,6 +34,7 @@ from gtd.recurrence import (
 from gtd.calendar_sync import _mark_task_calendar_dirty
 from gtd.common import next_project_task_sort_order
 from gtd.tasks_ops import complete_nonrecurring_task
+from gtd.context import inject_sidebar_counts
 
 
 @app.route("/tasks/create", methods=["POST"])
@@ -650,6 +651,11 @@ def task_toggle(task_id: int):
         abort(404)
 
     now = datetime.now(ZoneInfo("Europe/Madrid")).replace(tzinfo=None)  # guardamos naive en DB
+    # Petición desde JS (live_update.js): se responde JSON para actualizar la fila sin recargar.
+    wants_json = request.headers.get("X-Requested-With") == "fetch"
+    # La página debe recargarse si cambia algo más que esta fila (nueva fecha de una
+    # periódica, otra tarea promocionada a NextAction).
+    needs_reload = False
 
     try:
         if task["completed_at"]:
@@ -662,18 +668,29 @@ def task_toggle(task_id: int):
             if task.get("recurrence_rule") and task.get("due_date"):
                 recurrence_due_choice = (request.form.get("recurrence_due_choice") or "").strip().lower()
                 complete_recurring_task_run(task_id, task, now, recurrence_due_choice)
+                needs_reload = True
 
             else:
                 # CASO 2: tarea no recurrente
-                complete_nonrecurring_task(task_id, task, now)
+                needs_reload = complete_nonrecurring_task(task_id, task, now)
 
         _mark_task_calendar_dirty(task_id)
         commit()
 
     except Exception as e:
         rollback()
+        if wants_json:
+            return jsonify({"ok": False, "error": f"No se pudo actualizar la tarea: {e}"}), 500
         flash(f"No se pudo actualizar la tarea: {e}", "error")
 
+    if wants_json:
+        return jsonify({
+            "ok": True,
+            "task_id": task_id,
+            "completed": not task["completed_at"],
+            "reload": needs_reload,
+            "counts": inject_sidebar_counts()["sidebar_counts"],
+        })
     return redirect(request.referrer or url_for("home"))
 
 
@@ -741,7 +758,7 @@ def api_task_move(task_id: int):
                 "UPDATE tasks SET project_id=%s, folder_id=NULL, sort_order=%s WHERE id=%s",
                 (target_id, next_project_task_sort_order(target_id), task_id),
             )
-            return jsonify({"ok": True, "message": "Tarea movida a proyecto"})
+            return jsonify({"ok": True, "message": "Tarea movida a proyecto", "counts": inject_sidebar_counts()["sidebar_counts"]})
 
         if target_type == "folder":
             folder = q1("SELECT id FROM folders WHERE id=%s", (target_id,))
@@ -751,7 +768,7 @@ def api_task_move(task_id: int):
                 "UPDATE tasks SET folder_id=%s, project_id=NULL WHERE id=%s",
                 (target_id, task_id),
             )
-            return jsonify({"ok": True, "message": "Tarea movida a carpeta"})
+            return jsonify({"ok": True, "message": "Tarea movida a carpeta", "counts": inject_sidebar_counts()["sidebar_counts"]})
 
         return jsonify({"ok": False, "error": "Tipo de destino no soportado"}), 400
     except Exception as e:

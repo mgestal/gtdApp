@@ -246,6 +246,12 @@ def folder_detail(folder_id: int):
         completed_tags_map=completed_tags_map,
         include_subfolders=include_subfolders,
         tasks_grouped=tasks_grouped,
+        # Qué ubicaciones muestra esta vista: al mover una tarea/proyecto fuera, live_update.js quita su fila.
+        view_scope={
+            "task_folders": folder_ids if include_subfolders else [folder_id],
+            "task_projects": project_ids if include_subfolders else [],
+            "project_folders": [folder_id],
+        },
     )
 
 @app.route("/folders/<int:folder_id>/rename", methods=["POST"])

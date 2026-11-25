@@ -1062,6 +1062,35 @@
   let draggedTaskId = null;
   let draggedKanbanColumn = null;
 
+  function groupLabel(group) {
+    const label = group.querySelector('summary > span');
+    return label ? label.textContent.trim() : '';
+  }
+
+  // Tras mover una tarjeta sin recargar: contadores de grupo, grupos vacíos y aviso «Sin tareas».
+  function refreshColumn(column) {
+    if (!column) return;
+    column.querySelectorAll('.kanban-waiting-group').forEach((group) => {
+      const count = group.querySelectorAll('.kanban-card').length;
+      if (!count) { group.remove(); return; }
+      const badge = group.querySelector('.kanban-waiting-group-count');
+      if (badge) badge.textContent = String(count);
+    });
+    const cards = column.querySelector('.kanban-cards');
+    if (cards) {
+      const empty = cards.querySelector(':scope > .kanban-empty');
+      const hasCards = !!cards.querySelector('.kanban-card');
+      if (hasCards && empty) empty.remove();
+      if (!hasCards && !empty) {
+        const placeholder = document.createElement('div');
+        placeholder.className = 'kanban-empty';
+        placeholder.textContent = 'Sin tareas';
+        cards.appendChild(placeholder);
+      }
+    }
+    updateColumnCounter(column);
+  }
+
   function updateColumnCounter(column) {
     if (!column) return;
     const counter = column.querySelector('.kanban-counter');
@@ -1215,11 +1244,13 @@
 
         let data = await response.json().catch(() => ({}));
 
+        let multipleCards = false;
         if (response.status === 409 && data.requires_confirmation) {
           const matchingCards = (data.matching_cards || []).join(', ');
           if (!confirm(`Después del movimiento, la tarea aparecerá en varias cards: ${matchingCards}. ¿Quieres moverla igualmente?`)) {
             return;
           }
+          multipleCards = true;
           response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1234,16 +1265,32 @@
           throw new Error(errorText);
         }
 
-        if (cardEl) {
-          const sourceColumn = cardEl.closest('.kanban-column');
-          cardEl.dataset.status = targetStatus;
-          cardsContainer.appendChild(cardEl);
-          if (sourceColumn) updateColumnCounter(sourceColumn);
-          updateColumnCounter(column);
+        // La tarjeta aparecerá en varias columnas o en otra distinta: no se puede pintar sin recargar.
+        if (multipleCards || !cardEl || (data.status && data.status !== targetStatus)) {
+          window.gtdLive.reload();
+          return;
         }
 
+        const sourceColumn = cardEl.closest('.kanban-column');
+        const sourceGroup = cardEl.closest('.kanban-waiting-group');
+        let destination = cardsContainer;
+        let before = cardsContainer.querySelector(':scope > .kanban-waiting-group');
+        if (sourceGroup) {
+          // Las tareas de carpetas agrupadas (Agenda, Rutinas...) van a su mismo grupo en la columna destino
+          const label = groupLabel(sourceGroup);
+          const targetGroup = [...column.querySelectorAll('.kanban-waiting-group')].find((g) => groupLabel(g) === label);
+          if (!targetGroup) {
+            window.gtdLive.reload();
+            return;
+          }
+          destination = targetGroup.querySelector('.kanban-waiting-group-cards');
+          before = null;
+        }
+        cardEl.dataset.status = targetStatus;
+        destination.insertBefore(cardEl, before);
+        refreshColumn(sourceColumn);
+        refreshColumn(column);
         applyKanbanFilter();
-        window.location.reload();
       } catch (err) {
         console.error('Kanban drop error:', err);
         alert(err.message || 'No se pudo mover la tarea');

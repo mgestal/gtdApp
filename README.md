@@ -30,6 +30,7 @@ Aplicación personal de **Getting Things Done (GTD)** desarrollada en **Python +
 - Convertir una carpeta en proyecto (si no contiene subcarpetas ni proyectos) y un proyecto activo en carpeta, desde el menú Acciones de su detalle
 - En el detalle de proyecto, el icono `⚡` del título "Tareas del proyecto" muestra por hover el estado de promoción automática de NextAction
 - En el detalle de proyecto, las tareas activas se pueden reordenar por arrastre; ese orden se usa para la promoción automática de NextAction
+- Completar, etiquetar (soltando una etiqueta) y arrastrar tareas, proyectos o carpetas actualiza la página sin recargarla, conservando el scroll y la barra lateral
 - Creación rápida desde cualquier vista con sintaxis natural
 - Vistas: Inbox, Hoy, Esta semana, NextActions, Próximo, Calendario
 - Tablero Kanban: una tarea puede aparecer simultáneamente en todas las cards cuyos criterios cumpla, además de Inbox cuando no tiene proyecto ni carpeta

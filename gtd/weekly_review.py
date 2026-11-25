@@ -115,6 +115,12 @@ def finish_review() -> Optional[datetime]:
     return finished
 
 
+def projects_without_issues(projects: List[Dict[str, Any]], *flagged: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """``projects`` sin los que aparecen en alguna de las listas de avisos (por id)."""
+    flagged_ids = {int(p["id"]) for group in flagged for p in group}
+    return [p for p in projects if int(p["id"]) not in flagged_ids]
+
+
 def projects_without_next_action() -> List[Dict[str, Any]]:
     """Proyectos activos con tareas pendientes pero ninguna etiquetada como NextAction.
 

@@ -345,7 +345,7 @@
       {% if rs.in_progress %}
         Revisión en curso desde {{ rs.started_at.strftime('%d-%m-%Y %H:%M') }} · <span id="reviewDone">{{ rs.checked|length }}</span>/{{ rs.total }} bloques
       {% else %}
-        Marca un bloque para empezar una revisión.
+        Sin revisión en curso.
       {% endif %}
     </span>
     <form method="post" action="{{ url_for('review_finish') }}" id="reviewFinishForm" {% if not rs.in_progress %}hidden{% endif %}>
@@ -938,7 +938,7 @@
           {% endfor %}
         </div>
       {% else %}
-        <div class="empty">No hay proyectos activos fuera de {{ R_FOLDER.routines }}.</div>
+        <div class="empty">No hay proyectos activos sin avisos fuera de {{ R_FOLDER.routines }}.</div>
       {% endif %}
     </div>
 

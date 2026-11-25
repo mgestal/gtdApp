@@ -66,10 +66,8 @@
                 {% if t.due_date %}
                   <div>{{ t.due_date.strftime('%d-%m-%Y') }}</div>
                   <div class="muted">
-                    {% if t.due_time and t.due_time.strftime is defined %}
-                      {{ t.due_time.strftime('%H:%M') }}
-                    {% elif t.due_time %}
-                      {{ (t.due_time|string)[:5] }}
+                    {% if t.due_time %}
+                      {{ t.due_time|hhmm }}
                     {% else %}
                       Sin hora
                     {% endif %}

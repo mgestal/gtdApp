@@ -4,7 +4,7 @@ from __future__ import annotations
 import calendar
 import re
 import unicodedata
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from typing import Any, Optional, Tuple
 from urllib.parse import quote_plus, urlparse
 from zoneinfo import ZoneInfo
@@ -260,3 +260,22 @@ def _split_tags_csv(s: str) -> list[str]:
         return []
     parts = [p.strip() for p in s.split(",")]
     return [p for p in parts if p]
+
+
+def format_hhmm(value: Any) -> str:
+    """Hora como "HH:MM" (filtro Jinja ``hhmm``); "" si no hay hora o no es válida.
+
+    pymysql devuelve las columnas TIME como ``timedelta`` y ``str()`` no rellena con
+    ceros ("9:15:00"), así que recortar ``[:5]`` daba "9:15:" (inválido para <input type="time">).
+    """
+    if value is None or value == "":
+        return ""
+    if isinstance(value, (time, datetime)):
+        return value.strftime("%H:%M")
+    if isinstance(value, timedelta):
+        minutes = int(value.total_seconds()) // 60
+        return f"{minutes // 60 % 24:02d}:{minutes % 60:02d}"
+    match = re.match(r"^\s*(\d{1,2}):(\d{2})", str(value))
+    if not match:
+        return ""
+    return f"{int(match.group(1)):02d}:{match.group(2)}"

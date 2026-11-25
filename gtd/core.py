@@ -8,6 +8,7 @@ from flask import Flask
 from markupsafe import escape as html_escape, Markup
 
 from gtd.config import BASE_DIR
+from gtd.utils import format_hhmm
 
 
 # import_name "app" conserva el nombre del logger; root_path apunta a la raíz (templates/, static/).
@@ -68,3 +69,4 @@ def _linkify_title(title: str) -> Markup:
 
 
 app.jinja_env.filters["linkify_title"] = _linkify_title
+app.jinja_env.filters["hhmm"] = format_hhmm

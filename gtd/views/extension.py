@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 
 from flask import jsonify, make_response, request
 
-from gtd.utils import _today_madrid, coerce_priority, normalize_name
+from gtd.utils import _today_madrid, coerce_priority, format_hhmm, normalize_name
 from gtd.core import app
 from gtd.db import commit, exec_sql, q, q1, rollback
 from gtd.lookups import find_project_by_name_active, get_or_create_tag
@@ -65,12 +65,7 @@ def _ext_parse_scope(scope_raw: str) -> Tuple[str, date, date]:
 
 
 def _to_hhmm(value: Any) -> Optional[str]:
-    if value is None:
-        return None
-    if hasattr(value, "strftime"):
-        return value.strftime("%H:%M")
-    txt = str(value).strip()
-    return txt[:5] if len(txt) >= 5 else None
+    return format_hhmm(value) or None
 
 
 @app.route("/api/extension/tasks")

@@ -145,12 +145,7 @@
               {% endif %}
               {% if t.due_time %}
                 <div class="muted" style="font-size:12px; margin-top:2px;">
-                  {% if t.due_time.strftime is defined %}
-                    {{ t.due_time.strftime('%H:%M') }}
-                  {% else %}
-                    {% set ts = t.due_time|string %}
-                    {{ ts[:5] if ts|length >= 5 else '—' }}
-                  {% endif %}
+                  {{ t.due_time|hhmm }}
                 </div>
               {% endif %}
             </td>

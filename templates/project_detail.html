@@ -511,12 +511,7 @@
                   {% endif %}
                   {% if t.due_time %}
                     ·
-                    {% if t.due_time.strftime is defined %}
-                      {{ t.due_time.strftime('%H:%M') }}
-                    {% else %}
-                      {% set ts_m = t.due_time|string %}
-                      {{ ts_m[:5] if ts_m|length >= 5 else '—' }}
-                    {% endif %}
+                    {{ t.due_time|hhmm }}
                   {% endif %}
                 {% else %}
                   —
@@ -558,12 +553,7 @@
                 {% endif %}
                 {% if t.due_time %}
                   <div class="muted" style="font-size:12px; margin-top:2px;">
-                    {% if t.due_time.strftime is defined %}
-                      {{ t.due_time.strftime('%H:%M') }}
-                    {% else %}
-                      {% set ts = t.due_time|string %}
-                      {{ ts[:5] if ts|length >= 5 else '—' }}
-                    {% endif %}
+                    {{ t.due_time|hhmm }}
                   </div>
                 {% endif %}
               {% else %}
@@ -676,12 +666,7 @@
             </td>
             <td style="white-space:nowrap; font-size:13px;">
             {% if t.due_time %}
-              {% if t.due_time.strftime is defined %}
-                {{ t.due_time.strftime('%H:%M') }}
-              {% else %}
-                {% set ts = t.due_time|string %}
-                {{ ts[:5] if ts|length >= 5 else '—' }}
-              {% endif %}
+              {{ t.due_time|hhmm }}
             {% elif t.due_date %}
               {% if t.due_date.strftime is defined %}
                 {{ t.due_date.strftime('%H:%M') }}

@@ -343,12 +343,7 @@
 
                       <td style="font-size:0.8rem; white-space:nowrap; text-align:{{ 'right' if t.due_time else 'center' }};">
                         {% if t.due_time %}
-                          {% if t.due_time.strftime is defined %}
-                            {{ t.due_time.strftime('%H:%M') }}
-                          {% else %}
-                            {% set ts = t.due_time|string %}
-                            {{ ts[:5] if ts|length >= 5 else '—' }}
-                          {% endif %}
+                          {{ t.due_time|hhmm }}
                         {% else %}
                           <span class="muted">—</span>
                         {% endif %}
@@ -448,12 +443,7 @@
                   <span style="{% if t.due_date < today_date %}color:#b91c1c; font-weight:700;{% endif %}">{{ t.due_date.strftime('%d-%m-%Y') }}</span>
                   {% if t.due_time %}
                     <div class="muted" style="font-size:12px; margin-top:2px;">
-                      {% if t.due_time.strftime is defined %}
-                        {{ t.due_time.strftime('%H:%M') }}
-                      {% else %}
-                        {% set ts = t.due_time|string %}
-                        {{ ts[:5] if ts|length >= 5 else '—' }}
-                      {% endif %}
+                      {{ t.due_time|hhmm }}
                     </div>
                   {% endif %}
                 </td>
@@ -553,12 +543,7 @@
                 </td>
                 <td style="text-align:{{ 'right' if t.due_time else 'center' }}; white-space:nowrap;">
                   {% if t.due_time %}
-                    {% if t.due_time.strftime is defined %}
-                      {{ t.due_time.strftime('%H:%M') }}
-                    {% else %}
-                      {% set ts = t.due_time|string %}
-                      {{ ts[:5] }}
-                    {% endif %}
+                    {{ t.due_time|hhmm }}
                   {% else %}
                     <span class="muted">—</span>
                   {% endif %}

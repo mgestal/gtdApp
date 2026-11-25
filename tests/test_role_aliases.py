@@ -50,7 +50,7 @@ class ReviewUsesAliasesTests(unittest.TestCase):
                  "tags": {"next_action": ["NextAction"], "following": ["EnSeguimiento"],
                           "agenda": ["agenda"], "waiting": ["EnEspera", "WaitingFor"]},
                  "folders": {"someday": [], "following": [], "waiting": [], "checklists": [],
-                             "adtv": [], "not_this_week": [], "agenda": []},
+                             "adtv": [], "not_this_week": [], "agenda": [], "routines": []},
              }), \
              patch_all("role_tag_exists", return_value=True), \
              patch_all("role_folder_tree_ids", return_value=set()), \

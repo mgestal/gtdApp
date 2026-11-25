@@ -3,10 +3,10 @@ from __future__ import annotations
 
 from typing import Any, Tuple
 
-from flask import render_template
+from flask import flash, jsonify, redirect, render_template, request, url_for
 
 from gtd.core import app
-from gtd.db import q
+from gtd.db import commit, q, rollback
 from gtd.roles import (
     get_folder_tree_ids,
     role_folder_exists,
@@ -17,6 +17,13 @@ from gtd.roles import (
 )
 from gtd.recurrence import recurring_effective_due_sql
 from gtd.common import load_tags_map
+from gtd.weekly_review import (
+    BLOCK_KEYS,
+    finish_review,
+    load_state,
+    projects_without_next_action,
+    set_block,
+)
 
 
 @app.route("/review")
@@ -444,4 +451,37 @@ def review():
         checklist_projects=checklist_projects,
         tags_map=tags_map,
         projects_seguimiento=projects_seguimiento,
+        review_state=load_state(),
+        projects_without_next_action=projects_without_next_action(),
     )
+
+
+@app.route("/review/blocks/<key>", methods=["POST"])
+def review_block_toggle(key: str):
+    """Marca/desmarca un bloque de la checklist (empieza la revisión si no hay una en curso)."""
+    if key not in BLOCK_KEYS:
+        return jsonify({"ok": False, "error": "Bloque de revisión desconocido."}), 404
+    payload = request.get_json(silent=True) or {}
+    try:
+        checked = set_block(key, bool(payload.get("checked")))
+        commit()
+    except Exception as exc:
+        rollback()
+        return jsonify({"ok": False, "error": str(exc)}), 500
+    return jsonify({"ok": True, "checked": checked, "total": len(BLOCK_KEYS)})
+
+
+@app.route("/review/finish", methods=["POST"])
+def review_finish():
+    try:
+        finished = finish_review()
+        commit()
+    except Exception as exc:
+        rollback()
+        flash(f"No se pudo terminar la revisión: {exc}", "error")
+        return redirect(url_for("review"))
+    if finished is None:
+        flash("No hay ninguna revisión en curso.", "error")
+    else:
+        flash("Revisión semanal terminada.", "ok")
+    return redirect(url_for("review"))

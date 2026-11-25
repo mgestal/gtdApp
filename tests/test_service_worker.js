@@ -80,6 +80,15 @@ async function trigger(name, event) {
   assert.equal((await fetchResponse).status, 200);
   assert.equal(cached.get(historyUrl), "stale history");
   assert.equal(fetched.at(-1), historyUrl);
+  const tagSearchUrl = "https://example.test/gtdApp/api/tags/search?q=next";
+  cached.set(tagSearchUrl, "stale deleted tag");
+  handlers.fetch({
+    request: {method: "GET", mode: "cors", url: tagSearchUrl},
+    respondWith: promise => { fetchResponse = promise; }
+  });
+  assert.equal((await fetchResponse).status, 200);
+  assert.equal(cached.get(tagSearchUrl), "stale deleted tag");
+  assert.equal(fetched.at(-1), tagSearchUrl);
   console.log("Service worker: push, click y protección del destino OK");
 })().catch(error => {
   console.error(error);

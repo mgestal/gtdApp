@@ -13,6 +13,31 @@
     cursor:help;
   }
 
+  .review-tabs-bar{
+    display:flex;
+    flex-wrap:wrap;
+    align-items:center;
+    gap:8px 16px;
+    margin:16px 0 18px;
+  }
+  .review-tabs-bar .review-tabs{ margin:0; }
+  .review-status{
+    margin-left:auto;
+    display:flex;
+    flex-wrap:wrap;
+    align-items:center;
+    justify-content:flex-end;
+    gap:8px 16px;
+  }
+  .review-status form{ margin:0; }
+  .review-block-check{
+    width:18px;
+    height:18px;
+    margin:0 8px 0 0;
+    vertical-align:-3px;
+    cursor:pointer;
+  }
+
   .review-tip::after{
     content: attr(data-tip);
     position:absolute;
@@ -296,9 +321,37 @@
   <p class="subtitle">Limpieza y revisión del sistema GTD.</p>
 </div>
 
+{% set rs = review_state %}
+{% macro review_check(key) -%}
+  <input type="checkbox" class="js-review-block review-block-check" data-key="{{ key }}"
+         data-url="{{ url_for('review_block_toggle', key=key) }}" {% if key in rs.checked %}checked{% endif %}
+         title="Marcar bloque como revisado" aria-label="Marcar bloque como revisado">
+{%- endmacro %}
+<div class="review-tabs-bar">
 <div class="review-tabs" role="tablist" aria-label="Pestañas de revisión">
-  <button class="review-tab active" type="button" role="tab" aria-selected="true" data-tab="weekly">Revisión semanal</button>
-  <button class="review-tab" type="button" role="tab" aria-selected="false" data-tab="summary">Resumen semanal</button>
+    <button class="review-tab active" type="button" role="tab" aria-selected="true" data-tab="weekly">Revisión semanal</button>
+    <button class="review-tab" type="button" role="tab" aria-selected="false" data-tab="summary">Resumen semanal</button>
+  </div>
+  <div class="review-status" id="reviewStatus">
+    <span>
+      {% if rs.last_finished_at %}
+        Última revisión: <b>{{ rs.last_finished_at.strftime('%d-%m-%Y') }}</b>
+        ({% if rs.days_since_last == 0 %}hoy{% elif rs.days_since_last == 1 %}ayer{% else %}hace {{ rs.days_since_last }} días{% endif %})
+      {% else %}
+        Todavía no has terminado ninguna revisión.
+      {% endif %}
+    </span>
+    <span class="muted" id="reviewProgress">
+      {% if rs.in_progress %}
+        Revisión en curso desde {{ rs.started_at.strftime('%d-%m-%Y %H:%M') }} · <span id="reviewDone">{{ rs.checked|length }}</span>/{{ rs.total }} bloques
+      {% else %}
+        Marca un bloque para empezar una revisión.
+      {% endif %}
+    </span>
+    <form method="post" action="{{ url_for('review_finish') }}" id="reviewFinishForm" {% if not rs.in_progress %}hidden{% endif %}>
+      <button class="btn btn-primary" type="submit">✔ Terminar revisión</button>
+    </form>
+  </div>
 </div>
 
 <section id="weekly" class="review-tab-panel active" role="tabpanel" aria-label="Revisión semanal">
@@ -352,7 +405,7 @@
 
   <div class="card">
     <div class="card-header">
-      <div class="card-title">1) Procesar inbox</div>
+      <div class="card-title">{{ review_check('inbox') }}1) Procesar inbox</div>
       <div class="muted">{{ inbox|length + inbox_projects|length }}</div>
     </div>
 
@@ -430,7 +483,7 @@
 
   <div class="card">
     <div class="card-header">
-      <div class="card-title">2) Revisar {{ R_TAG.next_action }}s</div>
+      <div class="card-title">{{ review_check('next_actions') }}2) Revisar {{ R_TAG.next_action }}s</div>
       <div class="muted">{{ nextactions_open|length + nextactions_overdue|length }}</div>
     </div>
 
@@ -547,7 +600,7 @@
 
   <div class="card">
     <div class="card-header">
-      <div class="card-title">3) Revisar agenda (eventos futuros) · próximos 7 días</div>
+      <div class="card-title">{{ review_check('agenda_future') }}3) Revisar agenda (eventos futuros) · próximos 7 días</div>
       <div class="muted">{{ upcoming_7|length }}</div>
     </div>
 
@@ -605,7 +658,7 @@
 
   <div class="card">
     <div class="card-header">
-      <div class="card-title">3) Revisar agenda (eventos futuros) · @{{ R_TAG.following }} 15 días</div>
+      <div class="card-title">{{ review_check('agenda_future') }}3) Revisar agenda (eventos futuros) · @{{ R_TAG.following }} 15 días</div>
       <div class="muted">{{ en_seguimiento_now|length + en_seguimiento_next_15|length }}</div>
     </div>
 
@@ -722,7 +775,7 @@
 
   <div class="card">
     <div class="card-header">
-      <div class="card-title">4) Revisar agenda (eventos pasados)</div>
+      <div class="card-title">{{ review_check('agenda_past') }}4) Revisar agenda (eventos pasados)</div>
       <div class="muted">{{ agenda_overdue|length }}</div>
     </div>
 
@@ -781,7 +834,7 @@
 
   <div class="card">
     <div class="card-header">
-      <div class="card-title">5) Revisar {{ R_TAG.waiting }}</div>
+      <div class="card-title">{{ review_check('waiting') }}5) Revisar {{ R_TAG.waiting }}</div>
       <div class="muted">{{ en_espera_tasks|length + en_espera_projects|length }}</div>
     </div>
 
@@ -865,7 +918,7 @@
 
   <div class="card">
     <div class="card-header">
-      <div class="card-title">6) Revisar Proyectos</div>
+      <div class="card-title">{{ review_check('projects') }}6) Revisar Proyectos</div>
       <div class="muted">{{ active_projects|length }}</div>
     </div>
 
@@ -886,6 +939,26 @@
         </div>
       {% else %}
         <div class="empty">No hay proyectos activos fuera de {{ R_FOLDER.routines }}.</div>
+      {% endif %}
+    </div>
+
+    <div class="review-subtitle">⚠️ Proyectos <b>sin {{ R_TAG.next_action }}</b></div>
+    <div class="card" style="padding:10px; margin-bottom:10px;">
+      {% if projects_without_next_action %}
+        <div class="review-mini-list" style="margin-bottom:0;">
+          {% for p in projects_without_next_action %}
+            <div class="review-mini-item">
+              <div class="review-mini-item-title">
+                <a class="link" href="{{ url_for('project_detail', project_id=p.id) }}">💼 {{ p.name }}</a>
+              </div>
+              <div class="review-mini-meta">
+                {% if p.folder_name %}📁 {{ p.folder_name }} · {% endif %}{{ p.pending }} tarea{{ '' if p.pending == 1 else 's' }} pendiente{{ '' if p.pending == 1 else 's' }}, ninguna con @{{ R_TAG.next_action }}
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty">Todos los proyectos activos con tareas tienen una {{ R_TAG.next_action }}.</div>
       {% endif %}
     </div>
 
@@ -934,7 +1007,7 @@
 
   <div class="card">
     <div class="card-header">
-      <div class="card-title">7) Revisión {{ R_FOLDER.adtv }} / {{ R_FOLDER.someday }} / {{ R_FOLDER.waiting }}</div>
+      <div class="card-title">{{ review_check('someday') }}7) Revisión {{ R_FOLDER.adtv }} / {{ R_FOLDER.someday }} / {{ R_FOLDER.waiting }}</div>
       <div class="muted">{{ adtv_projects|length + esta_semana_no_projects|length + sometime_tasks_no_project|length }}</div>
     </div>
 
@@ -1029,7 +1102,7 @@
 
  <div class="card">
     <div class="card-header">
-      <div class="card-title">7) Revisión {{ R_FOLDER.adtv }} / {{ R_FOLDER.someday }} / {{ R_FOLDER.waiting }} </div>
+      <div class="card-title">{{ review_check('someday') }}7) Revisión {{ R_FOLDER.adtv }} / {{ R_FOLDER.someday }} / {{ R_FOLDER.waiting }} </div>
       <div class="muted">{{ projects_seguimiento|length }}</div>
     </div>
 
@@ -1062,7 +1135,7 @@
 
   <div class="card">
     <div class="card-header">
-      <div class="card-title">8) Revisar listas de comprobación</div>
+      <div class="card-title">{{ review_check('checklists') }}8) Revisar listas de comprobación</div>
       <div class="muted">{{ checklist_projects|length + checklist_tasks|length }}</div>
     </div>
 
@@ -1125,7 +1198,7 @@
 
   <div class="card">
     <div class="card-header">
-      <div class="card-title">9) Brainstorming</div>
+      <div class="card-title">{{ review_check('brainstorm') }}9) Brainstorming</div>
     </div>
 
     <form method="post" action="{{ url_for('task_create') }}" class="form">
@@ -1287,6 +1360,50 @@
 </section>
 
 <script>
+  (function () {
+    const finishForm = document.getElementById('reviewFinishForm');
+    const boxes = document.querySelectorAll('.js-review-block');
+
+    const checkedKeys = () => new Set([...boxes].filter((b) => b.checked).map((b) => b.dataset.key));
+    const totalKeys = new Set([...boxes].map((b) => b.dataset.key)).size;
+
+    boxes.forEach((box) => {
+      box.addEventListener('change', async () => {
+        // Las cards de un mismo bloque (p.ej. las dos del 3) comparten casilla
+        const same = document.querySelectorAll(`.js-review-block[data-key="${box.dataset.key}"]`);
+        same.forEach((other) => { other.checked = box.checked; });
+        try {
+          const res = await fetch(box.dataset.url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ checked: box.checked }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data.ok) throw new Error(data.error || 'No se pudo guardar el bloque');
+          const done = document.getElementById('reviewDone');
+          if (done) {
+            done.textContent = data.checked.length;
+          } else if (data.checked.length) {
+            window.location.reload();  // primera marca: empieza la revisión
+          }
+        } catch (e) {
+          same.forEach((other) => { other.checked = !box.checked; });
+          alert(e.message);
+        }
+      });
+    });
+
+    if (finishForm) {
+      finishForm.addEventListener('submit', (ev) => {
+        const done = checkedKeys().size;
+        if (done < totalKeys && !confirm(`Has revisado ${done} de ${totalKeys} bloques. ¿Terminar la revisión igualmente?`)) {
+          ev.preventDefault();
+        }
+      });
+    }
+  })();
+
   const reviewTabs = document.querySelectorAll('.review-tab');
   const reviewPanels = document.querySelectorAll('.review-tab-panel');
 

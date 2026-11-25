@@ -1,4 +1,4 @@
-const CACHE_VERSION = "gtdapp-v14";
+const CACHE_VERSION = "gtdapp-v15";
 const OFFLINE_URL = "./static/offline.html";
 
 self.addEventListener("install", (event) => {
@@ -71,8 +71,8 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  if ([new URL("api/location-alerts", self.registration.scope).href,
-       new URL("api/notifications", self.registration.scope).href].includes(new URL(req.url).href)) {
+  // Las respuestas de la API son datos vivos: siempre a red, nunca a caché.
+  if (new URL(req.url).href.startsWith(new URL("api/", self.registration.scope).href)) {
     event.respondWith(fetch(req));
     return;
   }

@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import datetime, date
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -52,6 +53,48 @@ def _parse_date_ddmmyyyy(s: str) -> Optional[date]:
         return None
     # Permitimos dd-mm-aaaa (UI)
     return datetime.strptime(s, "%d-%m-%Y").date()
+
+
+_BULLET_RE = re.compile(r"^(?:\s*(?:[-*•+]\s+|\d+[.)]\s+|\[[ xX]?\]\s*))+")
+
+# Fecha opcional al final de la línea. Con «*» vale cualquier token de la entrada rápida
+# (*15-12, *15/12/2026, *hoy, *mañana, *lunes, *+3). Sin «*» solo fechas numéricas, hoy y
+# mañana, para no comerse palabras del título («Preparar la reunión del lunes»).
+_TRAILING_DATE_RE = re.compile(
+    r"\s+(?:\*(?P<star>\d{1,2}[-/]\d{1,2}(?:[-/]\d{4})?|hoy|mañana|lunes|martes|miércoles|miercoles"
+    r"|jueves|viernes|sábado|sabado|domingo|\+\d+)"
+    r"|(?P<bare>\d{1,2}[-/]\d{1,2}(?:[-/]\d{4})?|hoy|mañana))\s*$",
+    re.IGNORECASE,
+)
+
+
+def parse_subtask_lines(text: str) -> List[Tuple[str, Optional[date]]]:
+    """Convierte un texto multilínea en [(título, fecha|None), ...].
+
+    - Una subtarea por línea; las líneas vacías se ignoran.
+    - Quita viñetas iniciales: -, *, •, +, «1.», «1)», «[ ]», «[x]».
+    - Fecha opcional al final de la línea (ver _TRAILING_DATE_RE).
+    Lanza ValueError con la línea afectada si una fecha no es válida (p.ej. 31-02).
+    """
+    from gtd.quick_entry import parse_due_token
+
+    out: List[Tuple[str, Optional[date]]] = []
+    for raw in (text or "").splitlines():
+        line = _BULLET_RE.sub("", raw).strip()
+        if not line:
+            continue
+        due: Optional[date] = None
+        m = _TRAILING_DATE_RE.search(line)
+        if m:
+            token = m.group("star") or m.group("bare")
+            try:
+                due = parse_due_token(token)
+            except ValueError:
+                raise ValueError(f"Fecha inválida en «{line}».")
+            line = line[:m.start()].strip()
+        if line:
+            out.append((line, due))
+    return out
 
 
 def _safe_int(s: str) -> Optional[int]:
@@ -145,27 +188,38 @@ def register_subtask_routes(app, db: DB) -> None:
         if not task:
             abort(404)
 
-        title = (request.form.get("title") or "").strip()
+        back = request.referrer or url_for("task_edit", task_id=task_id)
         description = (request.form.get("description") or "").strip() or None
         due_raw = (request.form.get("due_date") or "").strip()
 
-        if not title:
+        try:
+            items = parse_subtask_lines(request.form.get("title") or "")
+        except ValueError as e:
+            flash(f"{e} No se ha creado ninguna subtarea.", "error")
+            return redirect(back)
+
+        if not items:
             flash("El título de la subtarea es obligatorio.", "error")
-            return redirect(request.referrer or url_for("task_edit", task_id=task_id))
+            return redirect(back)
+
+        if description and len(items) > 1:
+            flash("La descripción solo se puede indicar al añadir una única subtarea.", "error")
+            return redirect(back)
 
         try:
-            due_date = _parse_date_ddmmyyyy(due_raw) if due_raw else None
+            default_due = _parse_date_ddmmyyyy(due_raw) if due_raw else None
         except Exception:
             flash("Fecha inválida. Usa dd-mm-aaaa.", "error")
-            return redirect(request.referrer or url_for("task_edit", task_id=task_id))
+            return redirect(back)
 
         try:
-            db.exec_sql(
-                "INSERT INTO subtasks(task_id, title, description, due_date) VALUES(%s,%s,%s,%s)",
-                (task_id, title, description, due_date),
-            )
+            for title, due_date in items:
+                db.exec_sql(
+                    "INSERT INTO subtasks(task_id, title, description, due_date) VALUES(%s,%s,%s,%s)",
+                    (task_id, title, description, due_date or default_due),
+                )
             db.commit()
-            flash("Subtarea creada.", "ok")
+            flash("Subtarea creada." if len(items) == 1 else f"{len(items)} subtareas creadas.", "ok")
         except Exception as e:
             db.rollback()
             flash(f"No se pudo crear la subtarea: {e}", "error")

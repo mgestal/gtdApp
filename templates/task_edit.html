@@ -373,8 +373,8 @@
 
       <div class="grid2" style="align-items:end;">
         <div>
-          <label class="label">Título</label>
-          <input class="input" name="title" placeholder="" required>
+          <label class="label">Título (una subtarea por línea)</label>
+          <textarea class="input" name="title" rows="3" required placeholder="Pedir presupuesto&#10;Llamar al notario *15-12&#10;Enviar documentación mañana"></textarea>
         </div>
         <div>
           <label class="label">Fecha límite (dd-mm-aaaa)</label>
@@ -382,13 +382,18 @@
         </div>
       </div>
 
-      <label class="label">Descripción opcional</label>
+      <label class="label">Descripción opcional (solo si añades una subtarea)</label>
       <textarea class="input" name="description" rows="1" placeholder=""></textarea>
 
       <div class="row">
         <button class="btn btn-soft" type="submit">Añadir subtarea</button>
       </div>
 
+      <div class="hint">
+        Puedes pegar una lista: se quitan las viñetas (-, *, •, 1., [ ]). Fecha opcional al final de cada línea:
+        <code>15-12</code>, <code>15/12/2026</code>, <code>hoy</code>, <code>mañana</code> o, con asterisco,
+        <code>*lunes</code>, <code>*+3</code>… Las líneas sin fecha usan la fecha límite del formulario.
+      </div>
       <div class="hint">
         Las subtareas solo pertenecen a esta tarea. No se usan en búsqueda/filtros/agenda como entradas propias.
       </div>

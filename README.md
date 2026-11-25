@@ -16,6 +16,7 @@ Aplicación personal de **Getting Things Done (GTD)** desarrollada en **Python +
 ### Gestión de tareas
 
 - Inbox, proyectos, carpetas jerárquicas, etiquetas, subtareas
+- Alta de subtareas en bloque: una por línea (se pueden pegar listas con viñetas) y fecha opcional al final de cada línea (`15-12`, `hoy`, `mañana`, `*lunes`, `*+3`…)
 - Prioridades opcionales por tarea: Alta, Media, Baja o sin prioridad
 - Resaltado visual con barra vertical de color en listados de trabajo (cuando la prioridad está informada)
 - Fechas de vencimiento, hora y recurrencias (diaria, semanal, mensual, anual)

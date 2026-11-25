@@ -1,7 +1,7 @@
 """Roles GTD: etiquetas/carpetas especiales configurables (ver gtd_roles.py)."""
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from flask import g
 
@@ -90,6 +90,29 @@ def role_tag(role: str) -> str:
 def role_tag_sql_names(role: str) -> List[str]:
     """Nombres en minúsculas (con y sin tildes) para `LOWER(tg.name) IN (...)`."""
     return _gtd_roles_mod.sql_name_variants(role_tag_names(role))
+
+
+def role_tag_exists(role: str) -> bool:
+    """True si existe alguna etiqueta con el nombre canónico o un alias del rol."""
+    names = role_tag_sql_names(role)
+    return q1(
+        "SELECT id FROM tags WHERE LOWER(name) IN (" + ",".join(["%s"] * len(names)) + ") LIMIT 1",
+        tuple(names),
+    ) is not None
+
+
+def role_tag_filter(role: str, task_alias: str = "t") -> Tuple[str, Tuple[str, ...]]:
+    """Cláusula `AND EXISTS (...)`: la tarea tiene la etiqueta del rol (canónica o alias).
+
+    Usa EXISTS en lugar de JOIN para no duplicar tareas que lleven varios alias a la vez.
+    """
+    names = role_tag_sql_names(role)
+    clause = (
+        "AND EXISTS (SELECT 1 FROM task_tags rtt JOIN tags rtg ON rtg.id=rtt.tag_id "
+        f"WHERE rtt.task_id={task_alias}.id AND LOWER(rtg.name) IN ("
+        + ",".join(["%s"] * len(names)) + ")) "
+    )
+    return clause, tuple(names)
 
 
 def role_folder_names(role: str) -> List[str]:

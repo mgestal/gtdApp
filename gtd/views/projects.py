@@ -440,6 +440,45 @@ def project_delete(project_id: int):
     return redirect(next_url)
 
 
+@app.route("/projects/<int:project_id>/convert_to_folder", methods=["POST"])
+def project_convert_to_folder(project_id: int):
+    """Convierte el proyecto en una carpeta con el mismo nombre, dentro de su carpeta actual.
+
+    Sus tareas pasan a la nueva carpeta y el proyecto desaparece (se pierden la
+    descripción, el tablero y el orden propio del proyecto).
+    """
+    proj = q1(
+        "SELECT id, name, folder_id, archived, deleted_at FROM projects WHERE id=%s",
+        (project_id,),
+    )
+    if not proj:
+        abort(404)
+    if proj.get("deleted_at") or int(proj.get("archived") or 0):
+        flash("Solo se pueden convertir en carpeta los proyectos activos.", "error")
+        return redirect(url_for("project_detail", project_id=project_id))
+
+    try:
+        folder_id = exec_sql(
+            "INSERT INTO folders(name, parent_id) VALUES(%s,%s)",
+            (proj["name"], proj["folder_id"]),
+        )
+        exec_sql(
+            "UPDATE tasks SET folder_id=%s, project_id=NULL, "
+            "project_board_status=NULL, project_board_order=NULL "
+            "WHERE project_id=%s",
+            (folder_id, project_id),
+        )
+        exec_sql("DELETE FROM projects WHERE id=%s", (project_id,))
+        commit()
+    except Exception as e:
+        rollback()
+        flash(f"No se pudo convertir el proyecto en carpeta: {e}", "error")
+        return redirect(url_for("project_detail", project_id=project_id))
+
+    flash(f"Proyecto '{proj['name']}' convertido en carpeta.", "ok")
+    return redirect(url_for("folder_detail", folder_id=folder_id))
+
+
 @app.route("/projects/create", methods=["POST"])
 def project_create():
     name = normalize_name(request.form.get("name", ""))

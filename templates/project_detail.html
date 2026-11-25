@@ -335,6 +335,9 @@
           <form method="post" action="{{ url_for('project_archive', project_id=project.id) }}">
             <button class="dropdown-item" onclick="return confirm('¿Archivar este proyecto?');">Archivar proyecto</button>
           </form>
+          <form method="post" action="{{ url_for('project_convert_to_folder', project_id=project.id) }}">
+            <button class="dropdown-item" onclick="return confirm('¿Convertir este proyecto en carpeta? Sus tareas pasarán a la nueva carpeta; se perderán la descripción y el tablero del proyecto.');">Convertir en carpeta</button>
+          </form>
         {% else %}
           <form method="post" action="{{ url_for('project_unarchive', project_id=project.id) }}">
             <button class="dropdown-item" type="submit">Desarchivar proyecto</button>

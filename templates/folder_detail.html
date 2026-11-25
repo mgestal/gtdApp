@@ -179,6 +179,9 @@
       <div class="dropdown-menu" id="folderActionsMenu" style="display:none; left:0; right:auto;">
         <button type="button" class="dropdown-item" onclick="openFolderRenameModal()">Editar carpeta</button>
         <a class="dropdown-item" href="{{ url_for('folder_move', folder_id=folder.id) }}">Mover carpeta</a>
+        <form method="post" action="{{ url_for('folder_convert_to_project', folder_id=folder.id) }}">
+          <button class="dropdown-item" onclick="return confirm('¿Convertir esta carpeta en proyecto? Sus tareas pasarán al nuevo proyecto. Solo funciona si no contiene subcarpetas ni proyectos.');">Convertir en proyecto</button>
+        </form>
         <form method="post" action="{{ url_for('folder_delete', folder_id=folder.id) }}">
           <button class="dropdown-item danger" onclick="return confirm('¿Borrar carpeta? Solo funciona si está vacía.');">Borrar carpeta</button>
         </form>

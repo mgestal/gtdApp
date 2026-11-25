@@ -12,8 +12,8 @@ from gtd.roles import (
     role_folder_exists,
     role_folder_row,
     role_folder_tree_ids,
-    role_tag,
-    tag_exists,
+    role_tag_exists,
+    role_tag_filter,
 )
 from gtd.recurrence import recurring_effective_due_sql
 from gtd.common import load_tags_map
@@ -66,8 +66,8 @@ def review():
     ) or []
 
     # 2) NextActions
-    nextaction_tag = role_tag("next_action")
-    nextaction_exists = tag_exists(nextaction_tag)
+    nextaction_filter, nextaction_params = role_tag_filter("next_action")
+    nextaction_exists = role_tag_exists("next_action")
 
     sometime_review_folder_ids = role_folder_tree_ids("someday")
 
@@ -83,19 +83,17 @@ def review():
         "p.name AS project_name, p.id AS project_id, "
         "fd.name AS folder_name, fd.id AS folder_id "
         "FROM tasks t "
-        "JOIN task_tags tt ON tt.task_id=t.id "
-        "JOIN tags tg ON tg.id=tt.tag_id "
         "LEFT JOIN projects p ON p.id=t.project_id "
         f"{recurring_due_join}"
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "WHERE t.completed_at IS NULL "
         "AND t.deleted_at IS NULL "
-        "AND tg.name=%s "
+        + nextaction_filter +
         f"AND ({effective_due_expr} IS NULL OR {effective_due_expr} >= CURDATE()) "
         + nextaction_folder_clause +
         "AND (t.project_id IS NULL OR p.archived = 0) "
         f"ORDER BY ({effective_due_expr} IS NULL) ASC, {effective_due_expr} ASC, t.id DESC",
-        (nextaction_tag,) + nextaction_folder_params
+        nextaction_params + nextaction_folder_params
     ) if nextaction_exists else []
 
     nextactions_overdue = q(
@@ -103,47 +101,43 @@ def review():
         "p.name AS project_name, p.id AS project_id, "
         "fd.name AS folder_name, fd.id AS folder_id "
         "FROM tasks t "
-        "JOIN task_tags tt ON tt.task_id=t.id "
-        "JOIN tags tg ON tg.id=tt.tag_id "
         "LEFT JOIN projects p ON p.id=t.project_id "
         f"{recurring_due_join}"
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "WHERE t.completed_at IS NULL "
         "AND t.deleted_at IS NULL "
-        "AND tg.name=%s "
+        + nextaction_filter +
         f"AND {effective_due_expr} IS NOT NULL "
         f"AND {effective_due_expr} < CURDATE() "
         + nextaction_folder_clause +
         "AND (t.project_id IS NULL OR p.archived = 0) "
         f"ORDER BY {effective_due_expr} ASC, t.id DESC",
-        (nextaction_tag,) + nextaction_folder_params
+        nextaction_params + nextaction_folder_params
     ) if nextaction_exists else []
 
     # 3) Agenda futura
-    en_seguimiento_tag = role_tag("following")
-    agenda_tag = role_tag("agenda")
-    en_seguimiento_exists = tag_exists(en_seguimiento_tag)
-    agenda_exists = tag_exists(agenda_tag)
+    en_seguimiento_filter, en_seguimiento_params = role_tag_filter("following")
+    agenda_filter, agenda_params = role_tag_filter("agenda")
+    en_seguimiento_exists = role_tag_exists("following")
+    agenda_exists = role_tag_exists("agenda")
 
     upcoming_7 = q(
         f"SELECT t.id, t.title, t.location, t.notes, {effective_due_expr} AS due_date, t.completed_at, t.recurrence_rule, t.priority, "
         "p.name AS project_name, p.id AS project_id, "
         "fd.name AS folder_name, fd.id AS folder_id "
         "FROM tasks t "
-        "JOIN task_tags tt ON tt.task_id=t.id "
-        "JOIN tags tg ON tg.id=tt.tag_id "
         "LEFT JOIN projects p ON p.id=t.project_id "
         f"{recurring_due_join}"
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "WHERE t.completed_at IS NULL "
         "AND t.deleted_at IS NULL "
-        "AND tg.name=%s "
+        + agenda_filter +
         f"AND {effective_due_expr} IS NOT NULL "
         f"AND {effective_due_expr} >= CURDATE() "
         f"AND {effective_due_expr} <= DATE_ADD(CURDATE(), INTERVAL 7 DAY) "
         "AND (t.project_id IS NULL OR p.archived = 0) "
         f"ORDER BY {effective_due_expr} ASC, t.id DESC",
-        (agenda_tag,)
+        agenda_params
     ) if agenda_exists else []
 
     en_seguimiento_now = q(
@@ -151,19 +145,17 @@ def review():
         "p.name AS project_name, p.id AS project_id, "
         "fd.name AS folder_name, fd.id AS folder_id "
         "FROM tasks t "
-        "JOIN task_tags tt ON tt.task_id=t.id "
-        "JOIN tags tg ON tg.id=tt.tag_id "
         "LEFT JOIN projects p ON p.id=t.project_id "
         f"{recurring_due_join}"
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "WHERE t.completed_at IS NULL "
         "AND t.deleted_at IS NULL "
-        "AND tg.name=%s "
+        + en_seguimiento_filter +
         f"AND {effective_due_expr} IS NOT NULL "
         f"AND {effective_due_expr} <= CURDATE() "
         "AND (t.project_id IS NULL OR p.archived = 0) "
         f"ORDER BY ({effective_due_expr} IS NULL) ASC, {effective_due_expr} ASC, t.id DESC",
-        (en_seguimiento_tag,)
+        en_seguimiento_params
     ) if en_seguimiento_exists else []
 
     en_seguimiento_next_15 = q(
@@ -171,20 +163,18 @@ def review():
         "p.name AS project_name, p.id AS project_id, "
         "fd.name AS folder_name, fd.id AS folder_id "
         "FROM tasks t "
-        "JOIN task_tags tt ON tt.task_id=t.id "
-        "JOIN tags tg ON tg.id=tt.tag_id "
         "LEFT JOIN projects p ON p.id=t.project_id "
         f"{recurring_due_join}"
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "WHERE t.completed_at IS NULL "
         "AND t.deleted_at IS NULL "
-        "AND tg.name=%s "
+        + en_seguimiento_filter +
         f"AND {effective_due_expr} IS NOT NULL "
         f"AND {effective_due_expr} > CURDATE() "
         f"AND {effective_due_expr} <= DATE_ADD(CURDATE(), INTERVAL 15 DAY) "
         "AND (t.project_id IS NULL OR p.archived = 0) "
         f"ORDER BY {effective_due_expr} ASC, t.id DESC",
-        (en_seguimiento_tag,)
+        en_seguimiento_params
     ) if en_seguimiento_exists else []
 
     # 4) Agenda pasada
@@ -195,24 +185,22 @@ def review():
         "p.name AS project_name, p.id AS project_id, "
         "fd.name AS folder_name, fd.id AS folder_id "
         "FROM tasks t "
-        "JOIN task_tags tt ON tt.task_id=t.id "
-        "JOIN tags tg ON tg.id=tt.tag_id "
         "LEFT JOIN projects p ON p.id=t.project_id "
         f"{recurring_due_join}"
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "WHERE t.completed_at IS NULL "
         "AND t.deleted_at IS NULL "
-        "AND tg.name=%s "
+        + agenda_filter +
         f"AND {effective_due_expr} IS NOT NULL "
         f"AND {effective_due_expr} < CURDATE() "
         "AND (t.project_id IS NULL OR p.archived = 0) "
         f"ORDER BY {effective_due_expr} ASC, t.id DESC",
-        (agenda_tag,)
+        agenda_params
     ) if agenda_exists else []
 
     # 5) EnEspera
-    en_espera_tag = role_tag("waiting")
-    en_espera_exists = tag_exists(en_espera_tag)
+    en_espera_filter, en_espera_params = role_tag_filter("waiting")
+    en_espera_exists = role_tag_exists("waiting")
     en_espera_folder_row = role_folder_row("waiting")
     en_espera_folder_exists = en_espera_folder_row is not None
 
@@ -231,18 +219,16 @@ def review():
         "p.name AS project_name, p.id AS project_id, "
         "fd.name AS folder_name, fd.id AS folder_id "
         "FROM tasks t "
-        "JOIN task_tags tt ON tt.task_id=t.id "
-        "JOIN tags tg ON tg.id=tt.tag_id "
         "LEFT JOIN projects p ON p.id=t.project_id "
         f"{recurring_due_join}"
         "LEFT JOIN folders fd ON fd.id=t.folder_id "
         "WHERE t.completed_at IS NULL "
         "AND t.deleted_at IS NULL "
-        "AND tg.name=%s "
+        + en_espera_filter
         + seguimiento_clause +
         "AND (t.project_id IS NULL OR p.archived = 0) "
         f"ORDER BY ({effective_due_expr} IS NULL) ASC, {effective_due_expr} ASC, t.id DESC",
-        (en_espera_tag,) + seguimiento_params
+        en_espera_params + seguimiento_params
     ) if en_espera_exists else []
 
     en_espera_projects = []

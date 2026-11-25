@@ -348,6 +348,47 @@ def folder_delete(folder_id: int):
     return redirect(url_for("folders"))
 
 
+@app.route("/folders/<int:folder_id>/convert_to_project", methods=["POST"])
+def folder_convert_to_project(folder_id: int):
+    """Convierte la carpeta en un proyecto con el mismo nombre, en la carpeta padre.
+
+    Sus tareas pasan al nuevo proyecto. Solo se permite si la carpeta no contiene
+    subcarpetas ni proyectos (un proyecto no puede contenerlos).
+    """
+    folder = q1("SELECT id, name, parent_id FROM folders WHERE id=%s", (folder_id,))
+    if not folder:
+        abort(404)
+
+    has_children = q1("SELECT 1 AS ok FROM folders WHERE parent_id=%s LIMIT 1", (folder_id,))
+    has_projects = q1("SELECT 1 AS ok FROM projects WHERE folder_id=%s LIMIT 1", (folder_id,))
+    if has_children or has_projects:
+        flash(
+            "No se puede convertir en proyecto: la carpeta contiene subcarpetas o proyectos "
+            "(también archivados o en la papelera). Muévelos primero.",
+            "error",
+        )
+        return redirect(url_for("folder_detail", folder_id=folder_id))
+
+    try:
+        project_id = exec_sql(
+            "INSERT INTO projects(name, folder_id) VALUES(%s,%s)",
+            (folder["name"], folder["parent_id"]),
+        )
+        exec_sql(
+            "UPDATE tasks SET project_id=%s, folder_id=NULL WHERE folder_id=%s",
+            (project_id, folder_id),
+        )
+        exec_sql("DELETE FROM folders WHERE id=%s", (folder_id,))
+        commit()
+    except Exception as e:
+        rollback()
+        flash(f"No se pudo convertir la carpeta en proyecto: {e}", "error")
+        return redirect(url_for("folder_detail", folder_id=folder_id))
+
+    flash(f"Carpeta '{folder['name']}' convertida en proyecto.", "ok")
+    return redirect(url_for("project_detail", project_id=project_id))
+
+
 @app.route("/folders/<int:folder_id>/purge_tasks", methods=["POST"])
 def folder_purge_tasks(folder_id: int):
     folder = q1("SELECT id, name FROM folders WHERE id=%s", (folder_id,))

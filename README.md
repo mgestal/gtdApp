@@ -24,6 +24,8 @@ Aplicación personal de **Getting Things Done (GTD)** desarrollada en **Python +
 - Papelera para tareas y proyectos eliminados, con restauración y vaciado desde Admin
 - Archivar tareas realizadas desde el Inbox con un solo clic
 - Revisión semanal con bloque EnEspera separado en tareas etiquetadas y proyectos de la carpeta EnEspera
+- La revisión semanal reconoce también los alias configurados en Admin para cada etiqueta GTD (p.ej. `EnEspera, WaitingFor`)
+- Convertir una carpeta en proyecto (si no contiene subcarpetas ni proyectos) y un proyecto activo en carpeta, desde el menú Acciones de su detalle
 - En el detalle de proyecto, el icono `⚡` del título "Tareas del proyecto" muestra por hover el estado de promoción automática de NextAction
 - En el detalle de proyecto, las tareas activas se pueden reordenar por arrastre; ese orden se usa para la promoción automática de NextAction
 - Creación rápida desde cualquier vista con sintaxis natural

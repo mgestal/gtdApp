@@ -113,8 +113,12 @@ class BrowserPushTests(unittest.TestCase):
 
     def test_push_test_all_requires_admin_and_csrf(self):
         import app as application
+        import auth
 
-        with patch_all("ensure_schema_updates"), \
+        # Login desactivado: si la config local lo activa, require_login() respondería 401
+        # antes de llegar a la comprobación de admin/CSRF que se prueba aquí.
+        with patch.object(auth, "get_auth_cfg", return_value={}), \
+             patch_all("ensure_schema_updates"), \
              patch_all("maybe_run_calendar_autosync"), \
              patch.dict(os.environ, {"GTD_ADMIN_PASSWORD": "test"}), \
              application.app.test_client() as client:

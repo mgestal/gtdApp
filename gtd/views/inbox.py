@@ -2,16 +2,17 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Any, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 from flask import flash, redirect, render_template, request, session, url_for
 
-from subtasks import load_subtask_counts, load_subtasks_map
+from subtasks import load_subtask_counts, load_subtasks_map, parse_subtask_lines
 
-from gtd.utils import _today_madrid
+from gtd.utils import _today_madrid, normalize_name
 from gtd.core import app
 from gtd.db import commit, exec_sql, q, q1, rollback
+from gtd.lookups import find_project_by_name_active
 from gtd.roles import (
     role_folder,
     role_folder_exists,
@@ -66,7 +67,7 @@ def home():
 # ---------------- Procesar Inbox (GTD: aclarar y organizar, una tarea cada vez) ----------------
 
 INBOX_PROCESS_SKIP_KEY = "inbox_process_skip"
-INBOX_PROCESS_ACTIONS = {"done", "next", "delegate", "schedule", "move", "someday", "delete", "skip"}
+INBOX_PROCESS_ACTIONS = {"done", "next", "delegate", "schedule", "move", "someday", "project", "delete", "skip"}
 
 
 def _inbox_process_skipped() -> List[int]:
@@ -120,6 +121,46 @@ def inbox_process():
     )
 
 
+def _convert_inbox_task_to_project(task: Dict[str, Any], name: str, folder_id: Optional[int],
+                                   steps: List[Tuple[str, Optional[date]]]) -> int:
+    """Crea el proyecto ``name`` a partir de una tarea del Inbox. No hace commit.
+
+    Las notas de la tarea pasan a la descripción del proyecto. Con ``steps`` se crea una
+    tarea por paso y la original va a la papelera; sin pasos, la tarea original se mueve
+    al proyecto. El primer paso recibe la etiqueta del rol ``next_action``.
+    """
+    task_id = int(task["id"])
+    project_id = exec_sql(
+        "INSERT INTO projects(name, description, folder_id) VALUES(%s,%s,%s)",
+        (name, (task.get("notes") or "").strip() or None, folder_id),
+    )
+    if steps:
+        step_ids = [
+            exec_sql(
+                "INSERT INTO tasks(title, project_id, due_date, sort_order) VALUES(%s,%s,%s,%s)",
+                (title, project_id, due, next_project_task_sort_order(project_id)),
+            )
+            for title, due in steps
+        ]
+        exec_sql(
+            "UPDATE tasks SET deleted_prev_archived=%s, deleted_at=NOW(), archived=1, "
+            "archived_at=COALESCE(archived_at, NOW()) WHERE id=%s",
+            (int(task.get("archived") or 0), task_id),
+        )
+        for step_id in step_ids:
+            _mark_task_calendar_dirty(step_id, force_push_if_empty=True)
+        first_id = step_ids[0]
+    else:
+        exec_sql(
+            "UPDATE tasks SET project_id=%s, folder_id=NULL, sort_order=%s WHERE id=%s",
+            (project_id, next_project_task_sort_order(project_id), task_id),
+        )
+        first_id = task_id
+    exec_sql("INSERT IGNORE INTO task_tags(task_id, tag_id) VALUES(%s,%s)",
+             (first_id, role_tag_id("next_action")))
+    return int(project_id)
+
+
 @app.route("/inbox/process/<int:task_id>", methods=["POST"])
 def inbox_process_action(task_id: int):
     action = (request.form.get("action") or "").strip().lower()
@@ -128,7 +169,7 @@ def inbox_process_action(task_id: int):
         return redirect(url_for("inbox_process"))
 
     task = q1(
-        "SELECT t.id, t.title, t.completed_at, t.due_date, t.recurrence_rule, t.max_occurrences, "
+        "SELECT t.id, t.title, t.notes, t.completed_at, t.due_date, t.recurrence_rule, t.max_occurrences, "
         "t.project_id, t.folder_id, t.archived, rr.last_next_due_date "
         "FROM tasks t "
         "LEFT JOIN (SELECT task_id, MAX(next_due_date) AS last_next_due_date "
@@ -175,6 +216,25 @@ def inbox_process_action(task_id: int):
             return redirect(url_for("inbox_process"))
         dest_type, dest_id = "folder", int(someday["id"])
 
+    new_title = (request.form.get("title") or "").strip()
+
+    # Convertir en proyecto: el proyecto se crea en la carpeta destino (o sin carpeta)
+    project_name = ""
+    steps: List[Tuple[str, Optional[date]]] = []
+    if action == "project":
+        if dest_type == "project":
+            flash("Para convertir en proyecto elige una carpeta como destino o déjalo vacío.", "error")
+            return redirect(url_for("inbox_process"))
+        project_name = normalize_name(new_title or task["title"])
+        if find_project_by_name_active(project_name):
+            flash(f"Ya existe un proyecto activo llamado «{project_name}».", "error")
+            return redirect(url_for("inbox_process"))
+        try:
+            steps = parse_subtask_lines(request.form.get("steps") or "")
+        except ValueError as e:
+            flash(str(e), "error")
+            return redirect(url_for("inbox_process"))
+
     if dest_type == "project" and not q1(
         "SELECT id FROM projects WHERE id=%s AND archived=0 AND deleted_at IS NULL", (dest_id,)
     ):
@@ -184,7 +244,6 @@ def inbox_process_action(task_id: int):
         flash("Carpeta destino no válida.", "error")
         return redirect(url_for("inbox_process"))
 
-    new_title = (request.form.get("title") or "").strip()
     messages = {
         "done": "Tarea completada.",
         "next": f"Marcada como @{role_tag('next_action')}.",
@@ -192,6 +251,9 @@ def inbox_process_action(task_id: int):
         "schedule": "Tarea programada.",
         "move": "Tarea movida.",
         "someday": f"Movida a «{role_folder('someday')}».",
+        "project": (f"Proyecto «{project_name}» creado"
+                    + (f" con {len(steps)} paso{'' if len(steps) == 1 else 's'}" if steps else "")
+                    + f"; primer paso marcado como @{role_tag('next_action')}."),
         "delete": "Tarea enviada a la papelera.",
     }
 
@@ -211,6 +273,8 @@ def inbox_process_action(task_id: int):
                 complete_recurring_task_run(task_id, task, now, None)
             else:
                 complete_nonrecurring_task(task_id, task, now)
+        elif action == "project":
+            _convert_inbox_task_to_project(task, project_name, dest_id if dest_type == "folder" else None, steps)
         else:
             if action == "next":
                 exec_sql("INSERT IGNORE INTO task_tags(task_id, tag_id) VALUES(%s,%s)",

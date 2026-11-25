@@ -42,6 +42,11 @@ from gtd.views.trash_archive import (
 )
 from gtd.views.calendar_admin import _handle_calendar_conflicts_action
 from gtd.role_alerts import ROLE_KEYS
+from gtd.weekly_review import (
+    STALLED_PROJECT_DAYS_MAX,
+    STALLED_PROJECT_DAYS_PATH,
+    stalled_project_days,
+)
 
 
 def create_api_token(user_id: int, device_name: str) -> str:
@@ -477,6 +482,20 @@ def admin():
             flash("Ajuste de NextAction guardado.", "ok")
             return redirect(url_for("admin"))
 
+        if action == "save_review_settings":
+            raw = (request.form.get("stalled_project_days") or "").strip()
+            if not raw.isdigit() or not 1 <= int(raw) <= STALLED_PROJECT_DAYS_MAX:
+                flash(f"Los días sin actividad deben ser un número entre 1 y {STALLED_PROJECT_DAYS_MAX}.", "error")
+                return redirect(url_for("admin") + "#review-settings")
+            cfg = load_config()
+            section = cfg
+            for key in STALLED_PROJECT_DAYS_PATH[:-1]:
+                section = section.setdefault(key, {})
+            section[STALLED_PROJECT_DAYS_PATH[-1]] = int(raw)
+            save_config(cfg)
+            flash("Ajustes de la revisión semanal guardados.", "ok")
+            return redirect(url_for("admin") + "#review-settings")
+
         if action == "initialize_system":
             if not admin_required():
                 flash("No autorizado.", "error")
@@ -836,6 +855,8 @@ def admin():
         google_token_status=google_token_status,
         google_token_expiry=google_token_expiry,
         notification_status=notification_status,
+        stalled_project_days=stalled_project_days(),
+        stalled_project_days_max=STALLED_PROJECT_DAYS_MAX,
     )
 
 
@@ -847,6 +868,7 @@ ADMIN_PANEL_KEYS = (
     "backups",
     "initialize",
     "nextaction",
+    "review",
     "gtd-role-tags",
     "gtd-role-folders",
     "kanban-subcards",

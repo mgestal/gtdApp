@@ -231,6 +231,28 @@
           </form>
         </div>
 
+        <div class="card admin-panel-card" data-admin-panel="review" id="review-settings" style="margin-top:20px;">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Revisión semanal</div>
+              <div class="card-sub">Avisos del bloque «Revisar Proyectos»</div>
+            </div>
+          </div>
+
+          <form method="post" class="form">
+            <input type="hidden" name="action" value="save_review_settings">
+
+            <label class="label" for="stalledProjectDays">Días sin actividad para considerar un proyecto estancado</label>
+            <input class="input" type="number" id="stalledProjectDays" name="stalled_project_days"
+                   min="1" max="{{ stalled_project_days_max }}" required value="{{ stalled_project_days }}">
+            <div class="hint">Un proyecto activo con tareas pendientes está estancado si en ese tiempo no se ha creado ni completado ninguna de sus tareas.</div>
+
+            <div class="row" style="margin-top:10px;">
+              <button class="btn btn-primary" type="submit">Guardar ajuste</button>
+            </div>
+          </form>
+        </div>
+
         <div class="card admin-panel-card" data-admin-panel="kanban-subcards" style="margin-bottom:20px;">
           <div class="card-header">
             <div>

@@ -79,7 +79,7 @@
             {% for p in all_projects %}<option value="💼 {{ p.name }}" data-dest="project:{{ p.id }}"></option>{% endfor %}
             {% for f in all_folders %}<option value="📂 {{ f.name }}" data-dest="folder:{{ f.id }}"></option>{% endfor %}
           </datalist>
-          <div class="hint">Opcional para Acción siguiente, Delegar y Programar. Sin destino, la tarea sigue en el Inbox.</div>
+          <div class="hint">Opcional para Acción siguiente, Delegar y Programar. Sin destino, la tarea sigue en el Inbox. Al convertir en proyecto, la carpeta donde se crea.</div>
         </div>
         <div>
           <label class="label" for="ipDueDate">Fecha</label>
@@ -87,6 +87,11 @@
                  value="{{ task.due_date.isoformat() if task.due_date else '' }}" min="{{ today.isoformat() }}">
         </div>
       </div>
+
+      <label class="label" for="ipSteps" style="margin-top:12px;">Primeros pasos (para convertir en proyecto)</label>
+      <textarea class="input" id="ipSteps" name="steps" rows="3"
+                placeholder="Un paso por línea; fecha opcional al final (15-12, mañana…)"></textarea>
+      <div class="hint">El proyecto toma el título de la tarea y sus notas como descripción. Cada paso será una tarea del proyecto y el primero se marcará como @{{ R_TAG.next_action }}; la tarea original irá a la papelera. Sin pasos, la propia tarea pasa al proyecto como @{{ R_TAG.next_action }}.</div>
 
       <div class="ip-question">¿Requiere acción? ¿Lleva menos de 2 minutos?</div>
       <div class="ip-actions">
@@ -96,6 +101,7 @@
         <button class="btn btn-soft" type="submit" data-action="schedule" data-needs="date">📅 Programar <span class="ip-key">p</span></button>
         <button class="btn btn-soft" type="submit" data-action="move" data-needs="dest">📂 Mover al destino <span class="ip-key">m</span></button>
         <button class="btn btn-soft" type="submit" data-action="someday" {% if not someday_folder_exists %}disabled title="No existe la carpeta {{ R_FOLDER.someday }}"{% endif %}>💭 {{ R_FOLDER.someday }} <span class="ip-key">a</span></button>
+        <button class="btn btn-soft" type="submit" data-action="project" data-needs="folder">💼 Convertir en proyecto <span class="ip-key">j</span></button>
         <button class="btn btn-soft" type="submit" data-action="delete" data-confirm="¿Enviar la tarea a la papelera?">🗑️ Papelera <span class="ip-key">b</span></button>
         <button class="btn btn-soft" type="submit" data-action="skip">⏭️ Saltar <span class="ip-key">s</span></button>
       </div>
@@ -129,6 +135,10 @@
     const needs = btn.dataset.needs;
     if (needs === 'date' && !dateInput.value) { dateInput.focus(); if (dateInput.showPicker) { try { dateInput.showPicker(); } catch (e) {} } return false; }
     if (needs === 'dest' && !destHidden.value) { destInput.focus(); return false; }
+    if (needs === 'folder' && destHidden.value.startsWith('project:')) {
+      destInput.setCustomValidity('El proyecto se crea en una carpeta: elige una carpeta o deja el destino vacío');
+      destInput.reportValidity(); destInput.focus(); return false;
+    }
     if (btn.dataset.confirm && !confirm(btn.dataset.confirm)) return false;
     actionInput.value = btn.dataset.action;
     return true;
@@ -141,7 +151,7 @@
   // Enter en el título/destino/fecha no envía el formulario sin acción elegida
   form.addEventListener('submit', ev => { if (!actionInput.value) ev.preventDefault(); });
 
-  const keyMap = { h:'done', n:'next', d:'delegate', p:'schedule', m:'move', a:'someday', b:'delete', s:'skip' };
+  const keyMap = { h:'done', n:'next', d:'delegate', p:'schedule', m:'move', a:'someday', j:'project', b:'delete', s:'skip' };
   // Captura: tiene prioridad sobre los atajos globales de navegación de base.html
   window.addEventListener('keydown', ev => {
     const tag = (ev.target.tagName || '').toLowerCase();

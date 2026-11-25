@@ -23,6 +23,8 @@ from gtd.weekly_review import (
     load_state,
     projects_without_issues,
     projects_without_next_action,
+    stalled_project_days,
+    stalled_projects,
     set_block,
 )
 
@@ -327,9 +329,13 @@ def review():
     empty_projects = [p for p in empty_projects if p.get("folder_name")]
 
     # "Proyectos activos" solo lista los que no tienen problemas: los que aparecen
-    # en "sin NextAction" o "sin acciones" se muestran únicamente en esas secciones.
+    # en "sin NextAction", "estancados" o "sin acciones" se muestran únicamente en esas secciones.
     projects_no_next_action = projects_without_next_action()
-    active_projects_other = projects_without_issues(active_projects_other, projects_no_next_action, empty_projects)
+    stalled_days = stalled_project_days()
+    projects_stalled = stalled_projects(stalled_days)
+    active_projects_other = projects_without_issues(
+        active_projects_other, projects_no_next_action, projects_stalled, empty_projects
+    )
 
     # 7) ADTV / SomeTime
     sometime_folder_exists = role_folder_exists("someday")
@@ -459,6 +465,8 @@ def review():
         projects_seguimiento=projects_seguimiento,
         review_state=load_state(),
         projects_without_next_action=projects_no_next_action,
+        stalled_projects=projects_stalled,
+        stalled_days=stalled_days,
     )
 
 

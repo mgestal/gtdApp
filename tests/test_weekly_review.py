@@ -109,6 +109,86 @@ class ProjectsWithoutIssuesTests(unittest.TestCase):
         self.assertEqual(wr.projects_without_issues(active, [], []), active)
 
 
+class StalledProjectsTests(unittest.TestCase):
+    def _run(self, rows, days=14, excluded=frozenset({9, 4})):
+        calls = []
+
+        def q(sql, params=()):
+            calls.append((sql, params))
+            return [dict(r) for r in rows]
+
+        with patch.object(wr, "q", q), patch.object(wr, "non_active_project_folder_ids", lambda: set(excluded)):
+            result = wr.stalled_projects(days, now=NOW)
+        return result, calls
+
+    def test_cutoff_and_excluded_folders_are_query_params(self):
+        _, calls = self._run([])
+        (sql, params), = calls
+        self.assertEqual(params, (4, 9, datetime(2026, 11, 11, 18, 30)))
+        self.assertIn("NOT IN (%s,%s)", sql)
+        self.assertIn("HAVING last_activity < %s", sql)
+        self.assertIn("a.pending > 0", sql)
+        self.assertIn("t.deleted_at IS NULL", sql)
+
+    def test_without_excluded_folders(self):
+        _, calls = self._run([], days=7, excluded=frozenset())
+        (sql, params), = calls
+        self.assertNotIn("NOT IN", sql)
+        self.assertEqual(params, (datetime(2026, 11, 18, 18, 30),))
+
+    def test_rows_get_idle_days_and_int_pending(self):
+        from decimal import Decimal
+        rows = [{"id": 1, "name": "A", "folder_name": None, "pending": Decimal("3"),
+                 "last_activity": datetime(2026, 10, 26, 9, 0)}]
+        result, _ = self._run(rows)
+        self.assertEqual(result[0]["idle_days"], 30)
+        self.assertEqual(result[0]["pending"], 3)
+
+    def test_days_come_from_config_with_limits(self):
+        cases = ((None, 14), ({"stalled_project_days": 21}, 21), ({"stalled_project_days": 0}, 1),
+                 ({"stalled_project_days": 9999}, wr.STALLED_PROJECT_DAYS_MAX),
+                 ({"stalled_project_days": "x"}, 14))
+        for review_cfg, expected in cases:
+            cfg = {"app": {"review": review_cfg}} if review_cfg is not None else {"app": {}}
+            with self.subTest(review_cfg=review_cfg), application.app.test_request_context("/review"):
+                from flask import g
+                g.cfg = cfg
+                self.assertEqual(wr.stalled_project_days(), expected)
+
+    def test_stalled_projects_are_removed_from_active(self):
+        active = [{"id": 1}, {"id": 2}, {"id": 3}]
+        self.assertEqual([p["id"] for p in wr.projects_without_issues(active, [], [{"id": 2}], [])], [1, 3])
+
+
+class ReviewSettingsAdminTests(unittest.TestCase):
+    def _post(self, value):
+        from gtd.views import admin as admin_views
+        saved = []
+        with application.app.test_request_context("/admin", method="POST",
+                                                  data={"action": "save_review_settings",
+                                                        "stalled_project_days": value}), \
+             patch_all("load_config", return_value={"app": {"timezone": "Europe/Madrid"}}), \
+             patch_all("save_config", side_effect=saved.append), \
+             patch_all("admin_required", return_value=True):
+            response = admin_views.admin()
+            flashes = session.get("_flashes", [])
+        return response, saved, flashes
+
+    def test_saves_days(self):
+        response, saved, flashes = self._post("21")
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.location.endswith("#review-settings"))
+        self.assertEqual(saved, [{"app": {"timezone": "Europe/Madrid", "review": {"stalled_project_days": 21}}}])
+        self.assertEqual(flashes[-1][0], "ok")
+
+    def test_rejects_invalid_days(self):
+        for value in ("0", "abc", "", str(wr.STALLED_PROJECT_DAYS_MAX + 1)):
+            with self.subTest(value=value):
+                _, saved, flashes = self._post(value)
+                self.assertEqual(saved, [])
+                self.assertEqual(flashes[-1][0], "error")
+
+
 class ReviewRoutesTests(unittest.TestCase):
     def test_toggle_block(self):
         with application.app.test_request_context("/review/blocks/inbox", method="POST", json={"checked": True}), \

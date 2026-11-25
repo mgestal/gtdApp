@@ -962,6 +962,26 @@
       {% endif %}
     </div>
 
+    <div class="review-subtitle">⏸️ Proyectos <b>estancados</b> <span class="muted">(sin actividad en {{ stalled_days }} día{{ '' if stalled_days == 1 else 's' }})</span></div>
+    <div class="card" style="padding:10px; margin-bottom:10px;">
+      {% if stalled_projects %}
+        <div class="review-mini-list" style="margin-bottom:0;">
+          {% for p in stalled_projects %}
+            <div class="review-mini-item">
+              <div class="review-mini-item-title">
+                <a class="link" href="{{ url_for('project_detail', project_id=p.id) }}">💼 {{ p.name }}</a>
+              </div>
+              <div class="review-mini-meta">
+                {% if p.folder_name %}📁 {{ p.folder_name }} · {% endif %}{{ p.pending }} tarea{{ '' if p.pending == 1 else 's' }} pendiente{{ '' if p.pending == 1 else 's' }} · última actividad hace {{ p.idle_days }} día{{ '' if p.idle_days == 1 else 's' }} ({{ p.last_activity.strftime('%d-%m-%Y') }})
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty">Ningún proyecto activo lleva más de {{ stalled_days }} día{{ '' if stalled_days == 1 else 's' }} sin crear ni completar tareas.</div>
+      {% endif %}
+    </div>
+
     <div class="review-subtitle">Proyectos <b>sin acciones</b></div>
     <div class="card" style="padding:10px; margin-bottom:10px;">
       {% if empty_projects %}

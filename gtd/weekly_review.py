@@ -7,10 +7,11 @@ forman el historial. Las fechas se guardan en hora local (Europe/Madrid), como l
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
+from gtd.config import cfg_int
 from gtd.db import exec_sql, q, q1
 from gtd.roles import non_active_project_folder_ids, role_tag_filter
 
@@ -27,6 +28,11 @@ BLOCK_KEYS = [
     "checklists",     # 8) Revisar listas de comprobación
     "brainstorm",     # 9) Brainstorming
 ]
+
+# Días sin actividad para considerar un proyecto estancado (config: app.review.stalled_project_days)
+STALLED_PROJECT_DAYS_DEFAULT = 14
+STALLED_PROJECT_DAYS_PATH = ["app", "review", "stalled_project_days"]
+STALLED_PROJECT_DAYS_MAX = 365
 
 
 def _now() -> datetime:
@@ -128,10 +134,7 @@ def projects_without_next_action() -> List[Dict[str, Any]]:
     (Rutinas, Agenda, Sometime, ADTV, Seguimiento) y sus subcarpetas.
     """
     next_filter, next_params = role_tag_filter("next_action", task_alias="na")
-    excluded = sorted(non_active_project_folder_ids())
-    excluded_sql = ""
-    if excluded:
-        excluded_sql = "AND (p.folder_id IS NULL OR p.folder_id NOT IN (" + ",".join(["%s"] * len(excluded)) + ")) "
+    excluded_sql, excluded = _excluded_project_folders_sql()
     return q(
         "SELECT p.id, p.name, f.name AS folder_name, COUNT(t.id) AS pending "
         "FROM projects p "
@@ -145,3 +148,51 @@ def projects_without_next_action() -> List[Dict[str, Any]]:
         "ORDER BY p.name",
         tuple(excluded) + tuple(next_params),
     ) or []
+
+
+def stalled_project_days() -> int:
+    return cfg_int(STALLED_PROJECT_DAYS_PATH, STALLED_PROJECT_DAYS_DEFAULT, 1, STALLED_PROJECT_DAYS_MAX)
+
+
+def _excluded_project_folders_sql() -> tuple:
+    excluded = sorted(non_active_project_folder_ids())
+    if not excluded:
+        return "", ()
+    return ("AND (p.folder_id IS NULL OR p.folder_id NOT IN (" + ",".join(["%s"] * len(excluded)) + ")) ",
+            tuple(excluded))
+
+
+def stalled_projects(days: Optional[int] = None, now: Optional[datetime] = None) -> List[Dict[str, Any]]:
+    """Proyectos activos con tareas pendientes y sin actividad en ``days`` días.
+
+    Actividad: crear el proyecto o crear/completar alguna de sus tareas (las archivadas
+    cuentan; las de la papelera no). Excluye las mismas carpetas que
+    :func:`projects_without_next_action`. Cada fila lleva ``last_activity`` y ``idle_days``.
+    """
+    days = days or stalled_project_days()
+    now = now or _now()
+    cutoff = now - timedelta(days=days)
+    excluded_sql, excluded_params = _excluded_project_folders_sql()
+    rows = q(
+        "SELECT p.id, p.name, f.name AS folder_name, a.pending, "
+        "GREATEST(p.created_at, COALESCE(a.last_created, p.created_at), "
+        "COALESCE(a.last_completed, p.created_at), COALESCE(a.last_recurring, p.created_at)) AS last_activity "
+        "FROM projects p "
+        "LEFT JOIN folders f ON f.id=p.folder_id "
+        "JOIN (SELECT t.project_id, "
+        "SUM(t.completed_at IS NULL AND t.archived=0) AS pending, "
+        "MAX(t.created_at) AS last_created, MAX(t.completed_at) AS last_completed, "
+        "MAX(t.last_completed_at) AS last_recurring "
+        "FROM tasks t WHERE t.project_id IS NOT NULL AND t.deleted_at IS NULL GROUP BY t.project_id"
+        ") a ON a.project_id=p.id "
+        "WHERE p.archived=0 AND p.deleted_at IS NULL AND a.pending > 0 "
+        + excluded_sql +
+        "HAVING last_activity < %s "
+        "ORDER BY last_activity ASC, p.name",
+        excluded_params + (cutoff,),
+    ) or []
+    for row in rows:
+        last = row.get("last_activity")
+        row["pending"] = int(row.get("pending") or 0)
+        row["idle_days"] = days_between(last, now.date()) if last else None
+    return rows

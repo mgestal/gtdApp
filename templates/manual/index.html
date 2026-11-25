@@ -182,7 +182,8 @@
         <div>
           <div style="font-weight:600;">Inbox</div>
           <div class="hint">Bandeja de entrada para capturar tareas sin proyecto ni carpeta.</div>
-          <div class="hint">Ejemplo: anotar “Renovar seguro del coche” y clasificarla después.</div>          <div class="hint">El botón <strong>🗄 Archivar realizadas</strong> envía al archivo todas las tareas completadas del Inbox de una vez.</div>        </div>
+          <div class="hint">Ejemplo: anotar “Renovar seguro del coche” y clasificarla después.</div>          <div class="hint">El botón <strong>🗄 Archivar realizadas</strong> envía al archivo todas las tareas completadas del Inbox de una vez.</div>
+          <div class="hint">Con <strong>▶ Procesar Inbox</strong> (tecla <kbd>e</kbd>) decides una tarea cada vez. Si necesita más de un paso, <strong>💼 Convertir en proyecto</strong> (tecla <kbd>j</kbd>) crea un proyecto con el título de la tarea y sus notas como descripción, en la carpeta elegida como destino (o sin carpeta). Escribe los <em>primeros pasos</em>, uno por línea y con fecha opcional al final (<code>15-12</code>, <code>mañana</code>…): cada uno será una tarea del proyecto, el primero marcado como NextAction, y la tarea original irá a la papelera. Sin pasos, la propia tarea pasa al proyecto como NextAction.</div>        </div>
       </div>
       <div class="list-row">
         <div>
@@ -305,6 +306,7 @@
           <div class="hint">Ejemplo: usarla los viernes para vaciar inbox, revisar en espera y detectar proyectos sin acciones.</div>
           <div class="hint">Marca la casilla del título de cada bloque al revisarlo: la revisión empieza con la primera marca y se guarda, así que puedes dejarla a medias y retomarla más tarde o desde otro dispositivo. Junto a las pestañas verás el progreso, la fecha de la última revisión terminada y el botón <b>Terminar revisión</b> para cerrarla.</div>
           <div class="hint">El bloque 6 avisa de los <b>proyectos sin NextAction</b>: proyectos activos con tareas pendientes pero ninguna marcada como acción siguiente (no incluye Rutinas, Agenda, Sometime, ADTV ni Seguimiento).</div>
+          <div class="hint">También avisa de los <b>proyectos estancados</b>: proyectos activos con tareas pendientes en los que no se ha creado ni completado ninguna tarea en los últimos 14 días. El número de días se cambia en Admin → «Revisión semanal».</div>
           <div class="hint"><a class="manual-cta-link" href="{{ url_for('static', filename='review_filters.html') }}" target="_blank">Ver plantilla de review con filtros recomendados</a></div>
         </div>
       </div>
